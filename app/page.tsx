@@ -1,8 +1,15 @@
 'use client'
+import ContratosPage from './components/ContratosPage'
+import MotoristaPage from './components/MotoristaPage'
+import NovoContratoPage from './components/NovoContratoPage'
+import CaminhaoPage from './components/CaminhaoPage'
+import DashboardPage from './components/DashboardPage'
+import AbastecimentoPage from './components/AbastecimentoPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
+import ComissoesPage from './components/ComissoesPage'
 
 export default function Home() {
   const { user } = useAuth()
@@ -14,13 +21,15 @@ export default function Home() {
     <div className="flex min-h-screen">
       <Sidebar aba={aba} setAba={setAba} />
       <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
-        {aba === 'dashboard'  && <Placeholder title="Visão Geral"    icon="📊" />}
-        {aba === 'novo'       && <Placeholder title="Novo Contrato"  icon="📄" />}
-        {aba === 'contratos'  && <Placeholder title="Contratos"      icon="📋" />}
-        {aba === 'motorista'  && <Placeholder title="Motoristas"     icon="👤" />}
-        {aba === 'frota'      && <Placeholder title="Frota"          icon="🚛" />}
-        {aba === 'comissoes'  && <Placeholder title="Comissões"      icon="💳" />}
-        {aba === 'premios'    && <Placeholder title="Prêmios"        icon="🏆" />}
+        {aba === 'dashboard'      && <DashboardPage />}
+        {aba === 'novo'           && <NovoContratoPage setAba={setAba} />}
+        {aba === 'contratos'      && <ContratosPage />}
+        {aba === 'motorista'      && <MotoristaPage />}
+        {aba === 'caminhao'       && <CaminhaoPage />}
+        {aba === 'abastecimento'  && <AbastecimentoPage />}
+        {aba === 'frota'          && <Placeholder title="Frota"      icon="🚛" />}
+        {aba === 'comissoes' && <ComissoesPage />}
+        {aba === 'premios'        && <Placeholder title="Prêmios"    icon="🏆" />}
       </main>
     </div>
   )
