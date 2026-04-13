@@ -13,14 +13,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
 
-  // Cadastro
   const [cadNome, setCadNome] = useState('')
   const [cadLogin, setCadLogin] = useState('')
   const [cadEmail, setCadEmail] = useState('')
   const [cadSenha, setCadSenha] = useState('')
   const [cadSenha2, setCadSenha2] = useState('')
 
-  // Recuperar
   const [recEmail, setRecEmail] = useState('')
 
   async function handleLogin(e: React.FormEvent) {
@@ -38,7 +36,6 @@ export default function Login() {
     if (cadSenha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres'); return }
     setLoading(true)
 
-    // Verifica se login já existe
     const { data: existe } = await supabase
       .from('usuarios')
       .select('id')
@@ -47,7 +44,6 @@ export default function Login() {
 
     if (existe) { setErro('Este usuário já existe'); setLoading(false); return }
 
-    // Cria usuário com status pendente
     const { error } = await supabase.from('usuarios').insert({
       nome: cadNome.toUpperCase(),
       login: cadLogin.toLowerCase(),
@@ -72,16 +68,26 @@ export default function Login() {
     const { data } = await supabase
       .from('usuarios')
       .select('login')
-      .eq('email', recEmail.toLowerCase())
-      .single()
+      .eq('email', recEmail.toLowerCase().trim())
+      .limit(1)
 
-    if (!data) {
+    if (!data || data.length === 0) {
       setErro('Email não encontrado')
       setLoading(false)
       return
     }
 
-    setMsg(`✅ Email encontrado! Seu usuário é: ${data.login}. Entre em contato com o administrador para redefinir sua senha.`)
+    const { error } = await supabase.auth.resetPasswordForEmail(recEmail.toLowerCase().trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+
+    if (error) {
+      setErro('Erro ao enviar email. Tente novamente.')
+      setLoading(false)
+      return
+    }
+
+    setMsg('✅ Email de redefinição enviado! Verifique sua caixa de entrada.')
     setLoading(false)
   }
 
@@ -118,11 +124,11 @@ export default function Login() {
               </button>
             </form>
             <div className="flex justify-between mt-4">
-              <button onClick={() => { setTela('recuperar'); setErro('') }}
+              <button onClick={() => { setTela('recuperar'); setErro(''); setMsg('') }}
                 className="text-xs text-gray-400 hover:text-red-600 transition">
                 Esqueci minha senha
               </button>
-              <button onClick={() => { setTela('cadastro'); setErro('') }}
+              <button onClick={() => { setTela('cadastro'); setErro(''); setMsg('') }}
                 className="text-xs text-gray-400 hover:text-red-600 transition">
                 Criar conta
               </button>
@@ -171,7 +177,7 @@ export default function Login() {
                 {loading ? 'Cadastrando...' : 'Criar conta'}
               </button>
             </form>
-            <button onClick={() => { setTela('login'); setErro('') }}
+            <button onClick={() => { setTela('login'); setErro(''); setMsg('') }}
               className="w-full text-center text-xs text-gray-400 hover:text-red-600 transition mt-4">
               ← Voltar para o login
             </button>
@@ -181,7 +187,7 @@ export default function Login() {
         {tela === 'recuperar' && (
           <>
             <p className="text-center text-sm text-gray-500 mb-2">Recuperar acesso</p>
-            <p className="text-center text-xs text-gray-400 mb-6">Digite seu email para recuperar seu usuário</p>
+            <p className="text-center text-xs text-gray-400 mb-6">Digite seu email para redefinir sua senha</p>
             {erro && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">{erro}</div>}
             {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
             <form onSubmit={handleRecuperar} className="space-y-4">
@@ -193,10 +199,10 @@ export default function Login() {
               </div>
               <button type="submit" disabled={loading}
                 className="w-full bg-red-600 hover:bg-red-700 text-white rounded-xl py-3 text-sm font-medium transition">
-                {loading ? 'Buscando...' : 'Recuperar acesso'}
+                {loading ? 'Enviando...' : 'Enviar email de redefinição'}
               </button>
             </form>
-            <button onClick={() => { setTela('login'); setErro('') }}
+            <button onClick={() => { setTela('login'); setErro(''); setMsg('') }}
               className="w-full text-center text-xs text-gray-400 hover:text-red-600 transition mt-4">
               ← Voltar para o login
             </button>

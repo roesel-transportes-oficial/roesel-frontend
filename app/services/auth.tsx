@@ -22,40 +22,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const stored = localStorage.getItem('roesel_user')
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      setUser(parsed.user)
-      setPerm(parsed.perm)
-      setEmail(parsed.email)
+  async function carregarUsuario(emailAuth: string) {
+    const { data } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('email', emailAuth)
+      .limit(1)
+
+    if (data && data.length > 0) {
+      const u = data[0]
+      setUser(u.nome || u.login)
+      setPerm(u.perm)
+      setEmail(u.email)
     }
-    setLoading(false)
+  }
+
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user?.email) {
+        await carregarUsuario(session.user.email)
+      }
+      setLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user?.email) {
+        await carregarUsuario(session.user.email)
+      } else {
+        setUser(null); setPerm(''); setEmail(null)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
-    // Busca usuário por login ou email
-    const { data, error } = await supabase
-      .from('usuarios')
-      .select('*')
-      .or(`login.eq.${loginOrEmail},email.eq.${loginOrEmail}`)
-      .single()
+    let emailLogin = loginOrEmail
 
-    if (error || !data) return 'Usuário não encontrado'
-    if (data.senha !== senha) return 'Senha incorreta'
-    if (data.status === 'pendente') return 'Conta aguardando aprovação do administrador'
-    if (data.status === 'inativo') return 'Conta inativa'
+    if (!loginOrEmail.includes('@')) {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('email, status')
+        .eq('login', loginOrEmail)
+        .single()
 
-    const userData = { user: data.nome || data.login, perm: data.perm, email: data.email }
-    localStorage.setItem('roesel_user', JSON.stringify(userData))
-    setUser(userData.user)
-    setPerm(userData.perm)
-    setEmail(userData.email)
+      if (!data) return 'Usuário não encontrado'
+      if (data.status === 'pendente') return 'Conta aguardando aprovação do administrador'
+      if (data.status === 'inativo') return 'Conta inativa'
+      emailLogin = data.email
+    } else {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('status')
+        .eq('email', loginOrEmail)
+        .limit(1)
+
+      if (data && data.length > 0) {
+        if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
+        if (data[0].status === 'inativo') return 'Conta inativa'
+      }
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailLogin,
+      password: senha,
+    })
+
+    if (error) return 'Usuário ou senha incorretos'
     return null
   }
 
-  function logout() {
-    localStorage.removeItem('roesel_user')
+  async function logout() {
+    await supabase.auth.signOut()
     setUser(null); setPerm(''); setEmail(null)
   }
 
