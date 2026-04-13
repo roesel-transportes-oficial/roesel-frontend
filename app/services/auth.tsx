@@ -64,12 +64,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('usuarios')
         .select('email, status')
         .eq('login', loginOrEmail)
-        .single()
+        .limit(1)
 
-      if (!data) return 'Usuário não encontrado'
-      if (data.status === 'pendente') return 'Conta aguardando aprovação do administrador'
-      if (data.status === 'inativo') return 'Conta inativa'
-      emailLogin = data.email
+      if (!data || data.length === 0) return 'Usuário não encontrado'
+      if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
+      if (data[0].status === 'inativo') return 'Conta inativa'
+      emailLogin = data[0].email
     } else {
       const { data } = await supabase
         .from('usuarios')
