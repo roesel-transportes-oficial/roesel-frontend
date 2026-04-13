@@ -23,17 +23,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   async function carregarUsuario(emailAuth: string) {
-    const { data } = await supabase
+    console.log('🔍 carregarUsuario chamado com:', emailAuth)
+    const { data, error } = await supabase
       .from('usuarios')
       .select('*')
       .eq('email', emailAuth)
       .limit(1)
 
+    console.log('📦 resultado:', data, 'erro:', error)
+
     if (data && data.length > 0) {
       const u = data[0]
+      console.log('✅ usuário encontrado:', u)
       setUser(u.nome || u.login)
       setPerm(u.perm)
       setEmail(u.email)
+    } else {
+      console.log('❌ usuário não encontrado')
     }
   }
 
