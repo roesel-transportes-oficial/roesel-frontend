@@ -34,22 +34,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(u.nome || u.login)
       setPerm(u.perm)
       setEmail(u.email)
+    } else {
+      setUser(null); setPerm(''); setEmail(null)
     }
   }
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setUser(null); setPerm(''); setEmail(null)
-        setLoading(false)
-        return
-      }
+    // Verifica sessão existente na inicialização
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user?.email) {
         await carregarUsuario(session.user.email)
-      } else {
-        setUser(null); setPerm(''); setEmail(null)
       }
       setLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user?.email) {
+        await carregarUsuario(session.user.email)
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null); setPerm(''); setEmail(null)
+      }
     })
 
     return () => subscription.unsubscribe()
