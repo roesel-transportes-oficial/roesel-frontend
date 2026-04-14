@@ -52,7 +52,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    return () => subscription.unsubscribe()
+    // Timeout de segurança
+    const timeout = setTimeout(() => setLoading(false), 5000)
+
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(timeout)
+    }
   }, [])
 
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
