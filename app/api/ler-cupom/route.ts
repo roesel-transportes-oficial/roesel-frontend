@@ -30,14 +30,14 @@ export async function POST(req: NextRequest) {
   "nome_posto": "Nome ou razão social do posto/fornecedor",
   "cidade": "Cidade do posto em maiúsculas",
   "estado": "UF do posto com 2 letras maiúsculas",
-  "litros_combustivel": número de litros de diesel/combustível (float, 0 se não houver),
-  "valor_litro_combustivel": valor por litro do combustível em reais (float, 0 se não houver),
-  "litros_arla": número de litros de Arla 32 (float, 0 se não houver),
-  "valor_litro_arla": valor por litro do Arla em reais (float, 0 se não houver),
-  "valor_total": valor total pago em reais (float),
-  "data_abastecimento": "data no formato YYYY-MM-DD",
-  "km": quilometragem do veículo (inteiro, null se não presente),
-  "placa": "placa do veículo se presente, null se não presente"
+  "litros_combustivel": 0,
+  "valor_litro_combustivel": 0,
+  "litros_arla": 0,
+  "valor_litro_arla": 0,
+  "valor_total": 0,
+  "data_abastecimento": "YYYY-MM-DD",
+  "km": null,
+  "placa": null
 }`,
               },
             ],
@@ -49,12 +49,16 @@ export async function POST(req: NextRequest) {
     const data = await response.json()
     const text = data.content?.[0]?.text || ''
 
-    try {
-      const parsed = JSON.parse(text)
-      return NextResponse.json({ ok: true, dados: parsed })
-    } catch {
-      return NextResponse.json({ ok: false, erro: 'Não foi possível extrair os dados do cupom.' })
+    // Tenta extrair JSON mesmo que tenha texto ao redor
+    const match = text.match(/\{[\s\S]*\}/)
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0])
+        return NextResponse.json({ ok: true, dados: parsed })
+      } catch {}
     }
+
+    return NextResponse.json({ ok: false, erro: 'Não foi possível extrair os dados do cupom.', raw: text })
   } catch (err) {
     return NextResponse.json({ ok: false, erro: 'Erro interno.' }, { status: 500 })
   }
