@@ -1,8 +1,8 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { abastecimentosAPI, caminhoesAPI } from '../services/api'
 import { useAuth } from '../services/auth'
-import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Fuel } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Fuel, Upload, Loader2 } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -12,7 +12,7 @@ interface Abastecimento {
   motorista: string; posto: string; cnpj_posto: string; estado: string; cidade: string
   litros_combustivel: number; valor_litro_combustivel: number
   litros_arla: number; valor_litro_arla: number
-  total: number; obs: string
+  total: number; km: number; obs: string
 }
 
 interface Caminhao { id: string; placa: string; modelo: string; motorista_atual: string }
@@ -32,8 +32,10 @@ export default function AbastecimentoPage() {
   const [sel, setSel] = useState<Abastecimento | null>(null)
   const [mostraCad, setMostraCad] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [loadingIA, setLoadingIA] = useState(false)
   const [msg, setMsg] = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [editData, setEditData] = useState('')
   const [editCaminhaoId, setEditCaminhaoId] = useState('')
@@ -47,6 +49,7 @@ export default function AbastecimentoPage() {
   const [editValorLitroComb, setEditValorLitroComb] = useState('')
   const [editLitrosArla, setEditLitrosArla] = useState('')
   const [editValorLitroArla, setEditValorLitroArla] = useState('')
+  const [editKm, setEditKm] = useState('')
   const [editObs, setEditObs] = useState('')
   const [editUsaArla, setEditUsaArla] = useState(false)
 
@@ -62,6 +65,7 @@ export default function AbastecimentoPage() {
   const [cadValorLitroComb, setCadValorLitroComb] = useState('')
   const [cadLitrosArla, setCadLitrosArla] = useState('')
   const [cadValorLitroArla, setCadValorLitroArla] = useState('')
+  const [cadKm, setCadKm] = useState('')
   const [cadObs, setCadObs] = useState('')
   const [usaArla, setUsaArla] = useState(false)
 
@@ -86,6 +90,77 @@ export default function AbastecimentoPage() {
     } catch {}
   }
 
+  async function lerCupomComIA(file: File) {
+    setLoadingIA(true)
+    try {
+      const base64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res((r.result as string).split(',')[1])
+        r.onerror = () => rej(new Error('Erro ao ler arquivo'))
+        r.readAsDataURL(file)
+      })
+
+      const mediaType = file.type === 'application/pdf' ? 'application/pdf'
+        : file.type === 'image/png' ? 'image/png'
+        : 'image/jpeg'
+
+      const res = await fetch('/api/ler-cupom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, mediaType }),
+      })
+
+      const json = await res.json()
+
+      if (!json.ok) {
+        showMsg('⚠️ ' + (json.erro || 'Não foi possível extrair os dados.'))
+        return
+      }
+
+      const d = json.dados
+
+      if (d.data_abastecimento) setCadData(d.data_abastecimento)
+      if (d.cnpj_posto) setCadCnpjPosto(d.cnpj_posto)
+      if (d.cidade) setCadCidade(d.cidade)
+      if (d.estado) setCadEstado(d.estado)
+      if (d.litros_combustivel) setCadLitrosComb(String(d.litros_combustivel))
+      if (d.valor_litro_combustivel) setCadValorLitroComb(String(d.valor_litro_combustivel))
+      if (d.km) setCadKm(String(d.km))
+
+      if (d.litros_arla && d.litros_arla > 0) {
+        setUsaArla(true)
+        setCadLitrosArla(String(d.litros_arla))
+        if (d.valor_litro_arla) setCadValorLitroArla(String(d.valor_litro_arla))
+      }
+
+      if (d.nome_posto) {
+        const postoEncontrado = postos.find(p =>
+          p.nome.toLowerCase().includes(d.nome_posto.toLowerCase().slice(0, 6))
+        )
+        if (postoEncontrado) setCadPosto(postoEncontrado.nome)
+        else setCadPosto(d.nome_posto)
+      }
+
+      if (d.placa) {
+        const camEncontrado = caminhoes.find(c =>
+          c.placa.replace(/[^A-Z0-9]/gi, '').toLowerCase() ===
+          d.placa.replace(/[^A-Z0-9]/gi, '').toLowerCase()
+        )
+        if (camEncontrado) {
+          setCadCaminhaoId(camEncontrado.id)
+          setCadCaminhaoPlaca(camEncontrado.placa)
+          setCadMotorista(camEncontrado.motorista_atual || '')
+        }
+      }
+
+      showMsg('✅ Dados extraídos do cupom com sucesso!')
+    } catch {
+      showMsg('⚠️ Erro ao processar o arquivo.')
+    } finally {
+      setLoadingIA(false)
+    }
+  }
+
   function fmtCnpj(v: string) {
     const d = v.replace(/\D/g,'').slice(0,14)
     if (d.length <= 2) return d
@@ -96,9 +171,7 @@ export default function AbastecimentoPage() {
   }
 
   function calcTotal(lc: string, vlc: string, la: string, vla: string) {
-    const totalComb = (parseFloat(lc) || 0) * (parseFloat(vlc) || 0)
-    const totalArla = (parseFloat(la) || 0) * (parseFloat(vla) || 0)
-    return totalComb + totalArla
+    return (parseFloat(lc)||0)*(parseFloat(vlc)||0) + (parseFloat(la)||0)*(parseFloat(vla)||0)
   }
 
   const filtrados = busca.trim()
@@ -124,13 +197,14 @@ export default function AbastecimentoPage() {
     setEditValorLitroComb(String(a.valor_litro_combustivel || ''))
     setEditLitrosArla(String(a.litros_arla || ''))
     setEditValorLitroArla(String(a.valor_litro_arla || ''))
+    setEditKm(String(a.km || ''))
     setEditObs(a.obs || '')
     setEditUsaArla((a.litros_arla || 0) > 0)
     setConfirmExcluir(false)
   }
 
   function voltar() { setSel(null); setConfirmExcluir(false) }
-  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
+  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
   async function salvar() {
     if (!sel) return
@@ -144,6 +218,7 @@ export default function AbastecimentoPage() {
       valor_litro_combustivel: parseFloat(editValorLitroComb) || 0,
       litros_arla: editUsaArla ? parseFloat(editLitrosArla) || 0 : 0,
       valor_litro_arla: editUsaArla ? parseFloat(editValorLitroArla) || 0 : 0,
+      km: parseInt(editKm) || null,
       total, obs: editObs,
     })
     await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
@@ -154,6 +229,16 @@ export default function AbastecimentoPage() {
     setLoading(true)
     if (perm !== 'demo') await abastecimentosAPI.excluir(sel.id)
     await fetch_(); setLoading(false); voltar(); showMsg('Abastecimento excluído.')
+  }
+
+  function resetCad() {
+    setCadData(new Date().toISOString().split('T')[0])
+    setCadCaminhaoId(''); setCadCaminhaoPlaca(''); setCadMotorista('')
+    setCadPosto(''); setCadCnpjPosto(''); setCadEstado(''); setCadCidade('')
+    setCadLitrosComb(''); setCadValorLitroComb('')
+    setCadLitrosArla(''); setCadValorLitroArla('')
+    setCadKm(''); setCadObs(''); setUsaArla(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   async function cadastrar() {
@@ -168,15 +253,12 @@ export default function AbastecimentoPage() {
       valor_litro_combustivel: parseFloat(cadValorLitroComb) || 0,
       litros_arla: usaArla ? parseFloat(cadLitrosArla) || 0 : 0,
       valor_litro_arla: usaArla ? parseFloat(cadValorLitroArla) || 0 : 0,
+      km: parseInt(cadKm) || null,
       total, obs: cadObs,
     })
     await fetch_(); setLoading(false)
-    setCadData(new Date().toISOString().split('T')[0])
-    setCadCaminhaoId(''); setCadCaminhaoPlaca(''); setCadMotorista('')
-    setCadPosto(''); setCadCnpjPosto(''); setCadEstado(''); setCadCidade('')
-    setCadLitrosComb(''); setCadValorLitroComb('')
-    setCadLitrosArla(''); setCadValorLitroArla(''); setCadObs(''); setUsaArla(false)
-    setMostraCad(false); showMsg('✅ Abastecimento registrado!')
+    resetCad(); setMostraCad(false)
+    showMsg('✅ Abastecimento registrado!')
   }
 
   const totalGeral = filtrados.reduce((s, a) => s + (a.total || 0), 0)
@@ -196,11 +278,44 @@ export default function AbastecimentoPage() {
 
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
-      <button onClick={() => setMostraCad(false)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
+      <button onClick={() => { setMostraCad(false); resetCad() }} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
         <ArrowLeft size={16}/> Voltar
       </button>
+
+      {msg && (
+        <div className={`mb-4 p-3 rounded-xl text-sm border ${msg.startsWith('⚠️') ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+          {msg}
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-lg">Novo Abastecimento</h3>
+
+        <div className="mb-5 p-4 bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-2xl">
+          <p className="text-sm font-semibold text-gray-700">📎 Importar cupom fiscal</p>
+          <p className="text-xs text-gray-500 mt-0.5 mb-3">Envie uma imagem ou PDF e a IA preencherá os campos automaticamente</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (file) lerCupomComIA(file)
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loadingIA}
+            className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-red-200 hover:border-red-400 bg-white hover:bg-red-50 text-red-600 rounded-xl py-3 text-sm font-medium transition disabled:opacity-60"
+          >
+            {loadingIA
+              ? <><Loader2 size={16} className="animate-spin" /> Lendo cupom com IA...</>
+              : <><Upload size={16} /> Selecionar imagem ou PDF</>
+            }
+          </button>
+        </div>
+
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -208,19 +323,30 @@ export default function AbastecimentoPage() {
               <input type="date" value={cadData} onChange={e => setCadData(e.target.value)} className={InputClass} />
             </div>
             <div>
-              <label className={LabelClass}>Posto *</label>
-              <select value={cadPosto} onChange={e => setCadPosto(e.target.value)} className={InputClass}>
-                <option value="">Selecione...</option>
-                {postos.map(p => <option key={p.id} value={p.nome}>{p.nome}</option>)}
-              </select>
+              <label className={LabelClass}>KM</label>
+              <input type="number" value={cadKm} onChange={e => setCadKm(e.target.value)} placeholder="Ex: 156650" className={InputClass} />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
+              <label className={LabelClass}>Posto</label>
+              <select value={cadPosto} onChange={e => setCadPosto(e.target.value)} className={InputClass}>
+                <option value="">Selecione...</option>
+                {postos.map(p => <option key={p.id} value={p.nome}>{p.nome}</option>)}
+              </select>
+            </div>
+            <div>
               <label className={LabelClass}>CNPJ do Posto</label>
               <input value={fmtCnpj(cadCnpjPosto)} onChange={e => setCadCnpjPosto(e.target.value.replace(/\D/g,''))}
                 placeholder="00.000.000/0000-00" maxLength={18} className={InputClass} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LabelClass}>Cidade</label>
+              <input value={cadCidade} onChange={e => setCadCidade(e.target.value.toUpperCase())} placeholder="Nome da cidade" className={InputClass} />
             </div>
             <div>
               <label className={LabelClass}>Estado (UF)</label>
@@ -229,12 +355,6 @@ export default function AbastecimentoPage() {
                 {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
               </select>
             </div>
-          </div>
-
-          <div>
-            <label className={LabelClass}>Cidade</label>
-            <input value={cadCidade} onChange={e => setCadCidade(e.target.value.toUpperCase())}
-              placeholder="Nome da cidade" className={InputClass} />
           </div>
 
           <div>
@@ -314,11 +434,11 @@ export default function AbastecimentoPage() {
           </div>
 
           <div className="flex gap-2 pt-1">
-            <button onClick={cadastrar} disabled={loading}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
+            <button onClick={cadastrar} disabled={loading || !cadCaminhaoId}
+              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition">
               Registrar abastecimento
             </button>
-            <button onClick={() => setMostraCad(false)}
+            <button onClick={() => { setMostraCad(false); resetCad() }}
               className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition">
               Cancelar
             </button>
@@ -330,7 +450,11 @@ export default function AbastecimentoPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
+      {msg && (
+        <div className={`mb-4 p-3 rounded-xl text-sm border ${msg.startsWith('⚠️') ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+          {msg}
+        </div>
+      )}
 
       {sel ? (
         <div>
@@ -356,19 +480,30 @@ export default function AbastecimentoPage() {
                   <input type="date" value={editData} onChange={e => setEditData(e.target.value)} className={InputClass} />
                 </div>
                 <div>
+                  <label className={LabelClass}>KM</label>
+                  <input type="number" value={editKm} onChange={e => setEditKm(e.target.value)} className={InputClass} placeholder="Ex: 156650" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className={LabelClass}>Posto</label>
                   <select value={editPosto} onChange={e => setEditPosto(e.target.value)} className={InputClass}>
                     <option value="">Selecione...</option>
                     {postos.map(p => <option key={p.id} value={p.nome}>{p.nome}</option>)}
                   </select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LabelClass}>CNPJ do Posto</label>
                   <input value={fmtCnpj(editCnpjPosto)} onChange={e => setEditCnpjPosto(e.target.value.replace(/\D/g,''))}
                     placeholder="00.000.000/0000-00" maxLength={18} className={InputClass} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LabelClass}>Cidade</label>
+                  <input value={editCidade} onChange={e => setEditCidade(e.target.value.toUpperCase())} className={InputClass} />
                 </div>
                 <div>
                   <label className={LabelClass}>Estado (UF)</label>
@@ -377,11 +512,6 @@ export default function AbastecimentoPage() {
                     {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
                   </select>
                 </div>
-              </div>
-
-              <div>
-                <label className={LabelClass}>Cidade</label>
-                <input value={editCidade} onChange={e => setEditCidade(e.target.value.toUpperCase())} className={InputClass} />
               </div>
 
               <div>
@@ -532,6 +662,7 @@ export default function AbastecimentoPage() {
                     {a.estado && ` - ${a.estado}`}
                     {` · ${a.litros_combustivel}L`}
                     {a.litros_arla ? ` + ${a.litros_arla}L Arla` : ''}
+                    {a.km ? ` · ${a.km.toLocaleString('pt-BR')} km` : ''}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
