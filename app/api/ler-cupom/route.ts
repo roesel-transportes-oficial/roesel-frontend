@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-sonnet-4-5-20251022',
         max_tokens: 1000,
         messages: [
           {
