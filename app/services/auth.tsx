@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user?.email) {
           await carregarUsuario(session.user.email)
         }
@@ -52,7 +52,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    // Timeout de segurança
     const timeout = setTimeout(() => setLoading(false), 5000)
 
     return () => {
