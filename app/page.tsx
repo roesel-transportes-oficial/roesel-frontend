@@ -10,6 +10,7 @@ import { useAuth } from './services/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 import ComissoesPage from './components/ComissoesPage'
+import FornecedorPage from './components/FornecedorPage'
 
 export default function Home() {
   const { user } = useAuth()
@@ -30,6 +31,7 @@ export default function Home() {
         {aba === 'frota'          && <Placeholder title="Frota"      icon="🚛" />}
         {aba === 'comissoes' && <ComissoesPage />}
         {aba === 'premios'        && <Placeholder title="Prêmios"    icon="🏆" />}
+        {aba === 'fornecedor' && <FornecedorPage />}
       </main>
     </div>
   )

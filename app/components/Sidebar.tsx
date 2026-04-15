@@ -1,6 +1,6 @@
 'use client'
 import { useAuth } from '../services/auth'
-import { LayoutDashboard, FileText, FilePlus, User, Truck, DollarSign, Trophy, LogOut, Car, Fuel, Users } from 'lucide-react'
+import { LayoutDashboard, FileText, FilePlus, User, Truck, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2 } from 'lucide-react'
 
 const menus = [
   { id: 'dashboard',     label: 'Visão Geral',    icon: LayoutDashboard, adminOnly: false },
@@ -9,7 +9,7 @@ const menus = [
   { id: 'motorista',     label: 'Motorista',      icon: User,            adminOnly: false },
   { id: 'caminhao',      label: 'Caminhão',       icon: Car,             adminOnly: false },
   { id: 'abastecimento', label: 'Abastecimentos', icon: Fuel,            adminOnly: false },
-  { id: 'frota',         label: 'Frota',          icon: Truck,           adminOnly: false },
+  { id: 'fornecedor',    label: 'Fornecedor',     icon: Building2,       adminOnly: false },
   { id: 'comissoes',     label: 'Comissões',      icon: DollarSign,      adminOnly: false },
   { id: 'premios',       label: 'Prêmios',        icon: Trophy,          adminOnly: false },
   { id: 'usuarios',      label: 'Usuários',       icon: Users,           adminOnly: true  },
