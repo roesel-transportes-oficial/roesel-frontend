@@ -24,10 +24,19 @@ export async function POST(req: NextRequest) {
               },
               {
                 type: 'text',
-                text: `Extraia as seguintes informações deste cupom fiscal de abastecimento e retorne APENAS um JSON válido, sem texto adicional, sem markdown, sem explicações:
+                text: `Extraia as seguintes informações deste cupom fiscal de abastecimento e retorne APENAS um JSON válido, sem texto adicional, sem markdown, sem explicações.
+
+ATENÇÃO:
+- "litros_combustivel" é a quantidade de litros abastecidos (procure por "QTD", "LITROS", "L x", "469 L" etc)
+- "valor_litro_combustivel" é o preço unitário por litro (procure por "VL UNIT", "R$/L", "x 6,45" etc)
+- "cidade" e "estado" são do POSTO FORNECEDOR (primeiro CNPJ/endereço do cupom), NÃO do cliente comprador
+- Ignore completamente o endereço do cliente/comprador que aparece depois
+- "km" é a quilometragem do veículo se aparecer no cupom
+
+JSON esperado:
 {
-  "cnpj_posto": "CNPJ do fornecedor/posto somente números sem pontuação",
-  "nome_posto": "Nome ou razão social do posto/fornecedor",
+  "cnpj_posto": "CNPJ do fornecedor somente números sem pontuação",
+  "nome_posto": "Nome ou razão social do posto fornecedor",
   "cidade": "Cidade do posto em maiúsculas",
   "estado": "UF do posto com 2 letras maiúsculas",
   "litros_combustivel": 0,
@@ -49,7 +58,6 @@ export async function POST(req: NextRequest) {
     const data = await response.json()
     const text = data.content?.[0]?.text || ''
 
-    // Tenta extrair JSON mesmo que tenha texto ao redor
     const match = text.match(/\{[\s\S]*\}/)
     if (match) {
       try {
