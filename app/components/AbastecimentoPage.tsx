@@ -16,7 +16,7 @@ interface Abastecimento {
 }
 
 interface Caminhao { id: string; placa: string; modelo: string; motorista_atual: string }
-interface Posto { id: string; nome: string }
+interface Fornecedor { id: string; nome: string; cnpj: string; cidade: string; estado: string }
 
 const InputClass = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LabelClass = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
@@ -27,7 +27,7 @@ export default function AbastecimentoPage() {
   const { perm } = useAuth()
   const [abastecimentos, setAbastecimentos] = useState<Abastecimento[]>([])
   const [caminhoes, setCaminhoes] = useState<Caminhao[]>([])
-  const [postos, setPostos] = useState<Posto[]>([])
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([])
   const [busca, setBusca] = useState('')
   const [sel, setSel] = useState<Abastecimento | null>(null)
   const [mostraCad, setMostraCad] = useState(false)
@@ -72,7 +72,7 @@ export default function AbastecimentoPage() {
   useEffect(() => {
     fetch_()
     caminhoesAPI.listar().then(setCaminhoes).catch(() => {})
-    fetchPostos()
+    fetchFornecedores()
   }, [])
 
   async function fetch_() {
@@ -80,14 +80,34 @@ export default function AbastecimentoPage() {
     setAbastecimentos(data)
   }
 
-  async function fetchPostos() {
+  async function fetchFornecedores() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/postos?order=nome.asc`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/fornecedores?order=nome.asc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
-      setPostos(data)
+      setFornecedores(Array.isArray(data) ? data : [])
     } catch {}
+  }
+
+  function preencherFornecedor(cnpj: string) {
+    const cnpjLimpo = cnpj.replace(/\D/g, '')
+    const found = fornecedores.find(f => f.cnpj?.replace(/\D/g, '') === cnpjLimpo)
+    if (found) {
+      setCadPosto(found.nome)
+      setCadCidade(found.cidade || '')
+      setCadEstado(found.estado || '')
+    }
+  }
+
+  function preencherFornecedorEdit(cnpj: string) {
+    const cnpjLimpo = cnpj.replace(/\D/g, '')
+    const found = fornecedores.find(f => f.cnpj?.replace(/\D/g, '') === cnpjLimpo)
+    if (found) {
+      setEditPosto(found.nome)
+      setEditCidade(found.cidade || '')
+      setEditEstado(found.estado || '')
+    }
   }
 
   async function lerCupomComIA(file: File) {
@@ -120,12 +140,9 @@ export default function AbastecimentoPage() {
       const d = json.dados
 
       if (d.data_abastecimento) setCadData(d.data_abastecimento)
-      if (d.cnpj_posto) setCadCnpjPosto(d.cnpj_posto)
-      if (d.cidade) setCadCidade(d.cidade)
-      if (d.estado) setCadEstado(d.estado)
+      if (d.km) setCadKm(String(d.km))
       if (d.litros_combustivel) setCadLitrosComb(String(d.litros_combustivel))
       if (d.valor_litro_combustivel) setCadValorLitroComb(String(d.valor_litro_combustivel))
-      if (d.km) setCadKm(String(d.km))
 
       if (d.litros_arla && d.litros_arla > 0) {
         setUsaArla(true)
@@ -133,14 +150,24 @@ export default function AbastecimentoPage() {
         if (d.valor_litro_arla) setCadValorLitroArla(String(d.valor_litro_arla))
       }
 
-      if (d.nome_posto) {
-        const postoEncontrado = postos.find(p =>
-          p.nome.toLowerCase().includes(d.nome_posto.toLowerCase().slice(0, 6))
-        )
-        if (postoEncontrado) setCadPosto(postoEncontrado.nome)
-        else setCadPosto(d.nome_posto)
+      // Preenche CNPJ e busca fornecedor cadastrado
+      if (d.cnpj_posto) {
+        setCadCnpjPosto(d.cnpj_posto)
+        const cnpjLimpo = d.cnpj_posto.replace(/\D/g, '')
+        const found = fornecedores.find(f => f.cnpj?.replace(/\D/g, '') === cnpjLimpo)
+        if (found) {
+          setCadPosto(found.nome)
+          setCadCidade(found.cidade || '')
+          setCadEstado(found.estado || '')
+        } else {
+          // Usa dados da IA se não encontrar no cadastro
+          if (d.cidade) setCadCidade(d.cidade)
+          if (d.estado) setCadEstado(d.estado)
+          if (d.nome_posto) setCadPosto(d.nome_posto)
+        }
       }
 
+      // Tenta vincular caminhão pela placa
       if (d.placa) {
         const camEncontrado = caminhoes.find(c =>
           c.placa.replace(/[^A-Z0-9]/gi, '').toLowerCase() ===
@@ -330,32 +357,39 @@ export default function AbastecimentoPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={LabelClass}>Posto</label>
-              <select value={cadPosto} onChange={e => setCadPosto(e.target.value)} className={InputClass}>
+              <label className={LabelClass}>Fornecedor</label>
+              <select value={cadPosto} onChange={e => {
+                const f = fornecedores.find(f => f.nome === e.target.value)
+                setCadPosto(e.target.value)
+                if (f) {
+                  setCadCnpjPosto(f.cnpj || '')
+                  setCadCidade(f.cidade || '')
+                  setCadEstado(f.estado || '')
+                }
+              }} className={InputClass}>
                 <option value="">Selecione...</option>
-                {postos.map(p => <option key={p.id} value={p.nome}>{p.nome}</option>)}
+                {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
               </select>
             </div>
             <div>
-              <label className={LabelClass}>CNPJ do Posto</label>
-              <input value={fmtCnpj(cadCnpjPosto)} onChange={e => setCadCnpjPosto(e.target.value.replace(/\D/g,''))}
+              <label className={LabelClass}>CNPJ</label>
+              <input value={fmtCnpj(cadCnpjPosto)}
+                onChange={e => {
+                  const val = e.target.value.replace(/\D/g,'')
+                  setCadCnpjPosto(val)
+                  if (val.length === 14) preencherFornecedor(val)
+                }}
                 placeholder="00.000.000/0000-00" maxLength={18} className={InputClass} />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>Cidade</label>
-              <input value={cadCidade} onChange={e => setCadCidade(e.target.value.toUpperCase())} placeholder="Nome da cidade" className={InputClass} />
+          {cadCidade || cadEstado ? (
+            <div className="bg-blue-50 rounded-xl p-3">
+              <p className="text-xs text-blue-600 font-medium">
+                Fornecedor: <span className="text-blue-800">{cadCidade}{cadEstado && ` - ${cadEstado}`}</span>
+              </p>
             </div>
-            <div>
-              <label className={LabelClass}>Estado (UF)</label>
-              <select value={cadEstado} onChange={e => setCadEstado(e.target.value)} className={InputClass}>
-                <option value="">Selecione...</option>
-                {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
-            </div>
-          </div>
+          ) : null}
 
           <div>
             <label className={LabelClass}>Caminhão *</label>
@@ -487,30 +521,29 @@ export default function AbastecimentoPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={LabelClass}>Posto</label>
-                  <select value={editPosto} onChange={e => setEditPosto(e.target.value)} className={InputClass}>
+                  <label className={LabelClass}>Fornecedor</label>
+                  <select value={editPosto} onChange={e => {
+                    const f = fornecedores.find(f => f.nome === e.target.value)
+                    setEditPosto(e.target.value)
+                    if (f) {
+                      setEditCnpjPosto(f.cnpj || '')
+                      setEditCidade(f.cidade || '')
+                      setEditEstado(f.estado || '')
+                    }
+                  }} className={InputClass}>
                     <option value="">Selecione...</option>
-                    {postos.map(p => <option key={p.id} value={p.nome}>{p.nome}</option>)}
+                    {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className={LabelClass}>CNPJ do Posto</label>
-                  <input value={fmtCnpj(editCnpjPosto)} onChange={e => setEditCnpjPosto(e.target.value.replace(/\D/g,''))}
+                  <label className={LabelClass}>CNPJ</label>
+                  <input value={fmtCnpj(editCnpjPosto)}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\D/g,'')
+                      setEditCnpjPosto(val)
+                      if (val.length === 14) preencherFornecedorEdit(val)
+                    }}
                     placeholder="00.000.000/0000-00" maxLength={18} className={InputClass} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>Cidade</label>
-                  <input value={editCidade} onChange={e => setEditCidade(e.target.value.toUpperCase())} className={InputClass} />
-                </div>
-                <div>
-                  <label className={LabelClass}>Estado (UF)</label>
-                  <select value={editEstado} onChange={e => setEditEstado(e.target.value)} className={InputClass}>
-                    <option value="">Selecione...</option>
-                    {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
-                  </select>
                 </div>
               </div>
 
@@ -633,7 +666,7 @@ export default function AbastecimentoPage() {
           <div className="relative mb-4">
             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={busca} onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar por placa, motorista, posto ou cidade..."
+              placeholder="Buscar por placa, motorista, fornecedor ou cidade..."
               className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white shadow-sm" />
           </div>
 
