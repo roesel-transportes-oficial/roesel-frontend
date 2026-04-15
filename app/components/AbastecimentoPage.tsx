@@ -383,13 +383,20 @@ export default function AbastecimentoPage() {
             </div>
           </div>
 
-          {cadCidade || cadEstado ? (
-            <div className="bg-blue-50 rounded-xl p-3">
-              <p className="text-xs text-blue-600 font-medium">
-                Fornecedor: <span className="text-blue-800">{cadCidade}{cadEstado && ` - ${cadEstado}`}</span>
-              </p>
-            </div>
-          ) : null}
+          <div className="grid grid-cols-2 gap-3">
+  <div>
+    <label className={LabelClass}>Cidade</label>
+    <input value={cadCidade} onChange={e => setCadCidade(e.target.value.toUpperCase())}
+      placeholder="Nome da cidade" className={InputClass} />
+  </div>
+  <div>
+    <label className={LabelClass}>Estado (UF)</label>
+    <select value={cadEstado} onChange={e => setCadEstado(e.target.value)} className={InputClass}>
+      <option value="">Selecione...</option>
+      {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
+    </select>
+  </div>
+</div>
 
           <div>
             <label className={LabelClass}>Caminhão *</label>
