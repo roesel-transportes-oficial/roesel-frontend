@@ -32,6 +32,8 @@ export default function Home() {
         {aba === 'comissoes'     && <ComissoesPage />}
         {aba === 'premios'       && <Placeholder title="Prêmios" icon="🏆" />}
         {aba === 'usuarios'      && <Placeholder title="Usuários" icon="👥" />}
+        {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar"   icon="📉" />}
+        {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
       </main>
     </div>
   )
