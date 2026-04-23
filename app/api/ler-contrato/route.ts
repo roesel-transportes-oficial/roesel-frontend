@@ -48,29 +48,29 @@ export async function POST(req: NextRequest) {
             type: 'text',
             text: `Analise este contrato de transporte rodoviário com EXTREMO CUIDADO letra por letra e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem texto adicional.
 
-REGRAS CRÍTICAS — leia com atenção máxima:
+REGRAS CRÍTICAS — leia com atenção máxima cada campo:
 
 1. "motorista": nome da PESSOA FÍSICA na seção "MOTORISTA". NÃO é o contratado (empresa).
 
-2. "cliente_nome_completo": nome EXATO da empresa na seção "CONTRATANTE". Leia cada letra com cuidado — erros de digitação como SANA em vez de SADA são inaceitáveis.
+2. "cliente_nome_completo": nome EXATO da empresa na seção "CONTRATANTE". Leia cada letra com cuidado — erros como BRASIL em vez de BRAZUL são inaceitáveis. Copie exatamente como está escrito.
 
-3. "cnpj": CNPJ do CONTRATANTE. Leia CADA DÍGITO com atenção máxima. O CNPJ tem 14 dígitos no formato XX.XXX.XXX/XXXX-XX. Não confunda dígitos parecidos (ex: 1 e 7, 8 e 9, 3 e 8).
+3. "cnpj": CNPJ do CONTRATANTE. Está logo abaixo do nome da empresa contratante, no campo "CNPJ:". Formato: XX.XXX.XXX/XXXX-XX com 14 dígitos no total. Leia CADA DÍGITO com atenção máxima — não confunda dígitos parecidos (1 e 7, 8 e 9, 3 e 8, 0 e 6). Se não encontrar, retorne string vazia.
 
-4. "placa": placa do CAVALO MECÂNICO APENAS. Placas no padrão Mercosul têm 7 caracteres: 3 letras + 1 número + 1 letra + 2 números (ex: RMH9C90). Leia CADA caractere com atenção — não confunda letras com números (ex: C com 0, B com 8).
+4. "placa": placa do CAVALO MECÂNICO APENAS (campo "Placa Cavalo Mecânico"). Placas no padrão Mercosul têm 7 caracteres: 3 letras + 1 número + 1 letra + 2 números (ex: QMZ9B08). Leia CADA caractere — não confunda letras com números.
 
-5. "frota": número exato após "Frota:" — leia com atenção cada dígito.
+5. "frota": número exato após "Frota:" nos equipamentos de transporte.
 
-6. "fat_bruto": valor em "Frete Contratado". Leia o valor COMPLETO com todos os dígitos. Ex: 22751,92 e não 2751,92. Retorne sem símbolo R$, use ponto como separador decimal.
+6. "fat_bruto": valor em "Frete Contratado" na seção de preços. ATENÇÃO MÁXIMA: leia o valor COMPLETO com TODOS os dígitos. O valor pode ter 5 ou 6 dígitos antes da vírgula. Ex: 15552,3 e NÃO 1555,21. Ex: 22751,92 e NÃO 2751,92. Retorne sem símbolo R$, use ponto como separador decimal.
 
-7. "qtd_veiculos": número no campo "Quant." — leia com atenção.
+7. "qtd_veiculos": número no campo "Quant." nos serviços contratados.
 
-8. "contrato": número após "VIAGENS:" ou "CONTRATO:" no título.
+8. "contrato": número após "VIAGENS:" ou "CONTRATO:" no título do documento.
 
-9. "origem": cidade e estado de origem da viagem.
+9. "origem": cidade e estado de origem da viagem (campo "Origem:").
 
-10. "destino": cidade e estado de destino da viagem.
+10. "destino": cidade e estado de destino da viagem (campo "Destino:").
 
-11. "data": data em "Data de Saída" no formato YYYY-MM-DD.
+11. "data": data no campo "Data de Saída" no formato YYYY-MM-DD. Se não houver "Data de Saída", use a data no campo "Data de Saída" nos serviços contratados. Não use "Data de Pagamento".
 
 12. "status": sempre "ABERTO".
 
