@@ -7,6 +7,7 @@ import DashboardPage from './components/DashboardPage'
 import AbastecimentoPage from './components/AbastecimentoPage'
 import FornecedorPage from './components/FornecedorPage'
 import ComissoesPage from './components/ComissoesPage'
+import ClientePage from './components/ClientePage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -27,7 +28,7 @@ export default function Home() {
         {aba === 'contratos'      && <ContratosPage />}
         {aba === 'motorista'      && <MotoristaPage />}
         {aba === 'caminhao'       && <CaminhaoPage />}
-        {aba === 'clientes'       && <Placeholder title="Clientes" icon="👤" />}
+        {aba === 'clientes'       && <ClientePage />}
         {aba === 'abastecimento'  && <AbastecimentoPage />}
         {aba === 'fornecedor'     && <FornecedorPage />}
         {aba === 'comissoes'      && <ComissoesPage />}
