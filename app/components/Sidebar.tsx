@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useAuth } from '../services/auth'
-import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown } from 'lucide-react'
+import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle } from 'lucide-react'
 
 const menus = [
   { id: 'dashboard',    label: 'Visão Geral',   icon: LayoutDashboard, adminOnly: false },
@@ -9,6 +9,7 @@ const menus = [
   { id: 'contratos',    label: 'Contratos',     icon: FileText,        adminOnly: false },
   { id: 'motorista',    label: 'Motorista',     icon: User,            adminOnly: false },
   { id: 'caminhao',     label: 'Caminhão',      icon: Car,             adminOnly: false },
+  { id: 'clientes',     label: 'Clientes',      icon: UserCircle,      adminOnly: false },
   { id: 'premios',      label: 'Prêmios',       icon: Trophy,          adminOnly: false },
   { id: 'usuarios',     label: 'Usuários',      icon: Users,           adminOnly: true  },
 ]

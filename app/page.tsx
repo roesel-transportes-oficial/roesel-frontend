@@ -22,17 +22,18 @@ export default function Home() {
     <div className="flex min-h-screen">
       <Sidebar aba={aba} setAba={setAba} />
       <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
-        {aba === 'dashboard'     && <DashboardPage />}
-        {aba === 'novo'          && <NovoContratoPage setAba={setAba} />}
-        {aba === 'contratos'     && <ContratosPage />}
-        {aba === 'motorista'     && <MotoristaPage />}
-        {aba === 'caminhao'      && <CaminhaoPage />}
-        {aba === 'abastecimento' && <AbastecimentoPage />}
-        {aba === 'fornecedor'    && <FornecedorPage />}
-        {aba === 'comissoes'     && <ComissoesPage />}
-        {aba === 'premios'       && <Placeholder title="Prêmios" icon="🏆" />}
-        {aba === 'usuarios'      && <Placeholder title="Usuários" icon="👥" />}
-        {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar"   icon="📉" />}
+        {aba === 'dashboard'      && <DashboardPage />}
+        {aba === 'novo'           && <NovoContratoPage setAba={setAba} />}
+        {aba === 'contratos'      && <ContratosPage />}
+        {aba === 'motorista'      && <MotoristaPage />}
+        {aba === 'caminhao'       && <CaminhaoPage />}
+        {aba === 'clientes'       && <Placeholder title="Clientes" icon="👤" />}
+        {aba === 'abastecimento'  && <AbastecimentoPage />}
+        {aba === 'fornecedor'     && <FornecedorPage />}
+        {aba === 'comissoes'      && <ComissoesPage />}
+        {aba === 'premios'        && <Placeholder title="Prêmios" icon="🏆" />}
+        {aba === 'usuarios'       && <Placeholder title="Usuários" icon="👥" />}
+        {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar" icon="📉" />}
         {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
       </main>
     </div>
