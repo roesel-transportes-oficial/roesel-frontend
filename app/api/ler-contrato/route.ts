@@ -46,24 +46,37 @@ export async function POST(req: NextRequest) {
           },
           {
             type: 'text',
-            text: `Analise este contrato de transporte rodoviário com MUITO CUIDADO e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks.
+            text: `Analise este contrato de transporte rodoviário com EXTREMO CUIDADO letra por letra e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem texto adicional.
 
-Instruções DETALHADAS:
-- "motorista": nome da PESSOA FÍSICA na seção chamada "MOTORISTA" (NÃO é o CONTRATADO que é empresa)
-- "cliente_nome_completo": nome da empresa na seção "CONTRATANTE"
-- "cnpj": CNPJ da empresa CONTRATANTE (leia com cuidado cada dígito)
-- "contrato": número após "VIAGENS:" ou "CONTRATO:" no título
-- "placa": placa do CAVALO MECÂNICO (Placa Cavalo Mecânico), NÃO a placa semirreboque
-- "frota": número após "Frota:" — leia com MUITA ATENÇÃO cada dígito
-- "origem": cidade/estado de origem da viagem
-- "destino": cidade/estado de destino da viagem
-- "qtd_veiculos": número no campo "Quant." — leia com MUITA ATENÇÃO, pode ser 11, 12, etc.
-- "fat_bruto": valor em "Frete Contratado" — número sem símbolo, ponto como decimal
-- "data": data em "Data de Saída" no formato YYYY-MM-DD
-- "status": sempre "ABERTO"
-- "obs": deixe vazio
+REGRAS CRÍTICAS — leia com atenção máxima:
 
-Retorne exatamente este JSON sem nenhum texto adicional:
+1. "motorista": nome da PESSOA FÍSICA na seção "MOTORISTA". NÃO é o contratado (empresa).
+
+2. "cliente_nome_completo": nome EXATO da empresa na seção "CONTRATANTE". Leia cada letra com cuidado — erros de digitação como SANA em vez de SADA são inaceitáveis.
+
+3. "cnpj": CNPJ do CONTRATANTE. Leia CADA DÍGITO com atenção máxima. O CNPJ tem 14 dígitos no formato XX.XXX.XXX/XXXX-XX. Não confunda dígitos parecidos (ex: 1 e 7, 8 e 9, 3 e 8).
+
+4. "placa": placa do CAVALO MECÂNICO APENAS. Placas no padrão Mercosul têm 7 caracteres: 3 letras + 1 número + 1 letra + 2 números (ex: RMH9C90). Leia CADA caractere com atenção — não confunda letras com números (ex: C com 0, B com 8).
+
+5. "frota": número exato após "Frota:" — leia com atenção cada dígito.
+
+6. "fat_bruto": valor em "Frete Contratado". Leia o valor COMPLETO com todos os dígitos. Ex: 22751,92 e não 2751,92. Retorne sem símbolo R$, use ponto como separador decimal.
+
+7. "qtd_veiculos": número no campo "Quant." — leia com atenção.
+
+8. "contrato": número após "VIAGENS:" ou "CONTRATO:" no título.
+
+9. "origem": cidade e estado de origem da viagem.
+
+10. "destino": cidade e estado de destino da viagem.
+
+11. "data": data em "Data de Saída" no formato YYYY-MM-DD.
+
+12. "status": sempre "ABERTO".
+
+13. "chapa" e "obs": deixe vazio.
+
+Retorne APENAS este JSON sem nenhum texto adicional:
 {
   "motorista": "",
   "cliente_nome_completo": "",
@@ -91,7 +104,6 @@ Retorne exatamente este JSON sem nenhum texto adicional:
   try {
     const parsed = JSON.parse(text.trim())
 
-    // Converte frota do contrato para frota da empresa
     if (parsed.frota) {
       const frotaLida = String(parsed.frota).trim()
       const frotaConvertida = MAPA_FROTA[frotaLida]
