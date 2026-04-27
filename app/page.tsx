@@ -36,6 +36,8 @@ export default function Home() {
         {aba === 'usuarios'       && <Placeholder title="Usuários" icon="👥" />}
         {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar" icon="📉" />}
         {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
+        {aba === 'multas'   && <Placeholder title="Multas"  icon="⚠️" />}
+        {aba === 'avarias'  && <Placeholder title="Avarias" icon="🛡️" />}
       </main>
     </div>
   )

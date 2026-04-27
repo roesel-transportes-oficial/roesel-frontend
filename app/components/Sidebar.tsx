@@ -1,26 +1,27 @@
 'use client'
 import { useState } from 'react'
 import { useAuth } from '../services/auth'
-import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle } from 'lucide-react'
+import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle, AlertTriangle, ShieldAlert } from 'lucide-react'
+
+const isFinanceiro = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
+const isAbastecimento = (aba: string) => ['abastecimento', 'fornecedor'].includes(aba)
+const isMotorista = (aba: string) => ['motorista', 'multas', 'avarias'].includes(aba)
 
 const menus = [
   { id: 'dashboard',    label: 'Visão Geral',   icon: LayoutDashboard, adminOnly: false },
   { id: 'novo',         label: 'Novo Contrato', icon: FilePlus,        adminOnly: false },
   { id: 'contratos',    label: 'Contratos',     icon: FileText,        adminOnly: false },
-  { id: 'motorista',    label: 'Motorista',     icon: User,            adminOnly: false },
   { id: 'caminhao',     label: 'Caminhão',      icon: Car,             adminOnly: false },
   { id: 'clientes',     label: 'Clientes',      icon: UserCircle,      adminOnly: false },
   { id: 'premios',      label: 'Prêmios',       icon: Trophy,          adminOnly: false },
   { id: 'usuarios',     label: 'Usuários',      icon: Users,           adminOnly: true  },
 ]
 
-const isFinanceiro = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
-const isAbastecimento = (aba: string) => ['abastecimento', 'fornecedor'].includes(aba)
-
 export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: string) => void }) {
   const { user, perm, logout } = useAuth()
   const [abastOpen, setAbastOpen] = useState(isAbastecimento(aba))
   const [finOpen, setFinOpen] = useState(isFinanceiro(aba))
+  const [motorOpen, setMotorOpen] = useState(isMotorista(aba))
 
   return (
     <aside className="fixed top-0 left-0 h-screen w-56 bg-gray-900 flex flex-col">
@@ -40,6 +41,40 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
             {m.label}
           </button>
         ))}
+
+        {/* Motorista com submenu */}
+        <div>
+          <button
+            onClick={() => {
+              setMotorOpen(!motorOpen)
+              if (!motorOpen) setAba('motorista')
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition
+              ${isMotorista(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}>
+            <User size={18} />
+            <span className="flex-1 text-left">Motorista</span>
+            {motorOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          {motorOpen && (
+            <div className="ml-4 mt-1 space-y-1 border-l border-gray-700 pl-3">
+              <button onClick={() => setAba('motorista')}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
+                  ${aba === 'motorista' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
+                <User size={14} /> Cadastro
+              </button>
+              <button onClick={() => setAba('multas')}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
+                  ${aba === 'multas' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
+                <AlertTriangle size={14} /> Multas
+              </button>
+              <button onClick={() => setAba('avarias')}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
+                  ${aba === 'avarias' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
+                <ShieldAlert size={14} /> Avarias
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Abastecimentos com submenu */}
         <div>
