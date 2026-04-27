@@ -10,6 +10,7 @@ import ComissoesPage from './components/ComissoesPage'
 import ClientePage from './components/ClientePage'
 import MultasPage from './components/MultasPage'
 import AvariasPage from './components/AvariasPage'
+import PremiosPage from './components/PremiosPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -36,7 +37,7 @@ export default function Home() {
         {aba === 'comissoes'      && <ComissoesPage />}
         {aba === 'multas'         && <MultasPage />}
         {aba === 'avarias'        && <AvariasPage />}
-        {aba === 'premios'        && <Placeholder title="Prêmios" icon="🏆" />}
+        {aba === 'premios'        && <PremiosPage />}
         {aba === 'usuarios'       && <Placeholder title="Usuários" icon="👥" />}
         {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar" icon="📉" />}
         {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
