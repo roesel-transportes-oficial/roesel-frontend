@@ -70,6 +70,76 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`
   }
 
+  function normalizar(s: string) {
+    return s.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  }
+
+  // Similaridade entre duas strings (0 a 1)
+  function similaridade(a: string, b: string): number {
+    if (a === b) return 1
+    if (a.length === 0 || b.length === 0) return 0
+    const longer = a.length > b.length ? a : b
+    const shorter = a.length > b.length ? b : a
+    let matches = 0
+    for (let i = 0; i < shorter.length; i++) {
+      if (longer.includes(shorter[i])) matches++
+    }
+    return matches / longer.length
+  }
+
+  // Encontra melhor cliente pelo nome com tolerância a erros de OCR
+  function encontrarCliente(nomeIA: string) {
+    if (!nomeIA) return null
+    const nomeNorm = normalizar(nomeIA)
+
+    // 1. Match exato
+    let found = clientes.find(c => normalizar(c.nome) === nomeNorm)
+    if (found) return found
+
+    // 2. Um contém o outro
+    found = clientes.find(c => {
+      const nomeCad = normalizar(c.nome)
+      return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
+    })
+    if (found) return found
+
+    // 3. Comparação palavra por palavra com tolerância a OCR
+    found = clientes.find(c => {
+      const nomeCad = normalizar(c.nome)
+      const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
+      const palavrasCad = nomeCad.split(' ').filter(p => p.length > 2)
+
+      const matches = palavrasIA.filter(pIA =>
+        palavrasCad.some(pCad => {
+          if (pCad === pIA) return true
+          // Difere só em 1 caractere (erros comuns de OCR: SANA/SADA, BRASIL/BRAZUL)
+          if (pCad.length === pIA.length) {
+            let diffs = 0
+            for (let i = 0; i < pCad.length; i++) {
+              if (pCad[i] !== pIA[i]) diffs++
+            }
+            return diffs <= 1
+          }
+          return false
+        })
+      )
+      return matches.length >= Math.max(1, Math.floor(palavrasIA.length * 0.6))
+    })
+    if (found) return found
+
+    // 4. Similaridade geral como último recurso
+    let melhorScore = 0
+    let melhorCliente = null
+    for (const c of clientes) {
+      const score = similaridade(normalizar(c.nome), nomeNorm)
+      if (score > melhorScore && score > 0.75) {
+        melhorScore = score
+        melhorCliente = c
+      }
+    }
+    return melhorCliente
+  }
+
   async function lerComIA(e: any) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -94,9 +164,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
       const parsed = await response.json()
 
-      const normalizar = (s: string) =>
-        s.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-
       // Busca motorista
       const motoristaEncontrado = motoristas.find(m => {
         const nomeIA = normalizar(parsed.motorista || '')
@@ -112,20 +179,15 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         return primeiroIA.length > 3 && primeiroIA === primeiroBanco
       })
 
-      // Busca cliente cadastrado pelo nome
-      const nomeClienteIA = normalizar(parsed.cliente_nome_completo || parsed.cliente || '')
-      const clienteEncontrado = clientes.find(c => {
-        const nomeCad = normalizar(c.nome || '')
-        return nomeCad === nomeClienteIA ||
-          nomeCad.includes(nomeClienteIA.slice(0, 10)) ||
-          nomeClienteIA.includes(nomeCad.slice(0, 10))
-      })
+      // Busca cliente com tolerância a erros de OCR
+      const nomeClienteIA = parsed.cliente_nome_completo || parsed.cliente || ''
+      const clienteEncontrado = encontrarCliente(nomeClienteIA)
 
       const cnpjFinal = clienteEncontrado?.cnpj
         ? formatCnpj(clienteEncontrado.cnpj)
         : parsed.cnpj || ''
 
-      const clienteFinal = clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || ''
+      const clienteFinal = clienteEncontrado?.nome || nomeClienteIA
 
       setForm(f => ({
         ...f,
@@ -211,21 +273,21 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-            <select name="cliente" value={form.cliente}
-              onChange={e => selecionarCliente(e.target.value)} required
+            <select
+              value={clientes.find(c => c.nome === form.cliente) ? form.cliente : ''}
+              onChange={e => selecionarCliente(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
-              <option value="">Selecione ou deixe em branco...</option>
+              <option value="">Selecione...</option>
               {clientes.map(c => (
                 <option key={c.id} value={c.nome}>{c.nome}</option>
               ))}
             </select>
-            {/* Campo de texto para quando a IA preenche um cliente não cadastrado */}
             {form.cliente && !clientes.find(c => c.nome === form.cliente) && (
               <input
                 name="cliente"
                 value={form.cliente}
                 onChange={handle}
-                placeholder="Cliente não cadastrado"
+                placeholder="Cliente não cadastrado — edite ou cadastre"
                 className="mt-1 w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50"
               />
             )}
