@@ -8,6 +8,8 @@ import AbastecimentoPage from './components/AbastecimentoPage'
 import FornecedorPage from './components/FornecedorPage'
 import ComissoesPage from './components/ComissoesPage'
 import ClientePage from './components/ClientePage'
+import MultasPage from './components/MultasPage'
+import AvariasPage from './components/AvariasPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -32,12 +34,12 @@ export default function Home() {
         {aba === 'abastecimento'  && <AbastecimentoPage />}
         {aba === 'fornecedor'     && <FornecedorPage />}
         {aba === 'comissoes'      && <ComissoesPage />}
+        {aba === 'multas'         && <MultasPage />}
+        {aba === 'avarias'        && <AvariasPage />}
         {aba === 'premios'        && <Placeholder title="Prêmios" icon="🏆" />}
         {aba === 'usuarios'       && <Placeholder title="Usuários" icon="👥" />}
         {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar" icon="📉" />}
         {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
-        {aba === 'multas'   && <Placeholder title="Multas"  icon="⚠️" />}
-        {aba === 'avarias'  && <Placeholder title="Avarias" icon="🛡️" />}
       </main>
     </div>
   )
