@@ -41,16 +41,29 @@ export default function MultasPage() {
   const [msg, setMsg] = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
 
-  const emptyForm = {
-    motorista: '', placa: '', data: new Date().toISOString().split('T')[0],
-    hora: '', infracao: '', velocidade_permitida: '', velocidade_registrada: '',
-    numero_infracao: '', valor: '', status: 'PENDENTE'
-  }
+  // Campos cadastro
+  const [cadMotorista, setCadMotorista] = useState('')
+  const [cadPlaca, setCadPlaca] = useState('')
+  const [cadData, setCadData] = useState(new Date().toISOString().split('T')[0])
+  const [cadHora, setCadHora] = useState('')
+  const [cadInfracao, setCadInfracao] = useState('')
+  const [cadVelPermitida, setCadVelPermitida] = useState('')
+  const [cadVelRegistrada, setCadVelRegistrada] = useState('')
+  const [cadNumero, setCadNumero] = useState('')
+  const [cadValor, setCadValor] = useState('')
+  const [cadStatus, setCadStatus] = useState('PENDENTE')
 
-  const [cad, setCad] = useState({ ...emptyForm })
-  const [edit, setEdit] = useState({ ...emptyForm })
-
-  const isVelocidade = (inf: string) => inf === 'Excesso de velocidade'
+  // Campos edição
+  const [editMotorista, setEditMotorista] = useState('')
+  const [editPlaca, setEditPlaca] = useState('')
+  const [editData, setEditData] = useState('')
+  const [editHora, setEditHora] = useState('')
+  const [editInfracao, setEditInfracao] = useState('')
+  const [editVelPermitida, setEditVelPermitida] = useState('')
+  const [editVelRegistrada, setEditVelRegistrada] = useState('')
+  const [editNumero, setEditNumero] = useState('')
+  const [editValor, setEditValor] = useState('')
+  const [editStatus, setEditStatus] = useState('PENDENTE')
 
   useEffect(() => { fetch_(); fetchMotoristas(); fetchCaminhoes() }, [])
 
@@ -84,29 +97,24 @@ export default function MultasPage() {
     } catch {}
   }
 
-  const filtrados = busca.trim()
-    ? multas.filter(m =>
-        m.motorista?.toLowerCase().includes(busca.toLowerCase()) ||
-        m.placa?.toLowerCase().includes(busca.toLowerCase()) ||
-        m.numero_infracao?.includes(busca) ||
-        m.infracao?.toLowerCase().includes(busca.toLowerCase())
-      )
-    : multas
+  function resetCad() {
+    setCadMotorista(''); setCadPlaca(''); setCadData(new Date().toISOString().split('T')[0])
+    setCadHora(''); setCadInfracao(''); setCadVelPermitida(''); setCadVelRegistrada('')
+    setCadNumero(''); setCadValor(''); setCadStatus('PENDENTE')
+  }
 
   function selecionar(m: Multa) {
     setSel(m)
-    setEdit({
-      motorista: m.motorista || '',
-      placa: m.placa || '',
-      data: m.data || '',
-      hora: m.hora || '',
-      infracao: m.infracao || '',
-      velocidade_permitida: String(m.velocidade_permitida || ''),
-      velocidade_registrada: String(m.velocidade_registrada || ''),
-      numero_infracao: m.numero_infracao || '',
-      valor: String(m.valor || ''),
-      status: m.status || 'PENDENTE',
-    })
+    setEditMotorista(m.motorista || '')
+    setEditPlaca(m.placa || '')
+    setEditData(m.data || '')
+    setEditHora(m.hora || '')
+    setEditInfracao(m.infracao || '')
+    setEditVelPermitida(String(m.velocidade_permitida || ''))
+    setEditVelRegistrada(String(m.velocidade_registrada || ''))
+    setEditNumero(m.numero_infracao || '')
+    setEditValor(String(m.valor || ''))
+    setEditStatus(m.status || 'PENDENTE')
     setConfirmExcluir(false)
   }
 
@@ -118,19 +126,33 @@ export default function MultasPage() {
     return `${dia}/${m}/${y}`
   }
 
-  function buildPayload(f: any) {
+  function buildPayload(
+    motorista: string, placa: string, data: string, hora: string,
+    infracao: string, velPerm: string, velReg: string,
+    numero: string, valor: string, status: string
+  ) {
     return {
-      motorista: f.motorista,
-      placa: f.placa,
-      data: f.data,
-      hora: f.hora,
-      infracao: f.infracao,
-      velocidade_permitida: isVelocidade(f.infracao) ? parseInt(f.velocidade_permitida) || null : null,
-      velocidade_registrada: isVelocidade(f.infracao) ? parseInt(f.velocidade_registrada) || null : null,
-      numero_infracao: f.numero_infracao,
-      valor: parseFloat(f.valor) || 0,
-      status: f.status,
+      motorista, placa, data, hora, infracao,
+      velocidade_permitida: infracao === 'Excesso de velocidade' ? parseInt(velPerm) || null : null,
+      velocidade_registrada: infracao === 'Excesso de velocidade' ? parseInt(velReg) || null : null,
+      numero_infracao: numero,
+      valor: parseFloat(valor) || 0,
+      status,
     }
+  }
+
+  async function cadastrar() {
+    if (!cadMotorista) return
+    setLoading(true)
+    if (perm !== 'demo') {
+      await fetch(`${SUPABASE_URL}/rest/v1/multas`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify(buildPayload(cadMotorista, cadPlaca, cadData, cadHora, cadInfracao, cadVelPermitida, cadVelRegistrada, cadNumero, cadValor, cadStatus))
+      })
+    }
+    await fetch_(); setLoading(false)
+    resetCad(); setMostraCad(false); showMsg('✅ Multa registrada!')
   }
 
   async function salvar() {
@@ -140,7 +162,7 @@ export default function MultasPage() {
       await fetch(`${SUPABASE_URL}/rest/v1/multas?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify(buildPayload(edit))
+        body: JSON.stringify(buildPayload(editMotorista, editPlaca, editData, editHora, editInfracao, editVelPermitida, editVelRegistrada, editNumero, editValor, editStatus))
       })
     }
     await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
@@ -158,129 +180,112 @@ export default function MultasPage() {
     await fetch_(); setLoading(false); voltar(); showMsg('Multa excluída.')
   }
 
-  async function cadastrar() {
-    if (!cad.motorista) return
-    setLoading(true)
-    if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/multas`, {
-        method: 'POST',
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify(buildPayload(cad))
-      })
-    }
-    await fetch_(); setLoading(false)
-    setCad({ ...emptyForm })
-    setMostraCad(false); showMsg('✅ Multa registrada!')
-  }
-
-  const FormFields = ({ f, setF }: { f: any, setF: any }) => (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={LabelClass}>Motorista *</label>
-          <select value={f.motorista} onChange={e => {
-            const cam = caminhoes.find(c => c.motorista_atual === e.target.value)
-            setF({ ...f, motorista: e.target.value, placa: cam?.placa || f.placa })
-          }} className={InputClass}>
-            <option value="">Selecione...</option>
-            {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={LabelClass}>Placa</label>
-          <select value={f.placa} onChange={e => setF({ ...f, placa: e.target.value })} className={InputClass}>
-            <option value="">Selecione...</option>
-            {caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={LabelClass}>Data</label>
-          <input type="date" value={f.data} onChange={e => setF({ ...f, data: e.target.value })} className={InputClass} />
-        </div>
-        <div>
-          <label className={LabelClass}>Hora</label>
-          <input type="time" value={f.hora} onChange={e => setF({ ...f, hora: e.target.value })} className={InputClass} />
-        </div>
-      </div>
-
-      <div>
-        <label className={LabelClass}>Infração</label>
-        <select value={f.infracao} onChange={e => setF({ ...f, infracao: e.target.value })} className={InputClass}>
-          <option value="">Selecione...</option>
-          {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
-        </select>
-      </div>
-
-      {isVelocidade(f.infracao) && (
-        <div className="grid grid-cols-2 gap-3 p-3 bg-yellow-50 rounded-xl border border-yellow-100">
-          <div>
-            <label className={LabelClass}>Velocidade Permitida (km/h)</label>
-            <input type="number" value={f.velocidade_permitida}
-              onChange={e => setF({ ...f, velocidade_permitida: e.target.value })}
-              placeholder="Ex: 80" className={InputClass} />
-          </div>
-          <div>
-            <label className={LabelClass}>Velocidade Registrada (km/h)</label>
-            <input type="number" value={f.velocidade_registrada}
-              onChange={e => setF({ ...f, velocidade_registrada: e.target.value })}
-              placeholder="Ex: 110" className={InputClass} />
-          </div>
-          {f.velocidade_permitida && f.velocidade_registrada && (
-            <div className="col-span-2">
-              <p className="text-xs text-yellow-700 font-medium">
-                Excesso: <span className="font-bold">
-                  {parseInt(f.velocidade_registrada) - parseInt(f.velocidade_permitida)} km/h acima do limite
-                </span>
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={LabelClass}>Nº da Infração</label>
-          <input value={f.numero_infracao} onChange={e => setF({ ...f, numero_infracao: e.target.value })}
-            placeholder="Ex: 12345678" className={InputClass} />
-        </div>
-        <div>
-          <label className={LabelClass}>Valor (R$)</label>
-          <input type="number" step="0.01" value={f.valor}
-            onChange={e => setF({ ...f, valor: e.target.value })}
-            placeholder="0,00" className={InputClass} />
-        </div>
-      </div>
-
-      <div>
-        <label className={LabelClass}>Status</label>
-        <select value={f.status} onChange={e => setF({ ...f, status: e.target.value })} className={InputClass}>
-          <option value="PENDENTE">PENDENTE</option>
-          <option value="PAGO">PAGO</option>
-        </select>
-      </div>
-    </div>
-  )
+  const filtrados = busca.trim()
+    ? multas.filter(m =>
+        m.motorista?.toLowerCase().includes(busca.toLowerCase()) ||
+        m.placa?.toLowerCase().includes(busca.toLowerCase()) ||
+        m.numero_infracao?.includes(busca) ||
+        m.infracao?.toLowerCase().includes(busca.toLowerCase())
+      )
+    : multas
 
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
-      <button onClick={() => setMostraCad(false)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
+      <button onClick={() => { setMostraCad(false); resetCad() }} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
         <ArrowLeft size={16}/> Voltar
       </button>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-lg">Nova Multa</h3>
-        <FormFields f={cad} setF={setCad} />
-        <div className="flex gap-2 pt-4">
-          <button onClick={cadastrar} disabled={loading || !cad.motorista}
-            className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition">
-            Registrar multa
-          </button>
-          <button onClick={() => setMostraCad(false)}
-            className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition">
-            Cancelar
-          </button>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LabelClass}>Motorista *</label>
+              <select value={cadMotorista} onChange={e => {
+                const cam = caminhoes.find(c => c.motorista_atual === e.target.value)
+                setCadMotorista(e.target.value)
+                if (cam) setCadPlaca(cam.placa)
+              }} className={InputClass}>
+                <option value="">Selecione...</option>
+                {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={LabelClass}>Placa</label>
+              <select value={cadPlaca} onChange={e => setCadPlaca(e.target.value)} className={InputClass}>
+                <option value="">Selecione...</option>
+                {caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LabelClass}>Data</label>
+              <input type="date" value={cadData} onChange={e => setCadData(e.target.value)} className={InputClass} />
+            </div>
+            <div>
+              <label className={LabelClass}>Hora</label>
+              <input type="time" value={cadHora} onChange={e => setCadHora(e.target.value)} className={InputClass} />
+            </div>
+          </div>
+
+          <div>
+            <label className={LabelClass}>Infração</label>
+            <select value={cadInfracao} onChange={e => setCadInfracao(e.target.value)} className={InputClass}>
+              <option value="">Selecione...</option>
+              {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
+            </select>
+          </div>
+
+          {cadInfracao === 'Excesso de velocidade' && (
+            <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LabelClass}>Velocidade Permitida (km/h)</label>
+                  <input type="number" value={cadVelPermitida} onChange={e => setCadVelPermitida(e.target.value)} placeholder="Ex: 80" className={InputClass} />
+                </div>
+                <div>
+                  <label className={LabelClass}>Velocidade Registrada (km/h)</label>
+                  <input type="number" value={cadVelRegistrada} onChange={e => setCadVelRegistrada(e.target.value)} placeholder="Ex: 110" className={InputClass} />
+                </div>
+              </div>
+              {cadVelPermitida && cadVelRegistrada && (
+                <p className="text-xs text-yellow-700 font-medium">
+                  Excesso: <span className="font-bold">{parseInt(cadVelRegistrada) - parseInt(cadVelPermitida)} km/h acima do limite</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LabelClass}>Nº da Infração</label>
+              <input value={cadNumero} onChange={e => setCadNumero(e.target.value)} placeholder="Ex: 12345678" className={InputClass} />
+            </div>
+            <div>
+              <label className={LabelClass}>Valor (R$)</label>
+              <input type="number" step="0.01" value={cadValor} onChange={e => setCadValor(e.target.value)} placeholder="0,00" className={InputClass} />
+            </div>
+          </div>
+
+          <div>
+            <label className={LabelClass}>Status</label>
+            <select value={cadStatus} onChange={e => setCadStatus(e.target.value)} className={InputClass}>
+              <option value="PENDENTE">PENDENTE</option>
+              <option value="PAGO">PAGO</option>
+            </select>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button onClick={cadastrar} disabled={loading || !cadMotorista}
+              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition">
+              Registrar multa
+            </button>
+            <button onClick={() => { setMostraCad(false); resetCad() }}
+              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition">
+              Cancelar
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -309,9 +314,87 @@ export default function MultasPage() {
                 </div>
               </div>
             </div>
-            <div className="p-5">
-              <FormFields f={edit} setF={setEdit} />
-              <div className="flex gap-2 pt-4">
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LabelClass}>Motorista</label>
+                  <select value={editMotorista} onChange={e => {
+                    const cam = caminhoes.find(c => c.motorista_atual === e.target.value)
+                    setEditMotorista(e.target.value)
+                    if (cam) setEditPlaca(cam.placa)
+                  }} className={InputClass}>
+                    <option value="">Selecione...</option>
+                    {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={LabelClass}>Placa</label>
+                  <select value={editPlaca} onChange={e => setEditPlaca(e.target.value)} className={InputClass}>
+                    <option value="">Selecione...</option>
+                    {caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LabelClass}>Data</label>
+                  <input type="date" value={editData} onChange={e => setEditData(e.target.value)} className={InputClass} />
+                </div>
+                <div>
+                  <label className={LabelClass}>Hora</label>
+                  <input type="time" value={editHora} onChange={e => setEditHora(e.target.value)} className={InputClass} />
+                </div>
+              </div>
+
+              <div>
+                <label className={LabelClass}>Infração</label>
+                <select value={editInfracao} onChange={e => setEditInfracao(e.target.value)} className={InputClass}>
+                  <option value="">Selecione...</option>
+                  {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </div>
+
+              {editInfracao === 'Excesso de velocidade' && (
+                <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={LabelClass}>Velocidade Permitida (km/h)</label>
+                      <input type="number" value={editVelPermitida} onChange={e => setEditVelPermitida(e.target.value)} placeholder="Ex: 80" className={InputClass} />
+                    </div>
+                    <div>
+                      <label className={LabelClass}>Velocidade Registrada (km/h)</label>
+                      <input type="number" value={editVelRegistrada} onChange={e => setEditVelRegistrada(e.target.value)} placeholder="Ex: 110" className={InputClass} />
+                    </div>
+                  </div>
+                  {editVelPermitida && editVelRegistrada && (
+                    <p className="text-xs text-yellow-700 font-medium">
+                      Excesso: <span className="font-bold">{parseInt(editVelRegistrada) - parseInt(editVelPermitida)} km/h acima do limite</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LabelClass}>Nº da Infração</label>
+                  <input value={editNumero} onChange={e => setEditNumero(e.target.value)} className={InputClass} />
+                </div>
+                <div>
+                  <label className={LabelClass}>Valor (R$)</label>
+                  <input type="number" step="0.01" value={editValor} onChange={e => setEditValor(e.target.value)} className={InputClass} />
+                </div>
+              </div>
+
+              <div>
+                <label className={LabelClass}>Status</label>
+                <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={InputClass}>
+                  <option value="PENDENTE">PENDENTE</option>
+                  <option value="PAGO">PAGO</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
                 <button onClick={salvar} disabled={loading}
                   className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
                   <Save size={15}/> Salvar alterações
@@ -321,8 +404,9 @@ export default function MultasPage() {
                   <Trash2 size={15}/>
                 </button>
               </div>
+
               {confirmExcluir && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl mt-3">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
                   <p className="text-sm text-red-700 font-medium mb-3">⚠️ Excluir esta multa?</p>
                   <div className="flex gap-2">
                     <button onClick={excluir} className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium">Confirmar</button>
