@@ -2,8 +2,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { contratosAPI, motoristasAPI } from '../services/api'
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
+
 export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => void }) {
   const [motoristas, setMotoristas] = useState<any[]>([])
+  const [clientes, setClientes] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingIA, setLoadingIA] = useState(false)
   const [erro, setErro] = useState('')
@@ -30,11 +34,40 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
   useEffect(() => {
     motoristasAPI.listar().then(setMotoristas).catch(() => {})
+    fetchClientes()
   }, [])
+
+  async function fetchClientes() {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/clientes?order=nome.asc`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      })
+      const data = await res.json()
+      setClientes(Array.isArray(data) ? data : [])
+    } catch {}
+  }
 
   function handle(e: any) {
     const { name, value, type, checked } = e.target
     setForm(f => ({ ...f, [name]: type === 'checkbox' ? checked : value }))
+  }
+
+  function selecionarCliente(nome: string) {
+    const cliente = clientes.find(c => c.nome === nome)
+    setForm(f => ({
+      ...f,
+      cliente: nome,
+      cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : f.cnpj,
+    }))
+  }
+
+  function formatCnpj(v: string) {
+    const d = v.replace(/\D/g, '').slice(0, 14)
+    if (d.length <= 2) return d
+    if (d.length <= 5) return `${d.slice(0,2)}.${d.slice(2)}`
+    if (d.length <= 8) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}`
+    if (d.length <= 12) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8)}`
+    return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`
   }
 
   async function lerComIA(e: any) {
@@ -64,12 +97,11 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       const normalizar = (s: string) =>
         s.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
+      // Busca motorista
       const motoristaEncontrado = motoristas.find(m => {
         const nomeIA = normalizar(parsed.motorista || '')
         const nomeBanco = normalizar(m.nome)
-
         if (nomeBanco === nomeIA || nomeBanco.includes(nomeIA) || nomeIA.includes(nomeBanco)) return true
-
         const primeiroIA = nomeIA.split(' ')[0]
         const primeiroBanco = nomeBanco.split(' ')[0]
         if (primeiroIA.length > 3 && primeiroIA === primeiroBanco) {
@@ -77,9 +109,23 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           const ultimoBanco = nomeBanco.split(' ').pop()
           return ultimoIA === ultimoBanco
         }
-
         return primeiroIA.length > 3 && primeiroIA === primeiroBanco
       })
+
+      // Busca cliente cadastrado pelo nome
+      const nomeClienteIA = normalizar(parsed.cliente_nome_completo || parsed.cliente || '')
+      const clienteEncontrado = clientes.find(c => {
+        const nomeCad = normalizar(c.nome || '')
+        return nomeCad === nomeClienteIA ||
+          nomeCad.includes(nomeClienteIA.slice(0, 10)) ||
+          nomeClienteIA.includes(nomeCad.slice(0, 10))
+      })
+
+      const cnpjFinal = clienteEncontrado?.cnpj
+        ? formatCnpj(clienteEncontrado.cnpj)
+        : parsed.cnpj || ''
+
+      const clienteFinal = clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || ''
 
       setForm(f => ({
         ...f,
@@ -87,8 +133,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
         ),
         motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
-        cliente: parsed.cliente_nome_completo || parsed.cliente || '',
-        cnpj: parsed.cnpj || '',
+        cliente: clienteFinal,
+        cnpj: cnpjFinal,
       }))
     } catch (err) {
       setErro('Não foi possível ler o documento. Preencha manualmente.')
@@ -165,9 +211,24 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-            <input name="cliente" value={form.cliente} onChange={handle} required
-              placeholder="Nome completo do cliente"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <select name="cliente" value={form.cliente}
+              onChange={e => selecionarCliente(e.target.value)} required
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+              <option value="">Selecione ou deixe em branco...</option>
+              {clientes.map(c => (
+                <option key={c.id} value={c.nome}>{c.nome}</option>
+              ))}
+            </select>
+            {/* Campo de texto para quando a IA preenche um cliente não cadastrado */}
+            {form.cliente && !clientes.find(c => c.nome === form.cliente) && (
+              <input
+                name="cliente"
+                value={form.cliente}
+                onChange={handle}
+                placeholder="Cliente não cadastrado"
+                className="mt-1 w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50"
+              />
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ</label>
