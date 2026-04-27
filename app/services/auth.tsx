@@ -98,7 +98,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     await supabase.auth.signOut()
-    setUser(null); setPerm(''); setEmail(null)
+    setUser(null)
+    setPerm('')
+    setEmail(null)
+    window.location.href = '/'
   }
 
   return (
