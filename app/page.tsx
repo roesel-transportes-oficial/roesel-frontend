@@ -11,6 +11,7 @@ import ClientePage from './components/ClientePage'
 import MultasPage from './components/MultasPage'
 import AvariasPage from './components/AvariasPage'
 import PremiosPage from './components/PremiosPage'
+import ViagemPage from './components/ViagemPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -29,6 +30,7 @@ export default function Home() {
         {aba === 'dashboard'      && <DashboardPage />}
         {aba === 'novo'           && <NovoContratoPage setAba={setAba} />}
         {aba === 'contratos'      && <ContratosPage />}
+        {aba === 'viagens'        && <ViagemPage />}
         {aba === 'motorista'      && <MotoristaPage />}
         {aba === 'caminhao'       && <CaminhaoPage />}
         {aba === 'clientes'       && <ClientePage />}

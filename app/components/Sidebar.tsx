@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useAuth } from '../services/auth'
-import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle, AlertTriangle, ShieldAlert } from 'lucide-react'
+import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle, AlertTriangle, ShieldAlert, MapPin } from 'lucide-react'
 
 const isFinanceiro = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
 const isAbastecimento = (aba: string) => ['abastecimento', 'fornecedor'].includes(aba)
@@ -11,6 +11,7 @@ const menus = [
   { id: 'dashboard',    label: 'Visão Geral',   icon: LayoutDashboard, adminOnly: false },
   { id: 'novo',         label: 'Novo Contrato', icon: FilePlus,        adminOnly: false },
   { id: 'contratos',    label: 'Contratos',     icon: FileText,        adminOnly: false },
+  { id: 'viagens',      label: 'Viagens',       icon: MapPin,          adminOnly: false },
   { id: 'caminhao',     label: 'Caminhão',      icon: Car,             adminOnly: false },
   { id: 'clientes',     label: 'Clientes',      icon: UserCircle,      adminOnly: false },
   { id: 'premios',      label: 'Prêmios',       icon: Trophy,          adminOnly: false },
