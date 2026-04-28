@@ -9,7 +9,7 @@ const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 interface Multa {
   id: string; motorista: string; placa: string; data: string; hora: string
   infracao: string; velocidade_permitida: number; velocidade_registrada: number
-  numero_infracao: string; valor: number; status: string
+  numero_infracao: string; valor: number; status: string; orgao: string
 }
 interface Motorista { id: string; nome: string }
 interface Caminhao { id: string; placa: string; motorista_atual: string }
@@ -18,16 +18,31 @@ const InputClass = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 te
 const LabelClass = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 
 const INFRACOES = [
-  'Excesso de velocidade',
-  'Avanço de sinal',
-  'Uso de celular',
-  'Não uso de cinto',
-  'Estacionamento irregular',
-  'Ultrapassagem proibida',
-  'Transporte irregular de carga',
-  'Documentação irregular',
-  'Outra',
+  'TRANSITAR EM LOCAL/HORARIO NAO PERMITIDO PELA REGULAMENTACAO - CAMINHAO',
+  'ESTACIONAR EM LOCAL/HORARIO PROIBIDO ESPECIFICAMENTE PELA SINALIZACAO',
+  'TRANSITAR EM VELOCIDADE SUPERIOR A MAXIMA PERMITIDA EM ATE 20',
+  'TRANSITAR EM VELOCIDADE SUPERIOR A MAXIMA PERMITIDA ENTRE 20 E 50',
+  'TRANSITAR EM VELOCIDADE SUPERIOR A MAXIMA PERMITIDA ACIMA DE 50',
+  'DEIXAR DE CONSERVAR O VEICULO NA FAIXA A ELE DESTINADA PELA SINALIZACAO',
+  'AVANÇAR O SINAL VERMELHO DO SEMAFORO',
+  'CONDUZIR VEICULO UTILIZANDO TELEFONE CELULAR',
+  'DEIXAR DE USAR CINTO DE SEGURANCA',
+  'ULTRAPASSAGEM INDEVIDA',
+  'TRANSPORTE IRREGULAR DE CARGA',
+  'DOCUMENTACAO IRREGULAR',
+  'OUTRA',
 ]
+
+const ORGAOS = [
+  'DER-SP',
+  'POLICIA RODOVIARIA FEDERAL',
+  'DNIT',
+  'DETRAN',
+  'CET',
+  'OUTRO',
+]
+
+const isVelocidade = (inf: string) => inf.includes('VELOCIDADE SUPERIOR')
 
 export default function MultasPage() {
   const { perm } = useAuth()
@@ -52,6 +67,7 @@ export default function MultasPage() {
   const [cadNumero, setCadNumero] = useState('')
   const [cadValor, setCadValor] = useState('')
   const [cadStatus, setCadStatus] = useState('PENDENTE')
+  const [cadOrgao, setCadOrgao] = useState('')
 
   // Campos edição
   const [editMotorista, setEditMotorista] = useState('')
@@ -64,6 +80,7 @@ export default function MultasPage() {
   const [editNumero, setEditNumero] = useState('')
   const [editValor, setEditValor] = useState('')
   const [editStatus, setEditStatus] = useState('PENDENTE')
+  const [editOrgao, setEditOrgao] = useState('')
 
   useEffect(() => { fetch_(); fetchMotoristas(); fetchCaminhoes() }, [])
 
@@ -100,7 +117,7 @@ export default function MultasPage() {
   function resetCad() {
     setCadMotorista(''); setCadPlaca(''); setCadData(new Date().toISOString().split('T')[0])
     setCadHora(''); setCadInfracao(''); setCadVelPermitida(''); setCadVelRegistrada('')
-    setCadNumero(''); setCadValor(''); setCadStatus('PENDENTE')
+    setCadNumero(''); setCadValor(''); setCadStatus('PENDENTE'); setCadOrgao('')
   }
 
   function selecionar(m: Multa) {
@@ -115,6 +132,7 @@ export default function MultasPage() {
     setEditNumero(m.numero_infracao || '')
     setEditValor(String(m.valor || ''))
     setEditStatus(m.status || 'PENDENTE')
+    setEditOrgao(m.orgao || '')
     setConfirmExcluir(false)
   }
 
@@ -129,15 +147,15 @@ export default function MultasPage() {
   function buildPayload(
     motorista: string, placa: string, data: string, hora: string,
     infracao: string, velPerm: string, velReg: string,
-    numero: string, valor: string, status: string
+    numero: string, valor: string, status: string, orgao: string
   ) {
     return {
       motorista, placa, data, hora, infracao,
-      velocidade_permitida: infracao === 'Excesso de velocidade' ? parseInt(velPerm) || null : null,
-      velocidade_registrada: infracao === 'Excesso de velocidade' ? parseInt(velReg) || null : null,
+      velocidade_permitida: isVelocidade(infracao) ? parseInt(velPerm) || null : null,
+      velocidade_registrada: isVelocidade(infracao) ? parseInt(velReg) || null : null,
       numero_infracao: numero,
       valor: parseFloat(valor) || 0,
-      status,
+      status, orgao,
     }
   }
 
@@ -148,7 +166,7 @@ export default function MultasPage() {
       await fetch(`${SUPABASE_URL}/rest/v1/multas`, {
         method: 'POST',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify(buildPayload(cadMotorista, cadPlaca, cadData, cadHora, cadInfracao, cadVelPermitida, cadVelRegistrada, cadNumero, cadValor, cadStatus))
+        body: JSON.stringify(buildPayload(cadMotorista, cadPlaca, cadData, cadHora, cadInfracao, cadVelPermitida, cadVelRegistrada, cadNumero, cadValor, cadStatus, cadOrgao))
       })
     }
     await fetch_(); setLoading(false)
@@ -162,7 +180,7 @@ export default function MultasPage() {
       await fetch(`${SUPABASE_URL}/rest/v1/multas?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify(buildPayload(editMotorista, editPlaca, editData, editHora, editInfracao, editVelPermitida, editVelRegistrada, editNumero, editValor, editStatus))
+        body: JSON.stringify(buildPayload(editMotorista, editPlaca, editData, editHora, editInfracao, editVelPermitida, editVelRegistrada, editNumero, editValor, editStatus, editOrgao))
       })
     }
     await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
@@ -230,14 +248,14 @@ export default function MultasPage() {
           </div>
 
           <div>
-            <label className={LabelClass}>Infração</label>
+            <label className={LabelClass}>Infração (Motivo)</label>
             <select value={cadInfracao} onChange={e => setCadInfracao(e.target.value)} className={InputClass}>
               <option value="">Selecione...</option>
               {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
             </select>
           </div>
 
-          {cadInfracao === 'Excesso de velocidade' && (
+          {isVelocidade(cadInfracao) && (
             <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -259,8 +277,8 @@ export default function MultasPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={LabelClass}>Nº da Infração</label>
-              <input value={cadNumero} onChange={e => setCadNumero(e.target.value)} placeholder="Ex: 12345678" className={InputClass} />
+              <label className={LabelClass}>Nº Auto de Infração</label>
+              <input value={cadNumero} onChange={e => setCadNumero(e.target.value)} placeholder="Ex: 1DJ4817991" className={InputClass} />
             </div>
             <div>
               <label className={LabelClass}>Valor (R$)</label>
@@ -268,12 +286,21 @@ export default function MultasPage() {
             </div>
           </div>
 
-          <div>
-            <label className={LabelClass}>Status</label>
-            <select value={cadStatus} onChange={e => setCadStatus(e.target.value)} className={InputClass}>
-              <option value="PENDENTE">PENDENTE</option>
-              <option value="PAGO">PAGO</option>
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LabelClass}>Órgão</label>
+              <select value={cadOrgao} onChange={e => setCadOrgao(e.target.value)} className={InputClass}>
+                <option value="">Selecione...</option>
+                {ORGAOS.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={LabelClass}>Status</label>
+              <select value={cadStatus} onChange={e => setCadStatus(e.target.value)} className={InputClass}>
+                <option value="PENDENTE">PENDENTE</option>
+                <option value="PAGO">PAGO</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex gap-2 pt-1">
@@ -348,14 +375,14 @@ export default function MultasPage() {
               </div>
 
               <div>
-                <label className={LabelClass}>Infração</label>
+                <label className={LabelClass}>Infração (Motivo)</label>
                 <select value={editInfracao} onChange={e => setEditInfracao(e.target.value)} className={InputClass}>
                   <option value="">Selecione...</option>
                   {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
                 </select>
               </div>
 
-              {editInfracao === 'Excesso de velocidade' && (
+              {isVelocidade(editInfracao) && (
                 <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -377,7 +404,7 @@ export default function MultasPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={LabelClass}>Nº da Infração</label>
+                  <label className={LabelClass}>Nº Auto de Infração</label>
                   <input value={editNumero} onChange={e => setEditNumero(e.target.value)} className={InputClass} />
                 </div>
                 <div>
@@ -386,12 +413,21 @@ export default function MultasPage() {
                 </div>
               </div>
 
-              <div>
-                <label className={LabelClass}>Status</label>
-                <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={InputClass}>
-                  <option value="PENDENTE">PENDENTE</option>
-                  <option value="PAGO">PAGO</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LabelClass}>Órgão</label>
+                  <select value={editOrgao} onChange={e => setEditOrgao(e.target.value)} className={InputClass}>
+                    <option value="">Selecione...</option>
+                    {ORGAOS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={LabelClass}>Status</label>
+                  <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={InputClass}>
+                    <option value="PENDENTE">PENDENTE</option>
+                    <option value="PAGO">PAGO</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -452,14 +488,13 @@ export default function MultasPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900">{m.motorista}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">
                     {m.infracao || 'Sem infração'}{m.placa && ` · ${m.placa}`}
-                    {m.numero_infracao && ` · Nº ${m.numero_infracao}`}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {fmtData(m.data)}{m.hora && ` · ${m.hora}`}
-                    {m.infracao === 'Excesso de velocidade' && m.velocidade_permitida && m.velocidade_registrada &&
-                      ` · ${m.velocidade_registrada}km/h (limite ${m.velocidade_permitida}km/h)`}
+                    {m.numero_infracao && ` · Nº ${m.numero_infracao}`}
+                    {m.orgao && ` · ${m.orgao}`}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
