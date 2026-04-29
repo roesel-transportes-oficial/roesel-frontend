@@ -25,8 +25,13 @@ export default function Login() {
     e.preventDefault()
     setLoading(true); setErro('')
     const err = await login(loginInput, senha)
-    if (err) setErro(err)
-    setLoading(false)
+    if (err) {
+      setErro(err)
+      setLoading(false)
+    }
+    // Se deu certo (err === null), NÃO chama setLoading(false).
+    // O AuthProvider vai atualizar o user, page.tsx vai re-renderizar
+    // e mostrar o dashboard, desmontando este componente Login.
   }
 
   async function handleCadastro(e: React.FormEvent) {

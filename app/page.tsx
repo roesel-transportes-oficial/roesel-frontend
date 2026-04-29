@@ -18,11 +18,25 @@ import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 
 export default function Home() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()  // ← AGORA pega loading também
   const [aba, setAba] = useState('dashboard')
 
+  // Enquanto está checando sessão, mostra tela de carregamento
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-red-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-sm text-gray-600">Carregando...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Loading terminou e não tem usuário → tela de login
   if (!user) return <Login />
 
+  // Usuário logado → mostra o sistema
   return (
     <div className="flex min-h-screen">
       <Sidebar aba={aba} setAba={setAba} />
