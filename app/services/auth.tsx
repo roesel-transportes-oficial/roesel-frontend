@@ -41,22 +41,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Limpa tokens zumbi do Supabase no localStorage
+  function limparTokensZumbi() {
+    try {
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('sb-') || key.startsWith('supabase')) {
+          localStorage.removeItem(key)
+        }
+      })
+      sessionStorage.clear()
+    } catch (e) {
+      console.warn('Erro ao limpar storage:', e)
+    }
+  }
+
   useEffect(() => {
+    let timeoutSessao: NodeJS.Timeout
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Cancela timeout anterior se houver
+      clearTimeout(timeoutSessao)
+
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user?.email) {
+          // Timeout de segurança: se carregarUsuario não resolver em 8 segundos,
+          // o token é zumbi. Limpa tudo e libera a tela de login.
+          timeoutSessao = setTimeout(() => {
+            console.warn('Timeout ao carregar usuário — limpando sessão zumbi')
+            limparTokensZumbi()
+            supabase.auth.signOut().catch(() => {})
+            setUser(null)
+            setPerm('')
+            setEmail(null)
+            setLoading(false)
+          }, 8000)
+
           try {
             await carregarUsuario(session.user.email)
+            clearTimeout(timeoutSessao) // Deu certo, cancela o timeout
           } catch (e) {
-            // Token zumbi: sessão existe mas falhou ao buscar dados do usuário
-            // Limpa tudo e força volta pra tela de login
-            console.warn('Token inválido detectado, limpando sessão:', e)
+            clearTimeout(timeoutSessao)
+            console.warn('Erro ao carregar usuário, limpando sessão:', e)
+            limparTokensZumbi()
             await supabase.auth.signOut().catch(() => {})
-            Object.keys(localStorage).forEach(key => {
-              if (key.startsWith('sb-') || key.startsWith('supabase')) {
-                localStorage.removeItem(key)
-              }
-            })
             setUser(null)
             setPerm('')
             setEmail(null)
@@ -71,14 +98,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    const timeout = setTimeout(() => setLoading(false), 5000)
+    // Timeout geral: se nada acontecer em 10 segundos, libera a tela
+    const timeoutGeral = setTimeout(() => {
+      setLoading(false)
+    }, 10000)
+
     return () => {
       subscription.unsubscribe()
-      clearTimeout(timeout)
+      clearTimeout(timeoutSessao)
+      clearTimeout(timeoutGeral)
     }
   }, [])
 
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
+    // IMPORTANTE: limpa qualquer token zumbi ANTES de tentar logar
+    limparTokensZumbi()
+
     let emailLogin = loginOrEmail
 
     if (!loginOrEmail.includes('@')) {
@@ -115,31 +150,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function logout() {
-    // 1. Tenta fazer signOut no Supabase, mas não trava se der erro de rede
     try {
       await supabase.auth.signOut()
     } catch (e) {
       console.warn('Erro ao fazer signOut no Supabase:', e)
     }
 
-    // 2. Limpa MANUALMENTE qualquer token zumbi do Supabase no navegador
-    try {
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('sb-') || key.startsWith('supabase')) {
-          localStorage.removeItem(key)
-        }
-      })
-      sessionStorage.clear()
-    } catch (e) {
-      console.warn('Erro ao limpar storage:', e)
-    }
+    limparTokensZumbi()
 
-    // 3. Reseta o estado da aplicação
     setUser(null)
     setPerm('')
     setEmail(null)
 
-    // 4. Força reload COMPLETO da página (limpa cache do Next.js, service workers)
     window.location.replace('/')
   }
 
