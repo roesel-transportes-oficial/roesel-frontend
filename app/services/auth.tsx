@@ -23,11 +23,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   async function carregarUsuario(emailAuth: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('usuarios')
       .select('*')
       .eq('email', emailAuth)
       .limit(1)
+
+    if (error) {
+      console.warn('Erro ao buscar usuário:', error)
+      return
+    }
 
     if (data && data.length > 0) {
       const u = data[0]
@@ -35,85 +40,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPerm(u.perm)
       setEmail(u.email)
     } else {
+      // Usuário autenticado no Supabase mas não existe na tabela usuarios.
+      // Não força logout — deixa o estado vazio e o page.tsx mostra Login.
       setUser(null)
       setPerm('')
       setEmail(null)
     }
   }
 
-  // Limpa tokens zumbi do Supabase no localStorage
-  function limparTokensZumbi() {
-    try {
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('sb-') || key.startsWith('supabase')) {
-          localStorage.removeItem(key)
-        }
-      })
-      sessionStorage.clear()
-    } catch (e) {
-      console.warn('Erro ao limpar storage:', e)
-    }
-  }
-
   useEffect(() => {
-    let timeoutSessao: NodeJS.Timeout
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Cancela timeout anterior se houver
-      clearTimeout(timeoutSessao)
-
-      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session?.user?.email) {
-          // Timeout de segurança: se carregarUsuario não resolver em 8 segundos,
-          // o token é zumbi. Limpa tudo e libera a tela de login.
-          timeoutSessao = setTimeout(() => {
-            console.warn('Timeout ao carregar usuário — limpando sessão zumbi')
-            limparTokensZumbi()
-            supabase.auth.signOut().catch(() => {})
-            setUser(null)
-            setPerm('')
-            setEmail(null)
-            setLoading(false)
-          }, 8000)
-
-          try {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (session?.user?.email) {
             await carregarUsuario(session.user.email)
-            clearTimeout(timeoutSessao) // Deu certo, cancela o timeout
-          } catch (e) {
-            clearTimeout(timeoutSessao)
-            console.warn('Erro ao carregar usuário, limpando sessão:', e)
-            limparTokensZumbi()
-            await supabase.auth.signOut().catch(() => {})
-            setUser(null)
-            setPerm('')
-            setEmail(null)
+          }
+          setLoading(false)
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+          setPerm('')
+          setEmail(null)
+          setLoading(false)
+        } else if (event === 'USER_UPDATED') {
+          if (session?.user?.email) {
+            await carregarUsuario(session.user.email)
           }
         }
-        setLoading(false)
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null)
-        setPerm('')
-        setEmail(null)
-        setLoading(false)
       }
-    })
+    )
 
-    // Timeout geral: se nada acontecer em 10 segundos, libera a tela
-    const timeoutGeral = setTimeout(() => {
+    // Rede de segurança APENAS pra evitar tela de loading eterna
+    // se onAuthStateChange nunca disparar (falha catastrófica de rede).
+    // 15 segundos é generoso o bastante pra não interferir no fluxo normal.
+    const safetyTimeout = setTimeout(() => {
       setLoading(false)
-    }, 10000)
+    }, 15000)
 
     return () => {
       subscription.unsubscribe()
-      clearTimeout(timeoutSessao)
-      clearTimeout(timeoutGeral)
+      clearTimeout(safetyTimeout)
     }
   }, [])
 
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
-    // IMPORTANTE: limpa qualquer token zumbi ANTES de tentar logar
-    limparTokensZumbi()
-
     let emailLogin = loginOrEmail
 
     if (!loginOrEmail.includes('@')) {
@@ -153,15 +122,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await supabase.auth.signOut()
     } catch (e) {
-      console.warn('Erro ao fazer signOut no Supabase:', e)
+      console.warn('Erro ao fazer signOut:', e)
     }
-
-    limparTokensZumbi()
-
     setUser(null)
     setPerm('')
     setEmail(null)
-
     window.location.replace('/')
   }
 
