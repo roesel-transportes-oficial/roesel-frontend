@@ -49,38 +49,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (session?.user?.email) {
-            await carregarUsuario(session.user.email)
-          }
-          setLoading(false)
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setPerm('')
-          setEmail(null)
-          setLoading(false)
-        } else if (event === 'USER_UPDATED') {
-          if (session?.user?.email) {
-            await carregarUsuario(session.user.email)
-          }
-        }
+  let mounted = true
+
+  // 1. Verificação ATIVA da sessão (não depende do listener)
+  async function checkSession() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!mounted) return
+      if (session?.user?.email) {
+        await carregarUsuario(session.user.email)
       }
-    )
-
-    // Rede de segurança APENAS pra evitar tela de loading eterna
-    // se onAuthStateChange nunca disparar (falha catastrófica de rede).
-    // 15 segundos é generoso o bastante pra não interferir no fluxo normal.
-    const safetyTimeout = setTimeout(() => {
-      setLoading(false)
-    }, 15000)
-
-    return () => {
-      subscription.unsubscribe()
-      clearTimeout(safetyTimeout)
+    } catch (e) {
+      console.warn('Erro ao verificar sessão:', e)
+    } finally {
+      if (mounted) setLoading(false)
     }
-  }, [])
+  }
+
+  checkSession()
+
+  // 2. Listener para mudanças FUTURAS (login, logout, refresh)
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    async (event, session) => {
+      if (!mounted) return
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session?.user?.email) {
+          await carregarUsuario(session.user.email)
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setPerm('')
+        setEmail(null)
+      }
+    }
+  )
+
+  return () => {
+    mounted = false
+    subscription.unsubscribe()
+  }
+}, [])
 
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
     let emailLogin = loginOrEmail
