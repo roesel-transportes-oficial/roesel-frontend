@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description: 'Sistema interno de gestão',
 }
 
-const APP_VERSION = '1.0.3' // Incrementa esse número a cada deploy
+const APP_VERSION = '1.0.4'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -23,24 +23,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               var storedVersion = localStorage.getItem('app_version');
               
               if (storedVersion !== VERSION) {
-                // Nova versão detectada — limpa tudo exceto sessão do Supabase
-                var keys = Object.keys(localStorage);
-                for (var i = 0; i < keys.length; i++) {
-                  if (keys[i] !== 'sb-lmcefcmjatnixrsggyvz-auth-token') {
-                    localStorage.removeItem(keys[i]);
-                  }
-                }
+                localStorage.clear();
                 localStorage.setItem('app_version', VERSION);
               }
 
-              // Desregistra service workers
               if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.getRegistrations().then(function(registrations) {
                   for (var r of registrations) { r.unregister(); }
                 });
               }
 
-              // Limpa caches do browser
               if ('caches' in window) {
                 caches.keys().then(function(names) {
                   for (var name of names) { caches.delete(name); }
