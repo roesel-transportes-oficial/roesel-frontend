@@ -10,6 +10,8 @@ interface Multa {
   id: string; motorista: string; placa: string; data: string; hora: string
   infracao: string; velocidade_permitida: number; velocidade_registrada: number
   numero_infracao: string; valor: number; status: string; orgao: string
+  motorista_identificado: boolean; valor_nao_identificacao: number
+  folha_pagamento: string; data_vencimento: string; data_pagamento: string
 }
 interface Motorista { id: string; nome: string }
 interface Caminhao { id: string; placa: string; motorista_atual: string }
@@ -34,15 +36,37 @@ const INFRACOES = [
 ]
 
 const ORGAOS = [
-  'DER-SP',
-  'POLICIA RODOVIARIA FEDERAL',
-  'DNIT',
-  'DETRAN',
-  'CET',
-  'OUTRO',
+  'DER-SP', 'POLICIA RODOVIARIA FEDERAL', 'DNIT', 'DETRAN', 'CET', 'OUTRO',
+]
+
+const MESES = [
+  { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
+  { v: '04', l: 'Abril' }, { v: '05', l: 'Maio' }, { v: '06', l: 'Junho' },
+  { v: '07', l: 'Julho' }, { v: '08', l: 'Agosto' }, { v: '09', l: 'Setembro' },
+  { v: '10', l: 'Outubro' }, { v: '11', l: 'Novembro' }, { v: '12', l: 'Dezembro' },
 ]
 
 const isVelocidade = (inf: string) => inf.includes('VELOCIDADE SUPERIOR')
+
+async function lancarContaPagar(multa: any) {
+  await fetch(`${SUPABASE_URL}/rest/v1/contas_pagar`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json', Prefer: 'return=minimal'
+    },
+    body: JSON.stringify({
+      descricao: `Multa - ${multa.motorista} - ${multa.numero_infracao || multa.infracao}`,
+      valor: multa.valor,
+      data_vencimento: multa.data_vencimento || null,
+      data_pagamento: multa.data_pagamento || null,
+      status: 'PAGO',
+      categoria: 'MULTA',
+      referencia_id: multa.id,
+      referencia_tipo: 'multa',
+    })
+  })
+}
 
 export default function MultasPage() {
   const { perm } = useAuth()
@@ -56,6 +80,9 @@ export default function MultasPage() {
   const [msg, setMsg] = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
 
+  const anoAtual = new Date().getFullYear()
+  const mesAtual = String(new Date().getMonth() + 1).padStart(2, '0')
+
   // Campos cadastro
   const [cadMotorista, setCadMotorista] = useState('')
   const [cadPlaca, setCadPlaca] = useState('')
@@ -68,6 +95,12 @@ export default function MultasPage() {
   const [cadValor, setCadValor] = useState('')
   const [cadStatus, setCadStatus] = useState('PENDENTE')
   const [cadOrgao, setCadOrgao] = useState('')
+  const [cadIdentificado, setCadIdentificado] = useState(true)
+  const [cadValorNaoId, setCadValorNaoId] = useState('')
+  const [cadFolhaMes, setCadFolhaMes] = useState(mesAtual)
+  const [cadFolhaAno, setCadFolhaAno] = useState(String(anoAtual))
+  const [cadVencimento, setCadVencimento] = useState('')
+  const [cadPagamento, setCadPagamento] = useState('')
 
   // Campos edição
   const [editMotorista, setEditMotorista] = useState('')
@@ -81,6 +114,13 @@ export default function MultasPage() {
   const [editValor, setEditValor] = useState('')
   const [editStatus, setEditStatus] = useState('PENDENTE')
   const [editOrgao, setEditOrgao] = useState('')
+  const [editIdentificado, setEditIdentificado] = useState(true)
+  const [editValorNaoId, setEditValorNaoId] = useState('')
+  const [editFolhaMes, setEditFolhaMes] = useState(mesAtual)
+  const [editFolhaAno, setEditFolhaAno] = useState(String(anoAtual))
+  const [editVencimento, setEditVencimento] = useState('')
+  const [editPagamento, setEditPagamento] = useState('')
+  const [statusAnterior, setStatusAnterior] = useState('')
 
   useEffect(() => { fetch_(); fetchMotoristas(); fetchCaminhoes() }, [])
 
@@ -118,6 +158,8 @@ export default function MultasPage() {
     setCadMotorista(''); setCadPlaca(''); setCadData(new Date().toISOString().split('T')[0])
     setCadHora(''); setCadInfracao(''); setCadVelPermitida(''); setCadVelRegistrada('')
     setCadNumero(''); setCadValor(''); setCadStatus('PENDENTE'); setCadOrgao('')
+    setCadIdentificado(true); setCadValorNaoId(''); setCadFolhaMes(mesAtual)
+    setCadFolhaAno(String(anoAtual)); setCadVencimento(''); setCadPagamento('')
   }
 
   function selecionar(m: Multa) {
@@ -133,6 +175,18 @@ export default function MultasPage() {
     setEditValor(String(m.valor || ''))
     setEditStatus(m.status || 'PENDENTE')
     setEditOrgao(m.orgao || '')
+    setEditIdentificado(m.motorista_identificado !== false)
+    setEditValorNaoId(String(m.valor_nao_identificacao || ''))
+    const folha = m.folha_pagamento || ''
+    if (folha.includes('/')) {
+      setEditFolhaMes(folha.split('/')[0])
+      setEditFolhaAno(folha.split('/')[1])
+    } else {
+      setEditFolhaMes(mesAtual); setEditFolhaAno(String(anoAtual))
+    }
+    setEditVencimento(m.data_vencimento || '')
+    setEditPagamento(m.data_pagamento || '')
+    setStatusAnterior(m.status || 'PENDENTE')
     setConfirmExcluir(false)
   }
 
@@ -144,18 +198,19 @@ export default function MultasPage() {
     return `${dia}/${m}/${y}`
   }
 
-  function buildPayload(
-    motorista: string, placa: string, data: string, hora: string,
-    infracao: string, velPerm: string, velReg: string,
-    numero: string, valor: string, status: string, orgao: string
-  ) {
+  function buildPayload(p: any) {
     return {
-      motorista, placa, data, hora, infracao,
-      velocidade_permitida: isVelocidade(infracao) ? parseInt(velPerm) || null : null,
-      velocidade_registrada: isVelocidade(infracao) ? parseInt(velReg) || null : null,
-      numero_infracao: numero,
-      valor: parseFloat(valor) || 0,
-      status, orgao,
+      motorista: p.motorista, placa: p.placa, data: p.data, hora: p.hora,
+      infracao: p.infracao,
+      velocidade_permitida: isVelocidade(p.infracao) ? parseInt(p.velPerm) || null : null,
+      velocidade_registrada: isVelocidade(p.infracao) ? parseInt(p.velReg) || null : null,
+      numero_infracao: p.numero, valor: parseFloat(p.valor) || 0,
+      status: p.status, orgao: p.orgao,
+      motorista_identificado: p.identificado,
+      valor_nao_identificacao: !p.identificado ? parseFloat(p.valorNaoId) || null : null,
+      folha_pagamento: `${p.folhaMes}/${p.folhaAno}`,
+      data_vencimento: p.vencimento || null,
+      data_pagamento: p.pagamento || null,
     }
   }
 
@@ -163,11 +218,23 @@ export default function MultasPage() {
     if (!cadMotorista) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/multas`, {
-        method: 'POST',
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify(buildPayload(cadMotorista, cadPlaca, cadData, cadHora, cadInfracao, cadVelPermitida, cadVelRegistrada, cadNumero, cadValor, cadStatus, cadOrgao))
+      const payload = buildPayload({
+        motorista: cadMotorista, placa: cadPlaca, data: cadData, hora: cadHora,
+        infracao: cadInfracao, velPerm: cadVelPermitida, velReg: cadVelRegistrada,
+        numero: cadNumero, valor: cadValor, status: cadStatus, orgao: cadOrgao,
+        identificado: cadIdentificado, valorNaoId: cadValorNaoId,
+        folhaMes: cadFolhaMes, folhaAno: cadFolhaAno,
+        vencimento: cadVencimento, pagamento: cadPagamento,
       })
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/multas`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify(payload)
+      })
+      if (cadStatus === 'PAGO') {
+        const data = await res.json()
+        if (Array.isArray(data) && data[0]) await lancarContaPagar({ ...data[0] })
+      }
     }
     await fetch_(); setLoading(false)
     resetCad(); setMostraCad(false); showMsg('✅ Multa registrada!')
@@ -177,11 +244,29 @@ export default function MultasPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
+      const payload = buildPayload({
+        motorista: editMotorista, placa: editPlaca, data: editData, hora: editHora,
+        infracao: editInfracao, velPerm: editVelPermitida, velReg: editVelRegistrada,
+        numero: editNumero, valor: editValor, status: editStatus, orgao: editOrgao,
+        identificado: editIdentificado, valorNaoId: editValorNaoId,
+        folhaMes: editFolhaMes, folhaAno: editFolhaAno,
+        vencimento: editVencimento, pagamento: editPagamento,
+      })
       await fetch(`${SUPABASE_URL}/rest/v1/multas?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify(buildPayload(editMotorista, editPlaca, editData, editHora, editInfracao, editVelPermitida, editVelRegistrada, editNumero, editValor, editStatus, editOrgao))
+        body: JSON.stringify(payload)
       })
+      // Se mudou para PAGO, lança no financeiro
+      if (editStatus === 'PAGO' && statusAnterior !== 'PAGO') {
+        await lancarContaPagar({
+          ...sel, ...payload,
+          id: sel.id,
+          valor: parseFloat(editValor) || 0,
+          data_vencimento: editVencimento,
+          data_pagamento: editPagamento,
+        })
+      }
     }
     await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
   }
@@ -207,6 +292,158 @@ export default function MultasPage() {
       )
     : multas
 
+  const anos = ['2024', '2025', '2026', '2027']
+
+  const CamposComuns = (p: {
+    motorista: string; setMotorista: any; placa: string; setPlaca: any
+    data: string; setData: any; hora: string; setHora: any
+    infracao: string; setInfracao: any; velPerm: string; setVelPerm: any
+    velReg: string; setVelReg: any; numero: string; setNumero: any
+    valor: string; setValor: any; status: string; setStatus: any
+    orgao: string; setOrgao: any; identificado: boolean; setIdentificado: any
+    valorNaoId: string; setValorNaoId: any; folhaMes: string; setFolhaMes: any
+    folhaAno: string; setFolhaAno: any; vencimento: string; setVencimento: any
+    pagamento: string; setPagamento: any
+  }) => (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Motorista *</label>
+          <select value={p.motorista} onChange={e => {
+            const cam = caminhoes.find(c => c.motorista_atual === e.target.value)
+            p.setMotorista(e.target.value)
+            if (cam) p.setPlaca(cam.placa)
+          }} className={InputClass}>
+            <option value="">Selecione...</option>
+            {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LabelClass}>Placa</label>
+          <select value={p.placa} onChange={e => p.setPlaca(e.target.value)} className={InputClass}>
+            <option value="">Selecione...</option>
+            {caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Motorista identificado */}
+      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+        <div className="flex items-center justify-between">
+          <label className={LabelClass}>Motorista identificado?</label>
+          <div className="flex gap-2">
+            <button onClick={() => p.setIdentificado(true)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${p.identificado ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+              SIM
+            </button>
+            <button onClick={() => p.setIdentificado(false)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${!p.identificado ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+              NÃO
+            </button>
+          </div>
+        </div>
+        {!p.identificado && (
+          <div className="mt-3">
+            <label className={LabelClass}>Valor de não identificação (R$)</label>
+            <input type="number" step="0.01" value={p.valorNaoId}
+              onChange={e => p.setValorNaoId(e.target.value)}
+              placeholder="0,00" className={InputClass} />
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Data da Infração</label>
+          <input type="date" value={p.data} onChange={e => p.setData(e.target.value)} className={InputClass} />
+        </div>
+        <div>
+          <label className={LabelClass}>Hora</label>
+          <input type="time" value={p.hora} onChange={e => p.setHora(e.target.value)} className={InputClass} />
+        </div>
+      </div>
+
+      <div>
+        <label className={LabelClass}>Infração (Motivo)</label>
+        <select value={p.infracao} onChange={e => p.setInfracao(e.target.value)} className={InputClass}>
+          <option value="">Selecione...</option>
+          {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
+        </select>
+      </div>
+
+      {isVelocidade(p.infracao) && (
+        <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LabelClass}>Velocidade Permitida (km/h)</label>
+              <input type="number" value={p.velPerm} onChange={e => p.setVelPerm(e.target.value)} placeholder="Ex: 80" className={InputClass} />
+            </div>
+            <div>
+              <label className={LabelClass}>Velocidade Registrada (km/h)</label>
+              <input type="number" value={p.velReg} onChange={e => p.setVelReg(e.target.value)} placeholder="Ex: 110" className={InputClass} />
+            </div>
+          </div>
+          {p.velPerm && p.velReg && (
+            <p className="text-xs text-yellow-700 font-medium">
+              Excesso: <span className="font-bold">{parseInt(p.velReg) - parseInt(p.velPerm)} km/h acima do limite</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Nº Auto de Infração</label>
+          <input value={p.numero} onChange={e => p.setNumero(e.target.value)} placeholder="Ex: 1DJ4817991" className={InputClass} />
+        </div>
+        <div>
+          <label className={LabelClass}>Valor da Multa (R$)</label>
+          <input type="number" step="0.01" value={p.valor} onChange={e => p.setValor(e.target.value)} placeholder="0,00" className={InputClass} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Órgão</label>
+          <select value={p.orgao} onChange={e => p.setOrgao(e.target.value)} className={InputClass}>
+            <option value="">Selecione...</option>
+            {ORGAOS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LabelClass}>Status</label>
+          <select value={p.status} onChange={e => p.setStatus(e.target.value)} className={InputClass}>
+            <option value="PENDENTE">PENDENTE</option>
+            <option value="PAGO">PAGO</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Vencimento</label>
+          <input type="date" value={p.vencimento} onChange={e => p.setVencimento(e.target.value)} className={InputClass} />
+        </div>
+        <div>
+          <label className={LabelClass}>Data de Pagamento</label>
+          <input type="date" value={p.pagamento} onChange={e => p.setPagamento(e.target.value)} className={InputClass} />
+        </div>
+      </div>
+
+      <div>
+        <label className={LabelClass}>Folha de Pagamento (desconto)</label>
+        <div className="grid grid-cols-2 gap-3 mt-1">
+          <select value={p.folhaMes} onChange={e => p.setFolhaMes(e.target.value)} className={InputClass.replace('mt-1 ', '')}>
+            {MESES.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+          </select>
+          <select value={p.folhaAno} onChange={e => p.setFolhaAno(e.target.value)} className={InputClass.replace('mt-1 ', '')}>
+            {anos.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      </div>
+    </div>
+  )
+
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
       <button onClick={() => { setMostraCad(false); resetCad() }} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
@@ -214,105 +451,34 @@ export default function MultasPage() {
       </button>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-lg">Nova Multa</h3>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>Motorista *</label>
-              <select value={cadMotorista} onChange={e => {
-                const cam = caminhoes.find(c => c.motorista_atual === e.target.value)
-                setCadMotorista(e.target.value)
-                if (cam) setCadPlaca(cam.placa)
-              }} className={InputClass}>
-                <option value="">Selecione...</option>
-                {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={LabelClass}>Placa</label>
-              <select value={cadPlaca} onChange={e => setCadPlaca(e.target.value)} className={InputClass}>
-                <option value="">Selecione...</option>
-                {caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>Data</label>
-              <input type="date" value={cadData} onChange={e => setCadData(e.target.value)} className={InputClass} />
-            </div>
-            <div>
-              <label className={LabelClass}>Hora</label>
-              <input type="time" value={cadHora} onChange={e => setCadHora(e.target.value)} className={InputClass} />
-            </div>
-          </div>
-
-          <div>
-            <label className={LabelClass}>Infração (Motivo)</label>
-            <select value={cadInfracao} onChange={e => setCadInfracao(e.target.value)} className={InputClass}>
-              <option value="">Selecione...</option>
-              {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
-            </select>
-          </div>
-
-          {isVelocidade(cadInfracao) && (
-            <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>Velocidade Permitida (km/h)</label>
-                  <input type="number" value={cadVelPermitida} onChange={e => setCadVelPermitida(e.target.value)} placeholder="Ex: 80" className={InputClass} />
-                </div>
-                <div>
-                  <label className={LabelClass}>Velocidade Registrada (km/h)</label>
-                  <input type="number" value={cadVelRegistrada} onChange={e => setCadVelRegistrada(e.target.value)} placeholder="Ex: 110" className={InputClass} />
-                </div>
-              </div>
-              {cadVelPermitida && cadVelRegistrada && (
-                <p className="text-xs text-yellow-700 font-medium">
-                  Excesso: <span className="font-bold">{parseInt(cadVelRegistrada) - parseInt(cadVelPermitida)} km/h acima do limite</span>
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>Nº Auto de Infração</label>
-              <input value={cadNumero} onChange={e => setCadNumero(e.target.value)} placeholder="Ex: 1DJ4817991" className={InputClass} />
-            </div>
-            <div>
-              <label className={LabelClass}>Valor (R$)</label>
-              <input type="number" step="0.01" value={cadValor} onChange={e => setCadValor(e.target.value)} placeholder="0,00" className={InputClass} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>Órgão</label>
-              <select value={cadOrgao} onChange={e => setCadOrgao(e.target.value)} className={InputClass}>
-                <option value="">Selecione...</option>
-                {ORGAOS.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className={LabelClass}>Status</label>
-              <select value={cadStatus} onChange={e => setCadStatus(e.target.value)} className={InputClass}>
-                <option value="PENDENTE">PENDENTE</option>
-                <option value="PAGO">PAGO</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <button onClick={cadastrar} disabled={loading || !cadMotorista}
-              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition">
-              Registrar multa
-            </button>
-            <button onClick={() => { setMostraCad(false); resetCad() }}
-              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition">
-              Cancelar
-            </button>
-          </div>
+        <CamposComuns
+          motorista={cadMotorista} setMotorista={setCadMotorista}
+          placa={cadPlaca} setPlaca={setCadPlaca}
+          data={cadData} setData={setCadData}
+          hora={cadHora} setHora={setCadHora}
+          infracao={cadInfracao} setInfracao={setCadInfracao}
+          velPerm={cadVelPermitida} setVelPerm={setCadVelPermitida}
+          velReg={cadVelRegistrada} setVelReg={setCadVelRegistrada}
+          numero={cadNumero} setNumero={setCadNumero}
+          valor={cadValor} setValor={setCadValor}
+          status={cadStatus} setStatus={setCadStatus}
+          orgao={cadOrgao} setOrgao={setCadOrgao}
+          identificado={cadIdentificado} setIdentificado={setCadIdentificado}
+          valorNaoId={cadValorNaoId} setValorNaoId={setCadValorNaoId}
+          folhaMes={cadFolhaMes} setFolhaMes={setCadFolhaMes}
+          folhaAno={cadFolhaAno} setFolhaAno={setCadFolhaAno}
+          vencimento={cadVencimento} setVencimento={setCadVencimento}
+          pagamento={cadPagamento} setPagamento={setCadPagamento}
+        />
+        <div className="flex gap-2 pt-4">
+          <button onClick={cadastrar} disabled={loading || !cadMotorista}
+            className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition">
+            Registrar multa
+          </button>
+          <button onClick={() => { setMostraCad(false); resetCad() }}
+            className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition">
+            Cancelar
+          </button>
         </div>
       </div>
     </div>
@@ -341,96 +507,27 @@ export default function MultasPage() {
                 </div>
               </div>
             </div>
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>Motorista</label>
-                  <select value={editMotorista} onChange={e => {
-                    const cam = caminhoes.find(c => c.motorista_atual === e.target.value)
-                    setEditMotorista(e.target.value)
-                    if (cam) setEditPlaca(cam.placa)
-                  }} className={InputClass}>
-                    <option value="">Selecione...</option>
-                    {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={LabelClass}>Placa</label>
-                  <select value={editPlaca} onChange={e => setEditPlaca(e.target.value)} className={InputClass}>
-                    <option value="">Selecione...</option>
-                    {caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>Data</label>
-                  <input type="date" value={editData} onChange={e => setEditData(e.target.value)} className={InputClass} />
-                </div>
-                <div>
-                  <label className={LabelClass}>Hora</label>
-                  <input type="time" value={editHora} onChange={e => setEditHora(e.target.value)} className={InputClass} />
-                </div>
-              </div>
-
-              <div>
-                <label className={LabelClass}>Infração (Motivo)</label>
-                <select value={editInfracao} onChange={e => setEditInfracao(e.target.value)} className={InputClass}>
-                  <option value="">Selecione...</option>
-                  {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
-                </select>
-              </div>
-
-              {isVelocidade(editInfracao) && (
-                <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className={LabelClass}>Velocidade Permitida (km/h)</label>
-                      <input type="number" value={editVelPermitida} onChange={e => setEditVelPermitida(e.target.value)} placeholder="Ex: 80" className={InputClass} />
-                    </div>
-                    <div>
-                      <label className={LabelClass}>Velocidade Registrada (km/h)</label>
-                      <input type="number" value={editVelRegistrada} onChange={e => setEditVelRegistrada(e.target.value)} placeholder="Ex: 110" className={InputClass} />
-                    </div>
-                  </div>
-                  {editVelPermitida && editVelRegistrada && (
-                    <p className="text-xs text-yellow-700 font-medium">
-                      Excesso: <span className="font-bold">{parseInt(editVelRegistrada) - parseInt(editVelPermitida)} km/h acima do limite</span>
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>Nº Auto de Infração</label>
-                  <input value={editNumero} onChange={e => setEditNumero(e.target.value)} className={InputClass} />
-                </div>
-                <div>
-                  <label className={LabelClass}>Valor (R$)</label>
-                  <input type="number" step="0.01" value={editValor} onChange={e => setEditValor(e.target.value)} className={InputClass} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>Órgão</label>
-                  <select value={editOrgao} onChange={e => setEditOrgao(e.target.value)} className={InputClass}>
-                    <option value="">Selecione...</option>
-                    {ORGAOS.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={LabelClass}>Status</label>
-                  <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={InputClass}>
-                    <option value="PENDENTE">PENDENTE</option>
-                    <option value="PAGO">PAGO</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-2">
+            <div className="p-5">
+              <CamposComuns
+                motorista={editMotorista} setMotorista={setEditMotorista}
+                placa={editPlaca} setPlaca={setEditPlaca}
+                data={editData} setData={setEditData}
+                hora={editHora} setHora={setEditHora}
+                infracao={editInfracao} setInfracao={setEditInfracao}
+                velPerm={editVelPermitida} setVelPerm={setEditVelPermitida}
+                velReg={editVelRegistrada} setVelReg={setEditVelRegistrada}
+                numero={editNumero} setNumero={setEditNumero}
+                valor={editValor} setValor={setEditValor}
+                status={editStatus} setStatus={setEditStatus}
+                orgao={editOrgao} setOrgao={setEditOrgao}
+                identificado={editIdentificado} setIdentificado={setEditIdentificado}
+                valorNaoId={editValorNaoId} setValorNaoId={setEditValorNaoId}
+                folhaMes={editFolhaMes} setFolhaMes={setEditFolhaMes}
+                folhaAno={editFolhaAno} setFolhaAno={setEditFolhaAno}
+                vencimento={editVencimento} setVencimento={setEditVencimento}
+                pagamento={editPagamento} setPagamento={setEditPagamento}
+              />
+              <div className="flex gap-2 pt-4">
                 <button onClick={salvar} disabled={loading}
                   className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
                   <Save size={15}/> Salvar alterações
@@ -440,9 +537,8 @@ export default function MultasPage() {
                   <Trash2 size={15}/>
                 </button>
               </div>
-
               {confirmExcluir && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl mt-3">
                   <p className="text-sm text-red-700 font-medium mb-3">⚠️ Excluir esta multa?</p>
                   <div className="flex gap-2">
                     <button onClick={excluir} className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium">Confirmar</button>
@@ -487,7 +583,12 @@ export default function MultasPage() {
                   <AlertTriangle size={18} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-900">{m.motorista}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-gray-900">{m.motorista}</p>
+                    {m.motorista_identificado === false && (
+                      <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">Não identificado</span>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">
                     {m.infracao || 'Sem infração'}{m.placa && ` · ${m.placa}`}
                   </p>
@@ -495,6 +596,7 @@ export default function MultasPage() {
                     {fmtData(m.data)}{m.hora && ` · ${m.hora}`}
                     {m.numero_infracao && ` · Nº ${m.numero_infracao}`}
                     {m.orgao && ` · ${m.orgao}`}
+                    {m.data_vencimento && ` · Venc: ${fmtData(m.data_vencimento)}`}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
