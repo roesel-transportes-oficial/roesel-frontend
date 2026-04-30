@@ -1,11 +1,11 @@
 'use client'
 import { useState } from 'react'
 import { useAuth } from '../services/auth'
-import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle, AlertTriangle, ShieldAlert, MapPin } from 'lucide-react'
+import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle, AlertTriangle, ShieldAlert, MapPin, Palmtree } from 'lucide-react'
 
 const isFinanceiro = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
 const isAbastecimento = (aba: string) => ['abastecimento', 'fornecedor'].includes(aba)
-const isMotorista = (aba: string) => ['motorista', 'multas', 'avarias'].includes(aba)
+const isMotorista = (aba: string) => ['motorista', 'multas', 'avarias', 'ferias'].includes(aba)
 
 const menus = [
   { id: 'dashboard',    label: 'Visão Geral',   icon: LayoutDashboard, adminOnly: false },
@@ -62,6 +62,11 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
                   ${aba === 'motorista' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
                 <User size={14} /> Cadastro
+              </button>
+              <button onClick={() => setAba('ferias')}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
+                  ${aba === 'ferias' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
+                <Palmtree size={14} /> Férias
               </button>
               <button onClick={() => setAba('multas')}
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition

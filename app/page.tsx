@@ -12,16 +12,16 @@ import MultasPage from './components/MultasPage'
 import AvariasPage from './components/AvariasPage'
 import PremiosPage from './components/PremiosPage'
 import ViagemPage from './components/ViagemPage'
+import FeriasPage from './components/FeriasPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 
 export default function Home() {
-  const { user, loading } = useAuth()  // ← AGORA pega loading também
+  const { user, loading } = useAuth()
   const [aba, setAba] = useState('dashboard')
 
-  // Enquanto está checando sessão, mostra tela de carregamento
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -33,10 +33,8 @@ export default function Home() {
     )
   }
 
-  // Loading terminou e não tem usuário → tela de login
   if (!user) return <Login />
 
-  // Usuário logado → mostra o sistema
   return (
     <div className="flex min-h-screen">
       <Sidebar aba={aba} setAba={setAba} />
@@ -46,6 +44,7 @@ export default function Home() {
         {aba === 'contratos'      && <ContratosPage />}
         {aba === 'viagens'        && <ViagemPage />}
         {aba === 'motorista'      && <MotoristaPage />}
+        {aba === 'ferias'         && <FeriasPage />}
         {aba === 'caminhao'       && <CaminhaoPage />}
         {aba === 'clientes'       && <ClientePage />}
         {aba === 'abastecimento'  && <AbastecimentoPage />}
