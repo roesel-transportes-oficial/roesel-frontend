@@ -51,11 +51,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
   let mounted = true
 
-  // 1. Verificação ATIVA da sessão (não depende do listener)
   async function checkSession() {
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      // Timeout de 5s: se o Supabase demorar mais que isso pra responder,
+      // desiste e mostra a tela de login em vez de carregar eternamente
+      const sessionPromise = supabase.auth.getSession()
+      const timeoutPromise = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), 5000)
+      )
+
+      const result = await Promise.race([sessionPromise, timeoutPromise])
+
       if (!mounted) return
+
+      // Se deu timeout (result === null), vai pra tela de login
+      if (result === null) {
+        console.warn('Timeout ao verificar sessão — indo para login')
+        setUser(null); setPerm(''); setEmail(null)
+        setLoading(false)
+        return
+      }
+
+      const { data: { session } } = result
       if (session?.user?.email) {
         await carregarUsuario(session.user.email)
       }
@@ -68,7 +85,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   checkSession()
 
-  // 2. Listener para mudanças FUTURAS (login, logout, refresh)
   const { data: { subscription } } = supabase.auth.onAuthStateChange(
     async (event, session) => {
       if (!mounted) return
@@ -77,9 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await carregarUsuario(session.user.email)
         }
       } else if (event === 'SIGNED_OUT') {
-        setUser(null)
-        setPerm('')
-        setEmail(null)
+        setUser(null); setPerm(''); setEmail(null)
       }
     }
   )
