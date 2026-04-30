@@ -5,7 +5,7 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
     persistSession: true,
     detectSessionInUrl: false,
     flowType: 'implicit',
