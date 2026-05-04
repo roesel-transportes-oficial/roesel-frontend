@@ -61,7 +61,6 @@ export default function CaminhaoPage() {
   const [confirmExcluir, setConfirmExcluir] = useState(false)
   const [aba, setAba] = useState<'info' | 'manutencao' | 'licencas'>('info')
 
-  // Manutenções
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([])
   const [mostraNovaMan, setMostraNovaMan] = useState(false)
   const [manTipo, setManTipo] = useState('')
@@ -73,13 +72,11 @@ export default function CaminhaoPage() {
   const [manObs, setManObs] = useState('')
   const [filtroPlacoRel, setFiltroPlacoRel] = useState('')
 
-  // Licenças
   const [licencas, setLicencas] = useState<Licenca[]>([])
   const [mostraNovaLic, setMostraNovaLic] = useState(false)
   const [licEstado, setLicEstado] = useState('')
   const [licVencimento, setLicVencimento] = useState('')
 
-  // Campos edição
   const [editPlaca, setEditPlaca] = useState('')
   const [editPlacaCarreta, setEditPlacaCarreta] = useState('')
   const [editModelo, setEditModelo] = useState('')
@@ -91,7 +88,6 @@ export default function CaminhaoPage() {
   const [editFrota, setEditFrota] = useState('')
   const [editObs, setEditObs] = useState('')
 
-  // Campos cadastro
   const [cadPlaca, setCadPlaca] = useState('')
   const [cadPlacaCarreta, setCadPlacaCarreta] = useState('')
   const [cadModelo, setCadModelo] = useState('')
@@ -255,7 +251,6 @@ export default function CaminhaoPage() {
   async function salvarLicenca() {
     if (!sel || !licEstado || !licVencimento) return
     setLoading(true)
-    // Verifica se já existe para esse estado
     const existe = licencas.find(l => l.estado === licEstado)
     if (existe) {
       await fetch(`${SUPABASE_URL}/rest/v1/licencas?id=eq.${existe.id}`, {
@@ -283,7 +278,6 @@ export default function CaminhaoPage() {
     if (sel) await fetchLicencas(sel.id)
   }
 
-  // Relatório de manutenção por placa
   async function gerarRelatorio() {
     if (!filtroPlacoRel) return
     const res = await fetch(`${SUPABASE_URL}/rest/v1/manutencoes?caminhao_placa=eq.${filtroPlacoRel}&order=data_entrada.desc`, {
@@ -390,7 +384,6 @@ export default function CaminhaoPage() {
             <ArrowLeft size={16}/> Voltar
           </button>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {/* Header */}
             <div className={`px-6 py-5 bg-gradient-to-r ${
               editStatus === 'rodando' ? 'from-green-600 to-green-700' :
               editStatus === 'manutencao' ? 'from-yellow-500 to-yellow-600' :
@@ -410,7 +403,6 @@ export default function CaminhaoPage() {
               </div>
             </div>
 
-            {/* Abas */}
             <div className="flex border-b border-gray-100">
               {[
                 { id: 'info', label: 'Informações', icon: Truck },
@@ -426,7 +418,6 @@ export default function CaminhaoPage() {
               ))}
             </div>
 
-            {/* Aba Informações */}
             {aba === 'info' && (
               <div className="p-5 space-y-4">
                 {editStatus !== 'rodando' && editDtParado && (
@@ -522,10 +513,8 @@ export default function CaminhaoPage() {
               </div>
             )}
 
-            {/* Aba Manutenção */}
             {aba === 'manutencao' && (
               <div className="p-5">
-                {/* Relatório por placa */}
                 <div className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <p className="text-xs font-bold text-gray-500 uppercase mb-2">📊 Relatório por placa</p>
                   <div className="flex gap-2">
@@ -643,7 +632,6 @@ export default function CaminhaoPage() {
               </div>
             )}
 
-            {/* Aba Licenças */}
             {aba === 'licencas' && (
               <div className="p-5">
                 <div className="flex items-center justify-between mb-3">
