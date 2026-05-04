@@ -48,37 +48,45 @@ export async function POST(req: NextRequest) {
             type: 'text',
             text: `Analise este contrato de transporte rodoviário com EXTREMO CUIDADO e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem texto adicional.
 
+ESTRUTURA DO CONTRATO — leia nesta ordem:
+- Seção "CONTRATANTE": empresa que contrata o serviço (cliente)
+- Seção "CONTRATADO": Carlos Alberto Roesel Transportes (nossa empresa — IGNORE para cliente)
+- Seção "EQUIPAMENTOS DE TRANSPORTE": dados do caminhão
+- Seção "MOTORISTA": pessoa física que dirige
+- Seção "SERVIÇOS CONTRATADOS": origem, destino, data, quantidade
+- Seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO": valores
+
 REGRAS CRÍTICAS:
 
-1. "motorista": nome da PESSOA FÍSICA na seção "MOTORISTA". NÃO é Carlos Alberto Roesel Transportes. É o motorista pessoa física listado na seção MOTORISTA.
+1. "motorista": nome da PESSOA FÍSICA na seção "MOTORISTA". NÃO é Carlos Alberto Roesel Transportes nem nenhuma empresa.
 
-2. "cliente_nome_completo": nome EXATO da empresa CONTRATANTE (quem está contratando o serviço, seção "CONTRATANTE"). Leia cada letra com cuidado. Copie exatamente como está escrito no documento.
+2. "cliente_nome_completo": nome EXATO da empresa na seção "CONTRATANTE" — primeira seção do contrato. NÃO é o CONTRATADO.
 
-3. "cnpj": CNPJ do CONTRATANTE. Formato XX.XXX.XXX/XXXX-XX. Leia CADA dígito com atenção — não confunda 1/7, 8/9, 3/8, 0/6.
+3. "cnpj": CNPJ que aparece na seção "CONTRATANTE", no campo "CNPJ:" logo abaixo do nome da empresa contratante. ATENÇÃO: este CNPJ começa com os mesmos dígitos do nome da empresa contratante. Leia dígito por dígito da esquerda para a direita. NÃO invente nem copie CNPJ de outra seção. Se não encontrar com certeza, retorne string vazia.
 
-4. "placa": placa do CAVALO MECÂNICO (campo "Placa Cavalo Mecânico"). 7 caracteres. Ex: QXA4C97.
+4. "placa": placa do CAVALO MECÂNICO (campo "Placa Cavalo Mecânico"). 7 caracteres.
 
-5. "placa_carreta": placa da PLACA SEMI-REBOQUE (campo "Placa Semi-reboque"). 7 caracteres. Ex: HHF0311.
+5. "placa_carreta": placa SEMI-REBOQUE (campo "Placa Semi-reboque"). 7 caracteres.
 
-6. "frota": número exato após "Frota:" nos equipamentos de transporte.
+6. "frota": número exato após "Frota:" nos equipamentos.
 
-7. "fat_bruto": valor em "Frete Contratado". Leia o valor COMPLETO com TODOS os dígitos. Use ponto como separador decimal. Ex: 11851.28 e NÃO 1851.28.
+7. "fat_bruto": valor em "Frete Contratado". Leia TODOS os dígitos. Use ponto como decimal. Ex: 11851.28
 
 8. "qtd_veiculos": número no campo "Quant." nos serviços contratados.
 
 9. "contrato": número após "VIAGENS:" ou "CONTRATO:" no título.
 
-10. "origem": cidade e estado de origem (campo "Origem:").
+10. "origem": cidade e estado no campo "Origem:".
 
-11. "destino": cidade e estado de destino (campo "Destino:").
+11. "destino": cidade e estado no campo "Destino:".
 
 12. "data": data do campo "Data de Pagamento" no formato YYYY-MM-DD.
 
 13. "status": sempre "ABERTO".
 
-14. "chapa" e "obs": deixe vazio.
+14. "chapa" e "obs": sempre string vazia.
 
-Retorne APENAS este JSON:
+Retorne APENAS este JSON sem nenhum texto adicional:
 {
   "motorista": "",
   "cliente_nome_completo": "",
@@ -111,6 +119,11 @@ Retorne APENAS este JSON:
       const frotaLida = String(parsed.frota).trim()
       const frotaConvertida = MAPA_FROTA[frotaLida]
       if (frotaConvertida) parsed.frota = frotaConvertida
+    }
+
+    // Se o CNPJ vier vazio ou com menos de 14 dígitos, limpa para não dar match errado
+    if (parsed.cnpj && parsed.cnpj.replace(/\D/g, '').length < 14) {
+      parsed.cnpj = ''
     }
 
     return NextResponse.json(parsed)
