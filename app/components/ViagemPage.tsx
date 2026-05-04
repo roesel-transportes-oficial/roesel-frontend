@@ -13,7 +13,7 @@ interface Viagem {
   valor_contrato: number; origem: string; destino: string
   valor_adiantamento: number; valor_chapa: number
 }
-interface Motorista { id: string; nome: string }
+interface Motorista { id: string; nome: string; adiantamento: boolean }
 interface Caminhao { id: string; placa: string; modelo: string }
 interface Contrato {
   id: string; contrato: string; cliente: string; origem: string; destino: string
@@ -146,18 +146,27 @@ export default function ViagemPage() {
     return ''
   }
 
+  // Calcula adiantamento: 5% do valor total se motorista tem adiantamento, senão 0
+  function calcularAdiantamento(nomeMotorista: string, valorContrato: number): string {
+    const motorista = motoristas.find(m => m.nome === nomeMotorista)
+    if (!motorista || !motorista.adiantamento || !valorContrato) return '0'
+    return (valorContrato * 0.05).toFixed(2)
+  }
+
   // Quando seleciona contratos, preenche campos automaticamente
-  function aplicarDadosContratos(lista: Contrato[]) {
-    if (lista.length === 0) return
+  function aplicarDadosContratos(lista: Contrato[], nomeMotorista: string) {
+    if (lista.length === 0) return null
     const primeiro = lista[0]
     const totalValor = lista.reduce((s, c) => s + (c.fat_bruto || 0), 0)
     const totalVeiculos = lista.reduce((s, c) => s + (c.qtd_veiculos || 0), 0)
+    const adiantamento = calcularAdiantamento(nomeMotorista, totalValor)
     return {
       empresa: primeiro.cliente || '',
       valorContrato: totalValor > 0 ? String(totalValor) : '',
       qtdVeiculos: totalVeiculos > 0 ? String(totalVeiculos) : '',
       origem: primeiro.origem || '',
       destino: primeiro.destino || '',
+      adiantamento,
     }
   }
 
@@ -300,11 +309,12 @@ export default function ViagemPage() {
   }
 
   const ContratoSelector = ({
-    selecionados, onChange, setCampos
+    selecionados, onChange, nomeMotorista, setCampos
   }: {
     selecionados: Contrato[]
     onChange: (c: Contrato[]) => void
-    setCampos?: (dados: any) => void
+    nomeMotorista: string
+    setCampos: (dados: any) => void
   }) => (
     <div className="border border-gray-200 rounded-xl overflow-hidden">
       <div className="p-2 bg-gray-50 border-b border-gray-100">
@@ -323,11 +333,9 @@ export default function ViagemPage() {
               <button onClick={() => {
                 const nova = selecionados.filter(s => s.id !== c.id)
                 onChange(nova)
-                if (setCampos) {
-                  const dados = aplicarDadosContratos(nova)
-                  if (dados) setCampos(dados)
-                  else setCampos({ empresa: '', valorContrato: '', qtdVeiculos: '', origem: '', destino: '' })
-                }
+                const dados = aplicarDadosContratos(nova, nomeMotorista)
+                if (dados) setCampos(dados)
+                else setCampos({ empresa: '', valorContrato: '', qtdVeiculos: '', origem: '', destino: '', adiantamento: '0' })
               }}><X size={10} /></button>
             </span>
           ))}
@@ -338,10 +346,8 @@ export default function ViagemPage() {
           <button key={c.id} onClick={() => {
             const nova = [...selecionados, c]
             onChange(nova)
-            if (setCampos) {
-              const dados = aplicarDadosContratos(nova)
-              if (dados) setCampos(dados)
-            }
+            const dados = aplicarDadosContratos(nova, nomeMotorista)
+            if (dados) setCampos(dados)
           }}
             className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0">
             <span className="font-semibold text-gray-700">#{c.contrato}</span>
@@ -354,54 +360,76 @@ export default function ViagemPage() {
     </div>
   )
 
+  // Componente de formulário reutilizável
   const FormCampos = ({ modo }: { modo: 'cad' | 'edit' }) => {
-    const motorista = modo === 'cad' ? cadMotorista : editMotorista
-    const setMotorista = modo === 'cad' ? setCadMotorista : setEditMotorista
-    const caminhaoId = modo === 'cad' ? cadCaminhaoId : editCaminhaoId
-    const dataSaida = modo === 'cad' ? cadDataSaida : editDataSaida
-    const setDataSaida = modo === 'cad' ? setCadDataSaida : setEditDataSaida
-    const dataRetorno = modo === 'cad' ? cadDataRetorno : editDataRetorno
-    const setDataRetorno = modo === 'cad' ? setCadDataRetorno : setEditDataRetorno
-    const kmInicial = modo === 'cad' ? cadKmInicial : editKmInicial
-    const setKmInicial = modo === 'cad' ? setCadKmInicial : setEditKmInicial
-    const kmFinal = modo === 'cad' ? cadKmFinal : editKmFinal
-    const setKmFinal = modo === 'cad' ? setCadKmFinal : setEditKmFinal
-    const status = modo === 'cad' ? cadStatus : editStatus
-    const setStatus = modo === 'cad' ? setCadStatus : setEditStatus
-    const obs = modo === 'cad' ? cadObs : editObs
-    const setObs = modo === 'cad' ? setCadObs : setEditObs
-    const contratosAtivos = modo === 'cad' ? cadContratos : editContratos
-    const setContratosAtivos = modo === 'cad' ? setCadContratos : setEditContratos
-    const qtdVeiculos = modo === 'cad' ? cadQtdVeiculos : editQtdVeiculos
-    const setQtdVeiculos = modo === 'cad' ? setCadQtdVeiculos : setEditQtdVeiculos
-    const empresa = modo === 'cad' ? cadEmpresa : editEmpresa
-    const setEmpresa = modo === 'cad' ? setCadEmpresa : setEditEmpresa
-    const valorContrato = modo === 'cad' ? cadValorContrato : editValorContrato
-    const setValorContrato = modo === 'cad' ? setCadValorContrato : setEditValorContrato
-    const origem = modo === 'cad' ? cadOrigem : editOrigem
-    const setOrigem = modo === 'cad' ? setCadOrigem : setEditOrigem
-    const destino = modo === 'cad' ? cadDestino : editDestino
-    const setDestino = modo === 'cad' ? setCadDestino : setEditDestino
-    const valorAdiantamento = modo === 'cad' ? cadValorAdiantamento : editValorAdiantamento
-    const setValorAdiantamento = modo === 'cad' ? setCadValorAdiantamento : setEditValorAdiantamento
-    const valorChapa = modo === 'cad' ? cadValorChapa : editValorChapa
-    const setValorChapa = modo === 'cad' ? setCadValorChapa : setEditValorChapa
+    const isCad = modo === 'cad'
+    const motorista = isCad ? cadMotorista : editMotorista
+    const caminhaoId = isCad ? cadCaminhaoId : editCaminhaoId
+    const dataSaida = isCad ? cadDataSaida : editDataSaida
+    const setDataSaida = isCad ? setCadDataSaida : setEditDataSaida
+    const dataRetorno = isCad ? cadDataRetorno : editDataRetorno
+    const setDataRetorno = isCad ? setCadDataRetorno : setEditDataRetorno
+    const kmInicial = isCad ? cadKmInicial : editKmInicial
+    const setKmInicial = isCad ? setCadKmInicial : setEditKmInicial
+    const kmFinal = isCad ? cadKmFinal : editKmFinal
+    const setKmFinal = isCad ? setCadKmFinal : setEditKmFinal
+    const status = isCad ? cadStatus : editStatus
+    const setStatus = isCad ? setCadStatus : setEditStatus
+    const obs = isCad ? cadObs : editObs
+    const setObs = isCad ? setCadObs : setEditObs
+    const contratosAtivos = isCad ? cadContratos : editContratos
+    const setContratosAtivos = isCad ? setCadContratos : setEditContratos
+    const qtdVeiculos = isCad ? cadQtdVeiculos : editQtdVeiculos
+    const setQtdVeiculos = isCad ? setCadQtdVeiculos : setEditQtdVeiculos
+    const empresa = isCad ? cadEmpresa : editEmpresa
+    const setEmpresa = isCad ? setCadEmpresa : setEditEmpresa
+    const valorContrato = isCad ? cadValorContrato : editValorContrato
+    const setValorContrato = isCad ? setCadValorContrato : setEditValorContrato
+    const origem = isCad ? cadOrigem : editOrigem
+    const setOrigem = isCad ? setCadOrigem : setEditOrigem
+    const destino = isCad ? cadDestino : editDestino
+    const setDestino = isCad ? setCadDestino : setEditDestino
+    const valorAdiantamento = isCad ? cadValorAdiantamento : editValorAdiantamento
+    const setValorAdiantamento = isCad ? setCadValorAdiantamento : setEditValorAdiantamento
+    const valorChapa = isCad ? cadValorChapa : editValorChapa
+    const setValorChapa = isCad ? setCadValorChapa : setEditValorChapa
+
+    const temAdiantamento = motoristas.find(m => m.nome === motorista)?.adiantamento
 
     return (
       <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={LC}>Motorista *</label>
-            <select value={motorista} onChange={e => setMotorista(e.target.value)} className={IC}>
+            <select value={motorista} onChange={e => {
+              const nome = e.target.value
+              if (isCad) setCadMotorista(nome)
+              else setEditMotorista(nome)
+              // Recalcula adiantamento ao trocar motorista
+              const totalValor = contratosAtivos.reduce((s, c) => s + (c.fat_bruto || 0), 0)
+              if (totalValor > 0) setValorAdiantamento(calcularAdiantamento(nome, totalValor))
+            }} className={IC}>
               <option value="">Selecione...</option>
-              {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+              {motoristas.map(m => (
+                <option key={m.id} value={m.nome}>
+                  {m.nome} {m.adiantamento ? '· 💰' : ''}
+                </option>
+              ))}
             </select>
+            {motorista && (
+              <p className="text-xs mt-1 font-medium">
+                {temAdiantamento
+                  ? <span className="text-green-600">✅ Com adiantamento (5% do frete)</span>
+                  : <span className="text-gray-400">❌ Sem adiantamento</span>
+                }
+              </p>
+            )}
           </div>
           <div>
             <label className={LC}>Caminhão *</label>
             <select value={caminhaoId} onChange={async e => {
               const cam = caminhoes.find(c => c.id === e.target.value)
-              if (modo === 'cad') {
+              if (isCad) {
                 setCadCaminhaoId(e.target.value)
                 setCadCaminhaoPlaca(cam?.placa || '')
                 if (e.target.value) setCadKmInicial(await buscarUltimoKm(e.target.value))
@@ -455,24 +483,25 @@ export default function ViagemPage() {
           </select>
         </div>
 
-        {/* Contratos */}
         <div>
           <label className={LC}>Contratos vinculados</label>
           <p className="text-xs text-gray-400 mb-1">Ao selecionar, os campos abaixo são preenchidos automaticamente</p>
           <ContratoSelector
             selecionados={contratosAtivos}
             onChange={setContratosAtivos}
+            nomeMotorista={motorista}
             setCampos={(dados) => {
               setEmpresa(dados.empresa)
               setValorContrato(dados.valorContrato)
               setQtdVeiculos(dados.qtdVeiculos)
               setOrigem(dados.origem)
               setDestino(dados.destino)
+              setValorAdiantamento(dados.adiantamento)
             }}
           />
         </div>
 
-        {/* Dados do contrato (preenchidos automaticamente) */}
+        {/* Dados da carga */}
         <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
           <p className="text-xs font-bold text-gray-500 uppercase">Dados da carga</p>
           <div className="grid grid-cols-2 gap-3">
@@ -497,7 +526,10 @@ export default function ViagemPage() {
           </div>
           <div>
             <label className={LC}>Valor do Contrato (R$)</label>
-            <input type="number" step="0.01" value={valorContrato} onChange={e => setValorContrato(e.target.value)} className={IC} />
+            <input type="number" step="0.01" value={valorContrato} onChange={e => {
+              setValorContrato(e.target.value)
+              setValorAdiantamento(calcularAdiantamento(motorista, parseFloat(e.target.value) || 0))
+            }} className={IC} />
           </div>
         </div>
 
@@ -507,7 +539,17 @@ export default function ViagemPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={LC}>Adiantamento (R$)</label>
-              <input type="number" step="0.01" value={valorAdiantamento} onChange={e => setValorAdiantamento(e.target.value)} placeholder="0,00" className={IC} />
+              <input
+                type="number" step="0.01"
+                value={valorAdiantamento}
+                onChange={e => setValorAdiantamento(e.target.value)}
+                className={IC}
+              />
+              <p className="text-xs text-gray-400 mt-0.5">
+                {temAdiantamento
+                  ? '5% do frete — calculado automaticamente, editável'
+                  : 'Motorista sem adiantamento'}
+              </p>
             </div>
             <div>
               <label className={LC}>Chapa (R$)</label>
