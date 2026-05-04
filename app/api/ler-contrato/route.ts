@@ -46,42 +46,45 @@ export async function POST(req: NextRequest) {
           },
           {
             type: 'text',
-            text: `Analise este contrato de transporte rodoviário com EXTREMO CUIDADO letra por letra e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem texto adicional.
+            text: `Analise este contrato de transporte rodoviário com EXTREMO CUIDADO e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem texto adicional.
 
-REGRAS CRÍTICAS — leia com atenção máxima cada campo:
+REGRAS CRÍTICAS:
 
-1. "motorista": nome da PESSOA FÍSICA na seção "MOTORISTA". NÃO é o contratado (empresa).
+1. "motorista": nome da PESSOA FÍSICA na seção "MOTORISTA". NÃO é Carlos Alberto Roesel Transportes. É o motorista pessoa física listado na seção MOTORISTA.
 
-2. "cliente_nome_completo": nome EXATO da empresa na seção "CONTRATANTE". Leia cada letra com cuidado — erros como BRASIL em vez de BRAZUL são inaceitáveis. Copie exatamente como está escrito.
+2. "cliente_nome_completo": nome EXATO da empresa CONTRATANTE (quem está contratando o serviço, seção "CONTRATANTE"). Leia cada letra com cuidado. Copie exatamente como está escrito no documento.
 
-3. "cnpj": CNPJ do CONTRATANTE. Está logo abaixo do nome da empresa contratante, no campo "CNPJ:". Formato: XX.XXX.XXX/XXXX-XX com 14 dígitos no total. Leia CADA DÍGITO com atenção máxima — não confunda dígitos parecidos (1 e 7, 8 e 9, 3 e 8, 0 e 6). Se não encontrar, retorne string vazia.
+3. "cnpj": CNPJ do CONTRATANTE. Formato XX.XXX.XXX/XXXX-XX. Leia CADA dígito com atenção — não confunda 1/7, 8/9, 3/8, 0/6.
 
-4. "placa": placa do CAVALO MECÂNICO APENAS (campo "Placa Cavalo Mecânico"). Placas no padrão Mercosul têm 7 caracteres: 3 letras + 1 número + 1 letra + 2 números (ex: QMZ9B08). Leia CADA caractere — não confunda letras com números.
+4. "placa": placa do CAVALO MECÂNICO (campo "Placa Cavalo Mecânico"). 7 caracteres. Ex: QXA4C97.
 
-5. "frota": número exato após "Frota:" nos equipamentos de transporte.
+5. "placa_carreta": placa da PLACA SEMI-REBOQUE (campo "Placa Semi-reboque"). 7 caracteres. Ex: HHF0311.
 
-6. "fat_bruto": valor em "Frete Contratado" na seção de preços. ATENÇÃO MÁXIMA: leia o valor COMPLETO com TODOS os dígitos. O valor pode ter 5 ou 6 dígitos antes da vírgula. Ex: 15552,3 e NÃO 1555,21. Ex: 22751,92 e NÃO 2751,92. Retorne sem símbolo R$, use ponto como separador decimal.
+6. "frota": número exato após "Frota:" nos equipamentos de transporte.
 
-7. "qtd_veiculos": número no campo "Quant." nos serviços contratados.
+7. "fat_bruto": valor em "Frete Contratado". Leia o valor COMPLETO com TODOS os dígitos. Use ponto como separador decimal. Ex: 11851.28 e NÃO 1851.28.
 
-8. "contrato": número após "VIAGENS:" ou "CONTRATO:" no título do documento.
+8. "qtd_veiculos": número no campo "Quant." nos serviços contratados.
 
-9. "origem": cidade e estado de origem da viagem (campo "Origem:").
+9. "contrato": número após "VIAGENS:" ou "CONTRATO:" no título.
 
-10. "destino": cidade e estado de destino da viagem (campo "Destino:").
+10. "origem": cidade e estado de origem (campo "Origem:").
 
-11. "data": data no campo "Data de Saída" no formato YYYY-MM-DD. Se não houver "Data de Saída", use a data no campo "Data de Saída" nos serviços contratados. Não use "Data de Pagamento".
+11. "destino": cidade e estado de destino (campo "Destino:").
 
-12. "status": sempre "ABERTO".
+12. "data": data do campo "Data de Pagamento" no formato YYYY-MM-DD.
 
-13. "chapa" e "obs": deixe vazio.
+13. "status": sempre "ABERTO".
 
-Retorne APENAS este JSON sem nenhum texto adicional:
+14. "chapa" e "obs": deixe vazio.
+
+Retorne APENAS este JSON:
 {
   "motorista": "",
   "cliente_nome_completo": "",
   "cnpj": "",
   "placa": "",
+  "placa_carreta": "",
   "frota": "",
   "contrato": "",
   "data": "",
