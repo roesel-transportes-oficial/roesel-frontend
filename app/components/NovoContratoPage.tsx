@@ -41,17 +41,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   }
 
   function selecionarCliente(valor: string) {
-    if (!valor) {
-      setForm(f => ({ ...f, cliente: '', cnpj: '' }))
-      return
-    }
+    if (!valor) { setForm(f => ({ ...f, cliente: '', cnpj: '' })); return }
     const [nome, cnpj] = valor.split('||')
     const cliente = clientes.find(c => c.nome === nome && (c.cnpj || '') === cnpj)
-    setForm(f => ({
-      ...f,
-      cliente: nome,
-      cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : '',
-    }))
+    setForm(f => ({ ...f, cliente: nome, cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : '' }))
   }
 
   function formatCnpj(v: string) {
@@ -69,7 +62,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
   function similaridade(a: string, b: string): number {
     if (a === b) return 1
-    if (a.length === 0 || b.length === 0) return 0
+    if (!a.length || !b.length) return 0
     const longer = a.length > b.length ? a : b
     const shorter = a.length > b.length ? b : a
     let matches = 0
@@ -79,31 +72,57 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return matches / longer.length
   }
 
+  function nomesSaoParecidos(nomeA: string, nomeB: string): boolean {
+    const a = normalizar(nomeA)
+    const b = normalizar(nomeB)
+    // Verifica se tem pelo menos 2 palavras significativas em comum
+    const palavrasA = a.split(' ').filter(p => p.length > 3)
+    const palavrasB = b.split(' ').filter(p => p.length > 3)
+    const emComum = palavrasA.filter(p => palavrasB.some(pb =>
+      pb === p || (pb.length > 3 && p.length > 3 && (pb.slice(0,-1) === p.slice(0,-1)))
+    ))
+    return emComum.length >= 2
+  }
+
   function encontrarCliente(nomeIA: string, cnpjIA?: string, origemIA?: string) {
     if (!nomeIA && !cnpjIA) return null
+    const nomeNorm = nomeIA ? normalizar(nomeIA) : ''
 
-    // 1. Match por CNPJ exato
+    // 1. Match por CNPJ — SÓ aceita se o nome também for parecido
     if (cnpjIA) {
       const cnpjLimpo = cnpjIA.replace(/\D/g, '')
-      if (cnpjLimpo.length >= 14) {
+      if (cnpjLimpo.length === 14) {
         const found = clientes.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo)
-        if (found) return found
+        if (found && nomeNorm) {
+          // Valida se o nome tem pelo menos 2 palavras em comum
+          if (nomesSaoParecidos(nomeIA, found.nome)) return found
+          // Se o nome não bate, ignora o CNPJ e continua para match por nome
+        }
       }
     }
 
-    if (!nomeIA) return null
-    const nomeNorm = normalizar(nomeIA)
+    if (!nomeNorm) return null
 
-    // 2. Match exato por nome — com desempate por cidade da origem
+    // 2. Match exato por nome com desempate por cidade
     const todosExatos = clientes.filter(c => normalizar(c.nome) === nomeNorm)
     if (todosExatos.length === 1) return todosExatos[0]
-    if (todosExatos.length > 1 && origemIA) {
-      const cidadeOrigem = normalizar(origemIA.split('-')[0].trim())
-      const porCidade = todosExatos.find(c =>
-        normalizar(c.cidade || '').includes(cidadeOrigem) ||
-        cidadeOrigem.includes(normalizar(c.cidade || ''))
-      )
-      if (porCidade) return porCidade
+    if (todosExatos.length > 1) {
+      if (origemIA) {
+        const cidadeOrigem = normalizar(origemIA.split('-')[0].trim())
+        const porCidade = todosExatos.find(c =>
+          normalizar(c.cidade || '').includes(cidadeOrigem) ||
+          cidadeOrigem.includes(normalizar(c.cidade || ''))
+        )
+        if (porCidade) return porCidade
+      }
+      // Desempate por CNPJ parcial (primeiros 8 dígitos do CNPJ da empresa)
+      if (cnpjIA) {
+        const cnpjParcial = cnpjIA.replace(/\D/g, '').slice(0, 8)
+        const porCnpjParcial = todosExatos.find(c =>
+          (c.cnpj || '').replace(/\D/g, '').startsWith(cnpjParcial)
+        )
+        if (porCnpjParcial) return porCnpjParcial
+      }
       return todosExatos[0]
     }
 
@@ -113,16 +132,17 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
     })
     if (todosContem.length === 1) return todosContem[0]
-    if (todosContem.length > 1 && origemIA) {
-      const cidadeOrigem = normalizar(origemIA.split('-')[0].trim())
-      const porCidade = todosContem.find(c =>
-        normalizar(c.cidade || '').includes(cidadeOrigem) ||
-        cidadeOrigem.includes(normalizar(c.cidade || ''))
-      )
-      if (porCidade) return porCidade
+    if (todosContem.length > 1) {
+      if (origemIA) {
+        const cidadeOrigem = normalizar(origemIA.split('-')[0].trim())
+        const porCidade = todosContem.find(c =>
+          normalizar(c.cidade || '').includes(cidadeOrigem) ||
+          cidadeOrigem.includes(normalizar(c.cidade || ''))
+        )
+        if (porCidade) return porCidade
+      }
       return todosContem[0]
     }
-    if (todosContem.length > 0) return todosContem[0]
 
     // 4. Palavra por palavra com tolerância a OCR
     const found = clientes.find(c => {
@@ -132,7 +152,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       const matches = palavrasIA.filter(pIA =>
         palavrasCad.some(pCad => {
           if (pCad === pIA) return true
-          if (pCad.length === pIA.length) {
+          if (pCad.length === pIA.length && pCad.length > 3) {
             let diffs = 0
             for (let i = 0; i < pCad.length; i++) { if (pCad[i] !== pIA[i]) diffs++ }
             return diffs <= 1
@@ -144,7 +164,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     })
     if (found) return found
 
-    // 5. Similaridade com threshold alto
+    // 5. Similaridade alta
     let melhorScore = 0, melhorCliente = null
     for (const c of clientes) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
@@ -184,7 +204,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         return primeiroIA.length > 3 && primeiroIA === primeiroBanco
       })
 
-      // Busca cliente usando CNPJ como prioridade, depois cidade da origem como desempate
+      // Busca cliente com CNPJ validado contra o nome
       const clienteEncontrado = encontrarCliente(
         parsed.cliente_nome_completo || parsed.cliente || '',
         parsed.cnpj || '',
@@ -217,10 +237,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   }
 
   function clienteSelectValue() {
-    const c = clientes.find(c =>
-      c.nome === form.cliente &&
-      formatCnpj(c.cnpj || '') === form.cnpj
-    )
+    const c = clientes.find(c => c.nome === form.cliente && formatCnpj(c.cnpj || '') === form.cnpj)
     if (c) return `${c.nome}||${c.cnpj || ''}`
     const c2 = clientes.find(c => c.nome === form.cliente)
     if (c2) return `${c2.nome}||${c2.cnpj || ''}`
@@ -263,10 +280,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-            <select
-              value={clienteSelectValue()}
-              onChange={e => selecionarCliente(e.target.value)}
-              className={IC}>
+            <select value={clienteSelectValue()} onChange={e => selecionarCliente(e.target.value)} className={IC}>
               <option value="">Selecione...</option>
               {clientes.map(c => (
                 <option key={c.id} value={`${c.nome}||${c.cnpj || ''}`}>
@@ -275,13 +289,9 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
               ))}
             </select>
             {form.cliente && !clientes.find(c => c.nome === form.cliente) && (
-              <input
-                name="cliente"
-                value={form.cliente}
-                onChange={handle}
+              <input name="cliente" value={form.cliente} onChange={handle}
                 placeholder="Cliente não cadastrado — edite ou cadastre"
-                className="mt-1 w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50"
-              />
+                className="mt-1 w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50" />
             )}
           </div>
           <div>

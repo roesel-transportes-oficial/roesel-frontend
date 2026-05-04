@@ -46,47 +46,49 @@ export async function POST(req: NextRequest) {
           },
           {
             type: 'text',
-            text: `Analise este contrato de transporte rodoviário com EXTREMO CUIDADO e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem texto adicional.
+            text: `Analise este contrato de transporte rodoviário e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks.
 
-ESTRUTURA DO CONTRATO — leia nesta ordem:
-- Seção "CONTRATANTE": empresa que contrata o serviço (cliente)
-- Seção "CONTRATADO": Carlos Alberto Roesel Transportes (nossa empresa — IGNORE para cliente)
+ESTRUTURA DO CONTRATO:
+- Seção "CONTRATANTE": empresa cliente (quem paga pelo serviço)
+- Seção "CONTRATADO": Carlos Alberto Roesel Transportes (nossa empresa — IGNORE para cliente/cnpj)
 - Seção "EQUIPAMENTOS DE TRANSPORTE": dados do caminhão
-- Seção "MOTORISTA": pessoa física que dirige
+- Seção "MOTORISTA": motorista pessoa física
 - Seção "SERVIÇOS CONTRATADOS": origem, destino, data, quantidade
-- Seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO": valores
+- Seção "PREÇO...": valores financeiros
 
-REGRAS CRÍTICAS:
+CAMPOS A EXTRAIR:
 
-1. "motorista": nome da PESSOA FÍSICA na seção "MOTORISTA". NÃO é Carlos Alberto Roesel Transportes nem nenhuma empresa.
+"motorista": pessoa física na seção MOTORISTA. Ex: "REINALDO ADRIANO". NUNCA coloque "Carlos Alberto Roesel Transportes".
 
-2. "cliente_nome_completo": nome EXATO da empresa na seção "CONTRATANTE" — primeira seção do contrato. NÃO é o CONTRATADO.
+"cliente_nome_completo": nome EXATO da empresa na seção CONTRATANTE. Ex: "SADA TRANSPORTES E ARMAZENAGENS LTDA". NUNCA coloque Carlos Alberto Roesel.
 
-3. "cnpj": CNPJ que aparece na seção "CONTRATANTE", no campo "CNPJ:" logo abaixo do nome da empresa contratante. ATENÇÃO: este CNPJ começa com os mesmos dígitos do nome da empresa contratante. Leia dígito por dígito da esquerda para a direita. NÃO invente nem copie CNPJ de outra seção. Se não encontrar com certeza, retorne string vazia.
+"cnpj": CNPJ que está na seção CONTRATANTE, campo "CNPJ:" imediatamente abaixo do nome da empresa contratante. ATENÇÃO MÁXIMA: leia os 14 dígitos um por um da esquerda para a direita. NÃO copie o CNPJ do CONTRATADO. Se tiver dúvida em algum dígito, retorne string vazia "".
 
-4. "placa": placa do CAVALO MECÂNICO (campo "Placa Cavalo Mecânico"). 7 caracteres.
+"placa": campo "Placa Cavalo Mecânico". 7 caracteres.
 
-5. "placa_carreta": placa SEMI-REBOQUE (campo "Placa Semi-reboque"). 7 caracteres.
+"placa_carreta": campo "Placa Semi-reboque". 7 caracteres.
 
-6. "frota": número exato após "Frota:" nos equipamentos.
+"frota": número após "Frota:".
 
-7. "fat_bruto": valor em "Frete Contratado". Leia TODOS os dígitos. Use ponto como decimal. Ex: 11851.28
+"fat_bruto": "Frete Contratado". Todos os dígitos, ponto decimal. Ex: 11851.28
 
-8. "qtd_veiculos": número no campo "Quant." nos serviços contratados.
+"qtd_veiculos": campo "Quant.".
 
-9. "contrato": número após "VIAGENS:" ou "CONTRATO:" no título.
+"contrato": número após "VIAGENS:" ou "CONTRATO:" no título.
 
-10. "origem": cidade e estado no campo "Origem:".
+"origem": campo "Origem:".
 
-11. "destino": cidade e estado no campo "Destino:".
+"destino": campo "Destino:".
 
-12. "data": data do campo "Data de Pagamento" no formato YYYY-MM-DD.
+"data": campo "Data de Pagamento" formato YYYY-MM-DD.
 
-13. "status": sempre "ABERTO".
+"status": sempre "ABERTO".
 
-14. "chapa" e "obs": sempre string vazia.
+"chapa": sempre "".
 
-Retorne APENAS este JSON sem nenhum texto adicional:
+"obs": sempre "".
+
+JSON de retorno:
 {
   "motorista": "",
   "cliente_nome_completo": "",
@@ -121,7 +123,7 @@ Retorne APENAS este JSON sem nenhum texto adicional:
       if (frotaConvertida) parsed.frota = frotaConvertida
     }
 
-    // Se o CNPJ vier vazio ou com menos de 14 dígitos, limpa para não dar match errado
+    // Limpa CNPJ inválido
     if (parsed.cnpj && parsed.cnpj.replace(/\D/g, '').length < 14) {
       parsed.cnpj = ''
     }
