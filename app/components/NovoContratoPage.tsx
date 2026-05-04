@@ -79,16 +79,33 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return matches / longer.length
   }
 
-  function encontrarCliente(nomeIA: string) {
+  function encontrarCliente(nomeIA: string, cnpjIA?: string) {
+    if (!nomeIA && !cnpjIA) return null
+
+    // 1. Match por CNPJ — mais confiável
+    if (cnpjIA) {
+      const cnpjLimpo = cnpjIA.replace(/\D/g, '')
+      if (cnpjLimpo.length >= 14) {
+        const found = clientes.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo)
+        if (found) return found
+      }
+    }
+
     if (!nomeIA) return null
     const nomeNorm = normalizar(nomeIA)
+
+    // 2. Match exato por nome
     let found = clientes.find(c => normalizar(c.nome) === nomeNorm)
     if (found) return found
+
+    // 3. Um contém o outro
     found = clientes.find(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
     })
     if (found) return found
+
+    // 4. Palavra por palavra com tolerância a OCR
     found = clientes.find(c => {
       const nomeCad = normalizar(c.nome)
       const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
@@ -104,13 +121,15 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           return false
         })
       )
-      return matches.length >= Math.max(1, Math.floor(palavrasIA.length * 0.6))
+      return matches.length >= Math.max(2, Math.floor(palavrasIA.length * 0.6))
     })
     if (found) return found
+
+    // 5. Similaridade com threshold alto para evitar falsos positivos
     let melhorScore = 0, melhorCliente = null
     for (const c of clientes) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
-      if (score > melhorScore && score > 0.75) { melhorScore = score; melhorCliente = c }
+      if (score > melhorScore && score > 0.85) { melhorScore = score; melhorCliente = c }
     }
     return melhorCliente
   }
@@ -132,6 +151,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         body: JSON.stringify({ base64, mediaType: file.type, isPDF: file.type === 'application/pdf' })
       })
       const parsed = await response.json()
+
+      // Busca motorista
       const motoristaEncontrado = motoristas.find(m => {
         const nomeIA = normalizar(parsed.motorista || '')
         const nomeBanco = normalizar(m.nome)
@@ -143,13 +164,19 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         }
         return primeiroIA.length > 3 && primeiroIA === primeiroBanco
       })
-      const clienteEncontrado = encontrarCliente(parsed.cliente_nome_completo || parsed.cliente || '')
+
+      // Busca cliente usando CNPJ como prioridade
+      const clienteEncontrado = encontrarCliente(
+        parsed.cliente_nome_completo || parsed.cliente || '',
+        parsed.cnpj || ''
+      )
+
       setForm(f => ({
         ...f,
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
         motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
         cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
-        cnpj: clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : parsed.cnpj || '',
+        cnpj: clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : parsed.cnpj ? formatCnpj(parsed.cnpj) : '',
       }))
     } catch { setErro('Não foi possível ler o documento. Preencha manualmente.') }
     finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
@@ -169,14 +196,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
   }
 
-  // Monta o value do select para identificar nome + cnpj
   function clienteSelectValue() {
     const c = clientes.find(c =>
       c.nome === form.cliente &&
       formatCnpj(c.cnpj || '') === form.cnpj
     )
     if (c) return `${c.nome}||${c.cnpj || ''}`
-    // fallback: só pelo nome
     const c2 = clientes.find(c => c.nome === form.cliente)
     if (c2) return `${c2.nome}||${c2.cnpj || ''}`
     return ''
