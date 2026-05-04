@@ -51,22 +51,22 @@ export async function POST(req: NextRequest) {
 ESTRUTURA DO CONTRATO:
 - Seção "CONTRATANTE": empresa cliente (quem paga pelo serviço)
 - Seção "CONTRATADO": Carlos Alberto Roesel Transportes (nossa empresa — IGNORE para cliente/cnpj)
-- Seção "EQUIPAMENTOS DE TRANSPORTE": dados do caminhão
+- Seção "EQUIPAMENTOS DE TRANSPORTE": dados do caminhão e carreta
 - Seção "MOTORISTA": motorista pessoa física
 - Seção "SERVIÇOS CONTRATADOS": origem, destino, data, quantidade
 - Seção "PREÇO...": valores financeiros
 
 CAMPOS A EXTRAIR:
 
-"motorista": pessoa física na seção MOTORISTA. Ex: "REINALDO ADRIANO". NUNCA coloque "Carlos Alberto Roesel Transportes".
+"motorista": pessoa física na seção MOTORISTA. NUNCA coloque Carlos Alberto Roesel Transportes.
 
-"cliente_nome_completo": nome EXATO da empresa na seção CONTRATANTE. Ex: "SADA TRANSPORTES E ARMAZENAGENS LTDA". NUNCA coloque Carlos Alberto Roesel.
+"cliente_nome_completo": nome EXATO da empresa na seção CONTRATANTE. NUNCA coloque Carlos Alberto Roesel.
 
-"cnpj": CNPJ que está na seção CONTRATANTE, campo "CNPJ:" imediatamente abaixo do nome da empresa contratante. ATENÇÃO MÁXIMA: leia os 14 dígitos um por um da esquerda para a direita. NÃO copie o CNPJ do CONTRATADO. Se tiver dúvida em algum dígito, retorne string vazia "".
+"cnpj": CNPJ na seção CONTRATANTE campo "CNPJ:". Leia 14 dígitos um por um. NÃO copie CNPJ do CONTRATADO. Se tiver dúvida retorne "".
 
-"placa": campo "Placa Cavalo Mecânico". 7 caracteres.
+"placa": campo "Placa Cavalo Mecânico". ATENÇÃO: leia caractere por caractere da esquerda para a direita. Placas têm 7 caracteres: 3 letras + 1 número + 1 letra + 2 números (padrão Mercosul). Não confunda I/1, H/N, F/T, 0/O, 3/B.
 
-"placa_carreta": campo "Placa Semi-reboque". 7 caracteres.
+"placa_carreta": campo "Placa Semi-reboque". ATENÇÃO MÁXIMA: leia cada um dos 7 caracteres separadamente. Placas têm 3 letras seguidas de 4 dígitos (padrão antigo) OU 3 letras + 1 número + 1 letra + 2 números (Mercosul). Confusões comuns a EVITAR: H≠I, H≠N, F≠T, F≠P, 0≠O, 1≠I, 3≠B, 8≠B. Releia a placa duas vezes antes de responder.
 
 "frota": número após "Frota:".
 
