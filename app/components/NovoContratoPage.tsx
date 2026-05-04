@@ -75,7 +75,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   function nomesSaoParecidos(nomeA: string, nomeB: string): boolean {
     const a = normalizar(nomeA)
     const b = normalizar(nomeB)
-    // Verifica se tem pelo menos 2 palavras significativas em comum
     const palavrasA = a.split(' ').filter(p => p.length > 3)
     const palavrasB = b.split(' ').filter(p => p.length > 3)
     const emComum = palavrasA.filter(p => palavrasB.some(pb =>
@@ -88,16 +87,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     if (!nomeIA && !cnpjIA) return null
     const nomeNorm = nomeIA ? normalizar(nomeIA) : ''
 
-    // 1. Match por CNPJ — SÓ aceita se o nome também for parecido
+    // 1. Match por CNPJ — só aceita se o nome também for parecido
     if (cnpjIA) {
       const cnpjLimpo = cnpjIA.replace(/\D/g, '')
       if (cnpjLimpo.length === 14) {
         const found = clientes.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo)
-        if (found && nomeNorm) {
-          // Valida se o nome tem pelo menos 2 palavras em comum
-          if (nomesSaoParecidos(nomeIA, found.nome)) return found
-          // Se o nome não bate, ignora o CNPJ e continua para match por nome
-        }
+        if (found && nomeNorm && nomesSaoParecidos(nomeIA, found.nome)) return found
       }
     }
 
@@ -115,18 +110,17 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         )
         if (porCidade) return porCidade
       }
-      // Desempate por CNPJ parcial (primeiros 8 dígitos do CNPJ da empresa)
       if (cnpjIA) {
         const cnpjParcial = cnpjIA.replace(/\D/g, '').slice(0, 8)
-        const porCnpjParcial = todosExatos.find(c =>
+        const porCnpj = todosExatos.find(c =>
           (c.cnpj || '').replace(/\D/g, '').startsWith(cnpjParcial)
         )
-        if (porCnpjParcial) return porCnpjParcial
+        if (porCnpj) return porCnpj
       }
       return todosExatos[0]
     }
 
-    // 3. Um contém o outro — com desempate por cidade
+    // 3. Um contém o outro com desempate por cidade
     const todosContem = clientes.filter(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
@@ -191,7 +185,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       })
       const parsed = await response.json()
 
-      // Busca motorista
       const motoristaEncontrado = motoristas.find(m => {
         const nomeIA = normalizar(parsed.motorista || '')
         const nomeBanco = normalizar(m.nome)
@@ -204,7 +197,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         return primeiroIA.length > 3 && primeiroIA === primeiroBanco
       })
 
-      // Busca cliente com CNPJ validado contra o nome
       const clienteEncontrado = encontrarCliente(
         parsed.cliente_nome_completo || parsed.cliente || '',
         parsed.cnpj || '',
@@ -226,9 +218,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     e.preventDefault(); setLoading(true); setErro('')
     try {
       const payload: any = { ...form }
-      if (payload.fat_bruto) payload.fat_bruto = parseFloat(payload.fat_bruto)
-      if (payload.chapa) payload.chapa = parseFloat(payload.chapa)
-      if (payload.qtd_veiculos) payload.qtd_veiculos = parseInt(payload.qtd_veiculos)
+      payload.fat_bruto = parseFloat(payload.fat_bruto) || 0
+      payload.chapa = parseFloat(payload.chapa) || 0
+      payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
+      payload.placa_carreta = payload.placa_carreta || ''
       if (!payload.data) delete payload.data
       if (!payload.dt_pagamento) delete payload.dt_pagamento
       await contratosAPI.criar(payload)
