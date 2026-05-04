@@ -79,10 +79,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return matches / longer.length
   }
 
-  function encontrarCliente(nomeIA: string, cnpjIA?: string) {
+  function encontrarCliente(nomeIA: string, cnpjIA?: string, origemIA?: string) {
     if (!nomeIA && !cnpjIA) return null
 
-    // 1. Match por CNPJ — mais confiável
+    // 1. Match por CNPJ exato
     if (cnpjIA) {
       const cnpjLimpo = cnpjIA.replace(/\D/g, '')
       if (cnpjLimpo.length >= 14) {
@@ -94,19 +94,38 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     if (!nomeIA) return null
     const nomeNorm = normalizar(nomeIA)
 
-    // 2. Match exato por nome
-    let found = clientes.find(c => normalizar(c.nome) === nomeNorm)
-    if (found) return found
+    // 2. Match exato por nome — com desempate por cidade da origem
+    const todosExatos = clientes.filter(c => normalizar(c.nome) === nomeNorm)
+    if (todosExatos.length === 1) return todosExatos[0]
+    if (todosExatos.length > 1 && origemIA) {
+      const cidadeOrigem = normalizar(origemIA.split('-')[0].trim())
+      const porCidade = todosExatos.find(c =>
+        normalizar(c.cidade || '').includes(cidadeOrigem) ||
+        cidadeOrigem.includes(normalizar(c.cidade || ''))
+      )
+      if (porCidade) return porCidade
+      return todosExatos[0]
+    }
 
-    // 3. Um contém o outro
-    found = clientes.find(c => {
+    // 3. Um contém o outro — com desempate por cidade
+    const todosContem = clientes.filter(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
     })
-    if (found) return found
+    if (todosContem.length === 1) return todosContem[0]
+    if (todosContem.length > 1 && origemIA) {
+      const cidadeOrigem = normalizar(origemIA.split('-')[0].trim())
+      const porCidade = todosContem.find(c =>
+        normalizar(c.cidade || '').includes(cidadeOrigem) ||
+        cidadeOrigem.includes(normalizar(c.cidade || ''))
+      )
+      if (porCidade) return porCidade
+      return todosContem[0]
+    }
+    if (todosContem.length > 0) return todosContem[0]
 
     // 4. Palavra por palavra com tolerância a OCR
-    found = clientes.find(c => {
+    const found = clientes.find(c => {
       const nomeCad = normalizar(c.nome)
       const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
       const palavrasCad = nomeCad.split(' ').filter(p => p.length > 2)
@@ -125,7 +144,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     })
     if (found) return found
 
-    // 5. Similaridade com threshold alto para evitar falsos positivos
+    // 5. Similaridade com threshold alto
     let melhorScore = 0, melhorCliente = null
     for (const c of clientes) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
@@ -165,10 +184,11 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         return primeiroIA.length > 3 && primeiroIA === primeiroBanco
       })
 
-      // Busca cliente usando CNPJ como prioridade
+      // Busca cliente usando CNPJ como prioridade, depois cidade da origem como desempate
       const clienteEncontrado = encontrarCliente(
         parsed.cliente_nome_completo || parsed.cliente || '',
-        parsed.cnpj || ''
+        parsed.cnpj || '',
+        parsed.origem || ''
       )
 
       setForm(f => ({
