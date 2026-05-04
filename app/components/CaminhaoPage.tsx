@@ -308,7 +308,7 @@ export default function CaminhaoPage() {
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={LC}>Placa do Cavalo *</label>
+              <label className={LC}>Placa do Caminhão *</label>
               <input value={cadPlaca} onChange={e => setCadPlaca(e.target.value.toUpperCase())} placeholder="ABC1234" className={IC} />
             </div>
             <div>
