@@ -14,22 +14,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
-    motorista: '',
-    cliente: '',
-    cnpj: '',
-    placa: '',
-    frota: '',
-    contrato: '',
-    data: '',
-    fat_bruto: '',
-    chapa: '',
-    origem: '',
-    destino: '',
-    qtd_veiculos: '',
-    adiantamento_pago: false,
-    dt_pagamento: '',
-    status: 'ABERTO',
-    obs: '',
+    motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
+    frota: '', contrato: '', data: '', fat_bruto: '', chapa: '',
+    origem: '', destino: '', qtd_veiculos: '', adiantamento_pago: false,
+    dt_pagamento: '', status: 'ABERTO', obs: '',
   })
 
   useEffect(() => {
@@ -54,11 +42,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
   function selecionarCliente(nome: string) {
     const cliente = clientes.find(c => c.nome === nome)
-    setForm(f => ({
-      ...f,
-      cliente: nome,
-      cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : f.cnpj,
-    }))
+    setForm(f => ({ ...f, cliente: nome, cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : f.cnpj }))
   }
 
   function formatCnpj(v: string) {
@@ -74,7 +58,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return s.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   }
 
-  // Similaridade entre duas strings (0 a 1)
   function similaridade(a: string, b: string): number {
     if (a === b) return 1
     if (a.length === 0 || b.length === 0) return 0
@@ -87,37 +70,26 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return matches / longer.length
   }
 
-  // Encontra melhor cliente pelo nome com tolerância a erros de OCR
   function encontrarCliente(nomeIA: string) {
     if (!nomeIA) return null
     const nomeNorm = normalizar(nomeIA)
-
-    // 1. Match exato
     let found = clientes.find(c => normalizar(c.nome) === nomeNorm)
     if (found) return found
-
-    // 2. Um contém o outro
     found = clientes.find(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
     })
     if (found) return found
-
-    // 3. Comparação palavra por palavra com tolerância a OCR
     found = clientes.find(c => {
       const nomeCad = normalizar(c.nome)
       const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
       const palavrasCad = nomeCad.split(' ').filter(p => p.length > 2)
-
       const matches = palavrasIA.filter(pIA =>
         palavrasCad.some(pCad => {
           if (pCad === pIA) return true
-          // Difere só em 1 caractere (erros comuns de OCR: SANA/SADA, BRASIL/BRAZUL)
           if (pCad.length === pIA.length) {
             let diffs = 0
-            for (let i = 0; i < pCad.length; i++) {
-              if (pCad[i] !== pIA[i]) diffs++
-            }
+            for (let i = 0; i < pCad.length; i++) { if (pCad[i] !== pIA[i]) diffs++ }
             return diffs <= 1
           }
           return false
@@ -126,16 +98,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       return matches.length >= Math.max(1, Math.floor(palavrasIA.length * 0.6))
     })
     if (found) return found
-
-    // 4. Similaridade geral como último recurso
-    let melhorScore = 0
-    let melhorCliente = null
+    let melhorScore = 0, melhorCliente = null
     for (const c of clientes) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
-      if (score > melhorScore && score > 0.75) {
-        melhorScore = score
-        melhorCliente = c
-      }
+      if (score > melhorScore && score > 0.75) { melhorScore = score; melhorCliente = c }
     }
     return melhorCliente
   }
@@ -143,8 +109,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   async function lerComIA(e: any) {
     const file = e.target.files?.[0]
     if (!file) return
-    setLoadingIA(true)
-    setErro('')
+    setLoadingIA(true); setErro('')
     try {
       const base64 = await new Promise<string>((res, rej) => {
         const r = new FileReader()
@@ -152,19 +117,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         r.onerror = () => rej()
         r.readAsDataURL(file)
       })
-
-      const isPDF = file.type === 'application/pdf'
-      const mediaType = file.type
-
       const response = await fetch('/api/ler-contrato', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, mediaType, isPDF })
+        body: JSON.stringify({ base64, mediaType: file.type, isPDF: file.type === 'application/pdf' })
       })
-
       const parsed = await response.json()
-
-      // Busca motorista
       const motoristaEncontrado = motoristas.find(m => {
         const nomeIA = normalizar(parsed.motorista || '')
         const nomeBanco = normalizar(m.nome)
@@ -172,44 +130,24 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         const primeiroIA = nomeIA.split(' ')[0]
         const primeiroBanco = nomeBanco.split(' ')[0]
         if (primeiroIA.length > 3 && primeiroIA === primeiroBanco) {
-          const ultimoIA = nomeIA.split(' ').pop()
-          const ultimoBanco = nomeBanco.split(' ').pop()
-          return ultimoIA === ultimoBanco
+          return nomeIA.split(' ').pop() === nomeBanco.split(' ').pop()
         }
         return primeiroIA.length > 3 && primeiroIA === primeiroBanco
       })
-
-      // Busca cliente com tolerância a erros de OCR
-      const nomeClienteIA = parsed.cliente_nome_completo || parsed.cliente || ''
-      const clienteEncontrado = encontrarCliente(nomeClienteIA)
-
-      const cnpjFinal = clienteEncontrado?.cnpj
-        ? formatCnpj(clienteEncontrado.cnpj)
-        : parsed.cnpj || ''
-
-      const clienteFinal = clienteEncontrado?.nome || nomeClienteIA
-
+      const clienteEncontrado = encontrarCliente(parsed.cliente_nome_completo || parsed.cliente || '')
       setForm(f => ({
         ...f,
-        ...Object.fromEntries(
-          Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)
-        ),
+        ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
         motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
-        cliente: clienteFinal,
-        cnpj: cnpjFinal,
+        cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
+        cnpj: clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : parsed.cnpj || '',
       }))
-    } catch (err) {
-      setErro('Não foi possível ler o documento. Preencha manualmente.')
-    } finally {
-      setLoadingIA(false)
-      if (fileRef.current) fileRef.current.value = ''
-    }
+    } catch { setErro('Não foi possível ler o documento. Preencha manualmente.') }
+    finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
   }
 
   async function salvar(e: any) {
-    e.preventDefault()
-    setLoading(true)
-    setErro('')
+    e.preventDefault(); setLoading(true); setErro('')
     try {
       const payload: any = { ...form }
       if (payload.fat_bruto) payload.fat_bruto = parseFloat(payload.fat_bruto)
@@ -219,11 +157,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       if (!payload.dt_pagamento) delete payload.dt_pagamento
       await contratosAPI.criar(payload)
       setAba('contratos')
-    } catch (e: any) {
-      setErro('Erro ao salvar contrato.')
-      setLoading(false)
-    }
+    } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
   }
+
+  const IC = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
 
   return (
     <div className="p-6 max-w-4xl">
@@ -235,124 +172,99 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition
           ${loadingIA ? 'bg-blue-300 text-white cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
           {loadingIA ? '⏳ Lendo documento...' : '📎 Selecionar PDF ou Imagem'}
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,image/*"
-            onChange={lerComIA}
-            disabled={loadingIA}
-            className="hidden"
-          />
+          <input ref={fileRef} type="file" accept=".pdf,image/*" onChange={lerComIA} disabled={loadingIA} className="hidden" />
         </label>
       </div>
 
-      {erro && (
-        <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg text-sm">{erro}</div>
-      )}
+      {erro && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg text-sm">{erro}</div>}
 
       <form onSubmit={salvar} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
-
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Motorista *</label>
-            <select name="motorista" value={form.motorista} onChange={handle} required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+            <select name="motorista" value={form.motorista} onChange={handle} required className={IC}>
               <option value="">Selecione...</option>
-              {motoristas.filter(m => m.ativo).map(m => (
-                <option key={m.id} value={m.nome}>{m.nome}</option>
-              ))}
+              {motoristas.filter(m => m.ativo).map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nº Contrato *</label>
-            <input name="contrato" value={form.contrato} onChange={handle} required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <input name="contrato" value={form.contrato} onChange={handle} required className={IC} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-            <select
-              value={clientes.find(c => c.nome === form.cliente) ? form.cliente : ''}
-              onChange={e => selecionarCliente(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+            <select value={clientes.find(c => c.nome === form.cliente) ? form.cliente : ''}
+              onChange={e => selecionarCliente(e.target.value)} className={IC}>
               <option value="">Selecione...</option>
-              {clientes.map(c => (
-                <option key={c.id} value={c.nome}>{c.nome}</option>
-              ))}
+              {clientes.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
             </select>
             {form.cliente && !clientes.find(c => c.nome === form.cliente) && (
-              <input
-                name="cliente"
-                value={form.cliente}
-                onChange={handle}
+              <input name="cliente" value={form.cliente} onChange={handle}
                 placeholder="Cliente não cadastrado — edite ou cadastre"
-                className="mt-1 w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50"
-              />
+                className="mt-1 w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50" />
             )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">CNPJ</label>
-            <input name="cnpj" value={form.cnpj} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <input name="cnpj" value={form.cnpj} onChange={handle} className={IC} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Placa do Cavalo</label>
+            <input name="placa" value={form.placa} onChange={handle} className={IC} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Placa da Carreta</label>
+            <input name="placa_carreta" value={form.placa_carreta} onChange={handle} className={IC} />
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Placa</label>
-            <input name="placa" value={form.placa} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Frota</label>
-            <input name="frota" value={form.frota} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <input name="frota" value={form.frota} onChange={handle} className={IC} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Qtd Veículos</label>
-            <input name="qtd_veiculos" type="number" value={form.qtd_veiculos} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <input name="qtd_veiculos" type="number" value={form.qtd_veiculos} onChange={handle} className={IC} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+            <input name="data" type="date" value={form.data} onChange={handle} className={IC} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Origem</label>
-            <input name="origem" value={form.origem} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <input name="origem" value={form.origem} onChange={handle} className={IC} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Destino</label>
-            <input name="destino" value={form.destino} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <input name="destino" value={form.destino} onChange={handle} className={IC} />
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Fat. Bruto (R$)</label>
-            <input name="fat_bruto" type="number" step="0.01" value={form.fat_bruto} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Frete Contratado (R$)</label>
+            <input name="fat_bruto" type="number" step="0.01" value={form.fat_bruto} onChange={handle} className={IC} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Chapa (R$)</label>
-            <input name="chapa" type="number" step="0.01" value={form.chapa} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
-            <input name="data" type="date" value={form.data} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <input name="chapa" type="number" step="0.01" value={form.chapa} onChange={handle} className={IC} />
           </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 items-end">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select name="status" value={form.status} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+            <select name="status" value={form.status} onChange={handle} className={IC}>
               <option value="ABERTO">ABERTO</option>
               <option value="PAGO">PAGO</option>
               <option value="CANCELADO">CANCELADO</option>
@@ -360,20 +272,17 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Dt. Pagamento</label>
-            <input name="dt_pagamento" type="date" value={form.dt_pagamento} onChange={handle}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+            <input name="dt_pagamento" type="date" value={form.dt_pagamento} onChange={handle} className={IC} />
           </div>
           <div className="flex items-center gap-2 pb-2">
-            <input name="adiantamento_pago" type="checkbox" checked={form.adiantamento_pago} onChange={handle}
-              className="w-4 h-4 accent-red-600" />
+            <input name="adiantamento_pago" type="checkbox" checked={form.adiantamento_pago} onChange={handle} className="w-4 h-4 accent-red-600" />
             <label className="text-sm font-medium text-gray-700">Adiantamento pago</label>
           </div>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Observações</label>
-          <textarea name="obs" value={form.obs} onChange={handle} rows={3}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+          <textarea name="obs" value={form.obs} onChange={handle} rows={3} className={IC} />
         </div>
 
         <div className="flex justify-end">
