@@ -40,9 +40,18 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     setForm(f => ({ ...f, [name]: type === 'checkbox' ? checked : value }))
   }
 
-  function selecionarCliente(nome: string) {
-    const cliente = clientes.find(c => c.nome === nome)
-    setForm(f => ({ ...f, cliente: nome, cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : f.cnpj }))
+  function selecionarCliente(valor: string) {
+    if (!valor) {
+      setForm(f => ({ ...f, cliente: '', cnpj: '' }))
+      return
+    }
+    const [nome, cnpj] = valor.split('||')
+    const cliente = clientes.find(c => c.nome === nome && (c.cnpj || '') === cnpj)
+    setForm(f => ({
+      ...f,
+      cliente: nome,
+      cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : '',
+    }))
   }
 
   function formatCnpj(v: string) {
@@ -160,6 +169,19 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
   }
 
+  // Monta o value do select para identificar nome + cnpj
+  function clienteSelectValue() {
+    const c = clientes.find(c =>
+      c.nome === form.cliente &&
+      formatCnpj(c.cnpj || '') === form.cnpj
+    )
+    if (c) return `${c.nome}||${c.cnpj || ''}`
+    // fallback: só pelo nome
+    const c2 = clientes.find(c => c.nome === form.cliente)
+    if (c2) return `${c2.nome}||${c2.cnpj || ''}`
+    return ''
+  }
+
   const IC = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
 
   return (
@@ -196,15 +218,25 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
-            <select value={clientes.find(c => c.nome === form.cliente) ? form.cliente : ''}
-              onChange={e => selecionarCliente(e.target.value)} className={IC}>
+            <select
+              value={clienteSelectValue()}
+              onChange={e => selecionarCliente(e.target.value)}
+              className={IC}>
               <option value="">Selecione...</option>
-              {clientes.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+              {clientes.map(c => (
+                <option key={c.id} value={`${c.nome}||${c.cnpj || ''}`}>
+                  {c.nome}{c.cnpj ? ` · ${formatCnpj(c.cnpj)}` : ''}
+                </option>
+              ))}
             </select>
             {form.cliente && !clientes.find(c => c.nome === form.cliente) && (
-              <input name="cliente" value={form.cliente} onChange={handle}
+              <input
+                name="cliente"
+                value={form.cliente}
+                onChange={handle}
                 placeholder="Cliente não cadastrado — edite ou cadastre"
-                className="mt-1 w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50" />
+                className="mt-1 w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50"
+              />
             )}
           </div>
           <div>
