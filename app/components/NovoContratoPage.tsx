@@ -215,7 +215,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Placa do Cavalo</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Placa do Caminhão</label>
             <input name="placa" value={form.placa} onChange={handle} className={IC} />
           </div>
           <div>

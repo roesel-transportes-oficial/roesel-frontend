@@ -439,7 +439,7 @@ export default function CaminhaoPage() {
                 )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className={LC}>Placa do Cavalo</label>
+                    <label className={LC}>Placa do Caminhão</label>
                     <input value={editPlaca} onChange={e => setEditPlaca(e.target.value.toUpperCase())} className={IC} />
                   </div>
                   <div>
