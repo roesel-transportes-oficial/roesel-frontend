@@ -14,6 +14,7 @@ const MAPA_FROTA: Record<string, string> = {
   '4723': '4923/4723',
   '4923/4723': '4923/4723',
   '287': '287',
+  'S287': '287',
   '135': '135',
   'M005': 'M005',
   'M009': 'M009',
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
 REGRA PRINCIPAL — IDENTIFICAR O CLIENTE:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 O contrato tem dois lados:
-- CONTRATANTE = empresa cliente (quem paga). Ex: SADA, AUTOPORT, etc.
+- CONTRATANTE = empresa cliente (quem paga). Ex: SADA, AUTOPORT, BRAZUL, etc.
 - CONTRATADO = Carlos Alberto Roesel Transportes (nossa empresa — NUNCA é o cliente)
 
 O cliente pode aparecer como:
@@ -72,17 +73,17 @@ CAMPOS A EXTRAIR:
   - Número principal no cabeçalho do documento
 
 "data": data do CONTRATO (não prazo de entrega). Formato YYYY-MM-DD. Procure por:
-  - "Data de Pagamento:" 
+  - "Data de Pagamento:"
   - "Data Contrato:" (use ESTE se existir, é o mais confiável)
   - "Data:" no cabeçalho
-  NUNCA use "Prazo do Contrato" — esse é prazo de entrega, não data.
+  NUNCA use "Prazo do Contrato" — esse é prazo de entrega, não a data.
 
 "cliente_nome_completo": nome EXATO da empresa CONTRATANTE. Procure por:
   - Seção "CONTRATANTE" campo "Nome:"
   - Nome da empresa emitente no topo/cabeçalho
   NUNCA coloque Carlos Alberto Roesel ou variações.
 
-"cnpj": CNPJ do CONTRATANTE (cliente). Leia 14 dígitos um por um. 
+"cnpj": CNPJ do CONTRATANTE (cliente). Leia 14 dígitos um por um.
   - Pode estar no formato XX.XXX.XXX/XXXX-XX
   - Associado ao nome do cliente, não ao contratado
   - Se tiver dúvida retorne ""
@@ -93,7 +94,7 @@ CAMPOS A EXTRAIR:
   NUNCA coloque o nome da empresa.
 
 "placa": placa do caminhão/cavalo mecânico. Procure por:
-  - "Placa Cavalo Mecânico:" 
+  - "Placa Cavalo Mecânico:"
   - "Placa Caminhão:"
   - "Placa Cavalo:"
   Leia 7 caracteres um por um. Padrão antigo: 3 letras + 4 números. Padrão Mercosul: 3 letras + 1 número + 1 letra + 2 números.
@@ -105,12 +106,17 @@ CAMPOS A EXTRAIR:
   - "Placa Semirreboque:"
   Mesmas regras de leitura da placa acima.
 
-"frota": número após "Frota:". Pode ser 4 ou 5 dígitos.
+"frota": número após "Frota:" — pode conter letras como prefixo (ex: "S287", "M005").
 
 "fat_bruto": valor do frete. Procure por:
   - "Frete Contratado" (pode ter sinal + na frente)
   - "(+) Frete Contratado:"
-  Converta vírgula para ponto decimal. Ex: "8.527,22" → 8527.22, "6.706,67" → 6706.67
+  ATENÇÃO: em valores brasileiros a VÍRGULA é o separador DECIMAL e o PONTO é separador de milhar.
+  Ex: "22.878,98" → retorne "22878.98"
+  Ex: "8.527,22" → retorne "8527.22"
+  Ex: "6.706,67" → retorne "6706.67"
+  Ex: "22878,98" → retorne "22878.98"
+  Sempre retorne com ponto como decimal, sem pontos de milhar.
 
 "qtd_veiculos": quantidade de veículos. Procure por:
   - Campo "Quant.:"
@@ -168,9 +174,8 @@ JSON de retorno (retorne SOMENTE isso):
       parsed.cnpj = ''
     }
 
-    // Garante fat_bruto como número
+    // Garante fat_bruto como número com ponto decimal
     if (parsed.fat_bruto && typeof parsed.fat_bruto === 'string') {
-      // Remove pontos de milhar, converte vírgula decimal
       const limpo = parsed.fat_bruto.replace(/\./g, '').replace(',', '.')
       const num = parseFloat(limpo)
       if (!isNaN(num)) parsed.fat_bruto = String(num)
