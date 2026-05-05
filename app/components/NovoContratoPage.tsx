@@ -32,7 +32,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       })
       const data = await res.json()
       setClientes(Array.isArray(data) ? data : [])
-    } catch {}
+      return Array.isArray(data) ? data : []
+    } catch { return [] }
   }
 
   function handle(e: any) {
@@ -78,12 +79,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     const palavrasA = a.split(' ').filter(p => p.length > 3)
     const palavrasB = b.split(' ').filter(p => p.length > 3)
     const emComum = palavrasA.filter(p => palavrasB.some(pb =>
-      pb === p || (pb.length > 3 && p.length > 3 && (pb.slice(0,-1) === p.slice(0,-1)))
+      pb === p || (pb.length > 3 && p.length > 3 && pb.slice(0,-1) === p.slice(0,-1))
     ))
     return emComum.length >= 2
   }
 
-  function encontrarCliente(nomeIA: string, cnpjIA?: string, origemIA?: string) {
+  function encontrarClienteLista(lista: any[], nomeIA: string, cnpjIA?: string, origemIA?: string) {
     if (!nomeIA && !cnpjIA) return null
     const nomeNorm = nomeIA ? normalizar(nomeIA) : ''
 
@@ -91,7 +92,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     if (cnpjIA) {
       const cnpjLimpo = cnpjIA.replace(/\D/g, '')
       if (cnpjLimpo.length === 14) {
-        const found = clientes.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo)
+        const found = lista.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo)
         if (found && nomeNorm && nomesSaoParecidos(nomeIA, found.nome)) return found
       }
     }
@@ -99,7 +100,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     if (!nomeNorm) return null
 
     // 2. Match exato por nome com desempate por cidade
-    const todosExatos = clientes.filter(c => normalizar(c.nome) === nomeNorm)
+    const todosExatos = lista.filter(c => normalizar(c.nome) === nomeNorm)
     if (todosExatos.length === 1) return todosExatos[0]
     if (todosExatos.length > 1) {
       if (origemIA) {
@@ -121,7 +122,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     }
 
     // 3. Um contém o outro com desempate por cidade
-    const todosContem = clientes.filter(c => {
+    const todosContem = lista.filter(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
     })
@@ -139,7 +140,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     }
 
     // 4. Palavra por palavra com tolerância a OCR
-    const found = clientes.find(c => {
+    const found = lista.find(c => {
       const nomeCad = normalizar(c.nome)
       const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
       const palavrasCad = nomeCad.split(' ').filter(p => p.length > 2)
@@ -160,7 +161,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
     // 5. Similaridade alta
     let melhorScore = 0, melhorCliente = null
-    for (const c of clientes) {
+    for (const c of lista) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
       if (score > melhorScore && score > 0.85) { melhorScore = score; melhorCliente = c }
     }
@@ -172,12 +173,19 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     if (!file) return
     setLoadingIA(true); setErro('')
     try {
+      // Garante clientes carregados antes do matching
+      let clientesAtuais = clientes
+      if (clientesAtuais.length === 0) {
+        clientesAtuais = await fetchClientes()
+      }
+
       const base64 = await new Promise<string>((res, rej) => {
         const r = new FileReader()
         r.onload = () => res((r.result as string).split(',')[1])
         r.onerror = () => rej()
         r.readAsDataURL(file)
       })
+
       const response = await fetch('/api/ler-contrato', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -197,7 +205,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         return primeiroIA.length > 3 && primeiroIA === primeiroBanco
       })
 
-      const clienteEncontrado = encontrarCliente(
+      const clienteEncontrado = encontrarClienteLista(
+        clientesAtuais,
         parsed.cliente_nome_completo || parsed.cliente || '',
         parsed.cnpj || '',
         parsed.origem || ''
