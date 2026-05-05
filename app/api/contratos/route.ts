@@ -1,37 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { v4 as uuidv4 } from 'uuid'
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
+
+const headers = {
+  apikey: SUPABASE_KEY,
+  Authorization: `Bearer ${SUPABASE_KEY}`,
+  'Content-Type': 'application/json',
+  Prefer: 'return=representation',
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+    const id = uuidv4()
 
-    // Primeiro acorda o backend se necessário
-    try {
-      await fetch(`${API}/`, { method: 'GET', signal: AbortSignal.timeout(5000) })
-    } catch {}
-
-    const res = await fetch(`${API}/contratos/`, {
+    // Cria o contrato
+    const resContrato = await fetch(`${SUPABASE_URL}/rest/v1/contratos`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000), // 30 segundos
+      headers,
+      body: JSON.stringify({ ...body, id }),
     })
 
-    const text = await res.text()
-    console.log('Backend status:', res.status, 'Body:', text.slice(0, 200))
-
-    if (!res.ok) return NextResponse.json({ error: text }, { status: res.status })
-
-    try {
-      return NextResponse.json(JSON.parse(text))
-    } catch {
-      return NextResponse.json({ ok: true })
+    if (!resContrato.ok) {
+      const err = await resContrato.text()
+      return NextResponse.json({ error: err }, { status: resContrato.status })
     }
+
+    // Gera comissão automaticamente
+    const fatBruto = parseFloat(body.fat_bruto) || 0
+    let mes = 0, ano = 0
+    if (body.data) {
+      const partes = body.data.split('-')
+      ano = parseInt(partes[0])
+      mes = parseInt(partes[1])
+    }
+
+    const comissao = {
+      id: uuidv4(),
+      contrato_id: id,
+      contrato: body.contrato,
+      motorista: body.motorista,
+      data: body.data || null,
+      fat_bruto: fatBruto,
+      comissao_total: Math.round(fatBruto * 0.10 * 100) / 100,
+      comissao_carga: Math.round(fatBruto * 0.05 * 100) / 100,
+      comissao_folha: Math.round(fatBruto * 0.05 * 100) / 100,
+      carga_paga: false,
+      folha_paga: false,
+      mes,
+      ano,
+    }
+
+    await fetch(`${SUPABASE_URL}/rest/v1/comissoes`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(comissao),
+    })
+
+    return NextResponse.json({ id, ok: true })
   } catch (e: any) {
-    console.error('Route error:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
-
-export const maxDuration = 30
