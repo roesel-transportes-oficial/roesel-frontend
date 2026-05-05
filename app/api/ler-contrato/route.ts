@@ -46,49 +46,88 @@ export async function POST(req: NextRequest) {
           },
           {
             type: 'text',
-            text: `Analise este contrato de transporte rodoviário e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks.
+            text: `Analise este contrato de transporte rodoviário brasileiro e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem explicações.
 
-ESTRUTURA DO CONTRATO:
-- Seção "CONTRATANTE": empresa cliente (quem paga pelo serviço)
-- Seção "CONTRATADO": Carlos Alberto Roesel Transportes (nossa empresa — IGNORE para cliente/cnpj)
-- Seção "EQUIPAMENTOS DE TRANSPORTE": dados do caminhão e carreta
-- Seção "MOTORISTA": motorista pessoa física
-- Seção "SERVIÇOS CONTRATADOS": origem, destino, data, quantidade
-- Seção "PREÇO...": valores financeiros
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGRA PRINCIPAL — IDENTIFICAR O CLIENTE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+O contrato tem dois lados:
+- CONTRATANTE = empresa cliente (quem paga). Ex: SADA, AUTOPORT, etc.
+- CONTRATADO = Carlos Alberto Roesel Transportes (nossa empresa — NUNCA é o cliente)
 
+O cliente pode aparecer como:
+- Seção "CONTRATANTE" com campo "Nome:"
+- Empresa no cabeçalho/topo do documento (nome da empresa emitente)
+- Campo "Nome:" antes do CNPJ no início do contrato
+
+NUNCA coloque "Carlos Alberto Roesel" em nenhum campo.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CAMPOS A EXTRAIR:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-"motorista": pessoa física na seção MOTORISTA. NUNCA coloque Carlos Alberto Roesel Transportes.
+"contrato": número do contrato. Procure por:
+  - Número após "VIAGENS:" no título (ex: "VIAGENS: 48587238" → "48587238")
+  - Campo "Contrato:" (ex: "Contrato: 2026/284294-1" → "2026/284294-1")
+  - Número principal no cabeçalho do documento
 
-"cliente_nome_completo": nome EXATO da empresa na seção CONTRATANTE. NUNCA coloque Carlos Alberto Roesel.
+"data": data do CONTRATO (não prazo de entrega). Formato YYYY-MM-DD. Procure por:
+  - "Data de Pagamento:" 
+  - "Data Contrato:" (use ESTE se existir, é o mais confiável)
+  - "Data:" no cabeçalho
+  NUNCA use "Prazo do Contrato" — esse é prazo de entrega, não data.
 
-"cnpj": CNPJ na seção CONTRATANTE campo "CNPJ:". Leia 14 dígitos um por um. NÃO copie CNPJ do CONTRATADO. Se tiver dúvida retorne "".
+"cliente_nome_completo": nome EXATO da empresa CONTRATANTE. Procure por:
+  - Seção "CONTRATANTE" campo "Nome:"
+  - Nome da empresa emitente no topo/cabeçalho
+  NUNCA coloque Carlos Alberto Roesel ou variações.
 
-"placa": campo "Placa Cavalo Mecânico". ATENÇÃO: leia caractere por caractere da esquerda para a direita. Placas têm 7 caracteres: 3 letras + 1 número + 1 letra + 2 números (padrão Mercosul). Não confunda I/1, H/N, F/T, 0/O, 3/B.
+"cnpj": CNPJ do CONTRATANTE (cliente). Leia 14 dígitos um por um. 
+  - Pode estar no formato XX.XXX.XXX/XXXX-XX
+  - Associado ao nome do cliente, não ao contratado
+  - Se tiver dúvida retorne ""
 
-"placa_carreta": campo "Placa Semi-reboque". ATENÇÃO MÁXIMA: leia cada um dos 7 caracteres separadamente. Placas têm 3 letras seguidas de 4 dígitos (padrão antigo) OU 3 letras + 1 número + 1 letra + 2 números (Mercosul). Confusões comuns a EVITAR: H≠I, H≠N, F≠T, F≠P, 0≠O, 1≠I, 3≠B, 8≠B. Releia a placa duas vezes antes de responder.
+"motorista": nome da PESSOA FÍSICA motorista. Procure por:
+  - Seção "MOTORISTA" — campo com nome completo
+  - Seção "Motorista/Preposto" — campo "NOME:"
+  NUNCA coloque o nome da empresa.
 
-"frota": número após "Frota:".
+"placa": placa do caminhão/cavalo mecânico. Procure por:
+  - "Placa Cavalo Mecânico:" 
+  - "Placa Caminhão:"
+  - "Placa Cavalo:"
+  Leia 7 caracteres um por um. Padrão antigo: 3 letras + 4 números. Padrão Mercosul: 3 letras + 1 número + 1 letra + 2 números.
+  Não confunda: I↔1, H↔N, H↔I, F↔T, F↔P, 0↔O, 3↔B, 8↔B. Releia duas vezes.
 
-"fat_bruto": "Frete Contratado". Todos os dígitos, ponto decimal. Ex: 11851.28
+"placa_carreta": placa da carreta/semirreboque. Procure por:
+  - "Placa Semi-reboque:"
+  - "Placa Carreta:"
+  - "Placa Semirreboque:"
+  Mesmas regras de leitura da placa acima.
 
-"qtd_veiculos": campo "Quant.".
+"frota": número após "Frota:". Pode ser 4 ou 5 dígitos.
 
-"contrato": número após "VIAGENS:" ou "CONTRATO:" no título.
+"fat_bruto": valor do frete. Procure por:
+  - "Frete Contratado" (pode ter sinal + na frente)
+  - "(+) Frete Contratado:"
+  Converta vírgula para ponto decimal. Ex: "8.527,22" → 8527.22, "6.706,67" → 6706.67
 
-"origem": campo "Origem:".
+"qtd_veiculos": quantidade de veículos. Procure por:
+  - Campo "Quant.:"
+  - Campo "Veículos:" (pegue o número TOTAL, não por destino)
+  Retorne apenas o número inteiro.
 
-"destino": campo "Destino:".
+"origem": cidade e estado de origem. Ex: "IGARAPE - MG" ou "Cariacica / ES"
 
-"data": campo "Data de Pagamento" formato YYYY-MM-DD.
+"destino": cidade e estado de destino final. Ex: "DUQUE DE CAXIAS - RJ" ou "Contagem / MG"
 
-"status": sempre "ABERTO".
+"status": sempre "ABERTO"
+"chapa": sempre ""
+"obs": sempre ""
 
-"chapa": sempre "".
-
-"obs": sempre "".
-
-JSON de retorno:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+JSON de retorno (retorne SOMENTE isso):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {
   "motorista": "",
   "cliente_nome_completo": "",
@@ -117,6 +156,7 @@ JSON de retorno:
   try {
     const parsed = JSON.parse(text.trim())
 
+    // Converte frota pelo mapa
     if (parsed.frota) {
       const frotaLida = String(parsed.frota).trim()
       const frotaConvertida = MAPA_FROTA[frotaLida]
@@ -126,6 +166,19 @@ JSON de retorno:
     // Limpa CNPJ inválido
     if (parsed.cnpj && parsed.cnpj.replace(/\D/g, '').length < 14) {
       parsed.cnpj = ''
+    }
+
+    // Garante fat_bruto como número
+    if (parsed.fat_bruto && typeof parsed.fat_bruto === 'string') {
+      // Remove pontos de milhar, converte vírgula decimal
+      const limpo = parsed.fat_bruto.replace(/\./g, '').replace(',', '.')
+      const num = parseFloat(limpo)
+      if (!isNaN(num)) parsed.fat_bruto = String(num)
+    }
+
+    // Garante qtd_veiculos como inteiro
+    if (parsed.qtd_veiculos) {
+      parsed.qtd_veiculos = String(parseInt(String(parsed.qtd_veiculos)) || '')
     }
 
     return NextResponse.json(parsed)
