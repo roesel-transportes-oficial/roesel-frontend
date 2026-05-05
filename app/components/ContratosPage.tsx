@@ -34,10 +34,8 @@ export default function ContratosPage() {
 
   const [editData, setEditData] = useState('')
   const [editCliente, setEditCliente] = useState('')
-  const [editClienteNomeCompleto, setEditClienteNomeCompleto] = useState('')
   const [editCnpj, setEditCnpj] = useState('')
   const [editMotorista, setEditMotorista] = useState('')
-  const [editCpfMotorista, setEditCpfMotorista] = useState('')
   const [editPlaca, setEditPlaca] = useState('')
   const [editPlacaCarreta, setEditPlacaCarreta] = useState('')
   const [editFrota, setEditFrota] = useState('')
@@ -57,10 +55,7 @@ export default function ContratosPage() {
   }, [filtroMes, filtroAno])
 
   async function fetch_() {
-    const data = await contratosAPI.listar({
-      mes: filtroMes || undefined,
-      ano: filtroAno || undefined
-    })
+    const data = await contratosAPI.listar({ mes: filtroMes || undefined, ano: filtroAno || undefined })
     setContratos(data)
   }
 
@@ -76,10 +71,8 @@ export default function ContratosPage() {
     setSel(c)
     setEditData(c.data || '')
     setEditCliente(c.cliente || '')
-    setEditClienteNomeCompleto(c.cliente_nome_completo || '')
     setEditCnpj(c.cnpj || '')
     setEditMotorista(c.motorista || '')
-    setEditCpfMotorista(c.cpf_motorista || '')
     setEditPlaca(c.placa || '')
     setEditPlacaCarreta(c.placa_carreta || '')
     setEditFrota(c.frota || '')
@@ -104,10 +97,10 @@ export default function ContratosPage() {
     if (perm !== 'demo') await contratosAPI.atualizar(sel.id, {
       data: editData,
       cliente: editCliente,
-      cliente_nome_completo: editClienteNomeCompleto,
+      cliente_nome_completo: editCliente,
       cnpj: editCnpj,
       motorista: editMotorista,
-      cpf_motorista: editCpfMotorista,
+      cpf_motorista: sel.cpf_motorista || '',
       placa: editPlaca,
       placa_carreta: editPlacaCarreta,
       frota: editFrota,
@@ -191,11 +184,6 @@ export default function ContratosPage() {
               </div>
 
               <div>
-                <label className={LabelClass}>Cliente Nome Completo</label>
-                <input value={editClienteNomeCompleto} onChange={e => setEditClienteNomeCompleto(e.target.value)} className={InputClass} />
-              </div>
-
-              <div>
                 <label className={LabelClass}>CNPJ</label>
                 <input value={editCnpj} onChange={e => setEditCnpj(e.target.value)} className={InputClass} />
               </div>
@@ -206,11 +194,6 @@ export default function ContratosPage() {
                   <option value="">Selecione...</option>
                   {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
                 </select>
-              </div>
-
-              <div>
-                <label className={LabelClass}>CPF Motorista</label>
-                <input value={editCpfMotorista} onChange={e => setEditCpfMotorista(e.target.value)} className={InputClass} />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -338,7 +321,6 @@ export default function ContratosPage() {
               </div>
               <p className="text-2xl font-bold text-gray-900">{filtrados.length}</p>
             </div>
-
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center">
@@ -350,7 +332,6 @@ export default function ContratosPage() {
                 {totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
               </p>
             </div>
-
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 bg-yellow-100 rounded-lg flex items-center justify-center">
@@ -360,7 +341,6 @@ export default function ContratosPage() {
               </div>
               <p className="text-2xl font-bold text-yellow-600">{abertos}</p>
             </div>
-
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-7 h-7 bg-green-100 rounded-lg flex items-center justify-center">
