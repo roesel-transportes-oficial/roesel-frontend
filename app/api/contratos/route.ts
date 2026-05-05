@@ -15,12 +15,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const id = crypto.randomUUID()
 
-    // Monta payload apenas com campos conhecidos da tabela contratos
     const contrato = {
       id,
       motorista: body.motorista || '',
       cliente: body.cliente || '',
-      cliente_nome_completo: body.cliente_nome_completo || '',
+      cliente_nome_completo: body.cliente_nome_completo || body.cliente || '',
       cnpj: body.cnpj || '',
       placa: body.placa || '',
       placa_carreta: body.placa_carreta || '',
@@ -46,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     if (!resContrato.ok) {
       const err = await resContrato.text()
-      console.error('Supabase contratos error:', err)
+      console.error('Supabase error:', err)
       return NextResponse.json({ error: err }, { status: resContrato.status })
     }
 
@@ -61,31 +60,25 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    const comissao = {
-      id: crypto.randomUUID(),
-      contrato_id: id,
-      contrato: body.contrato,
-      motorista: body.motorista,
-      data: body.data || null,
-      fat_bruto: fatBruto,
-      comissao_total: Math.round(fatBruto * 0.10 * 100) / 100,
-      comissao_carga: Math.round(fatBruto * 0.05 * 100) / 100,
-      comissao_folha: Math.round(fatBruto * 0.05 * 100) / 100,
-      carga_paga: false,
-      folha_paga: false,
-      mes,
-      ano,
-    }
-
-    const resComissao = await fetch(`${SUPABASE_URL}/rest/v1/comissoes`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/comissoes`, {
       method: 'POST',
       headers: sbHeaders,
-      body: JSON.stringify(comissao),
+      body: JSON.stringify({
+        id: crypto.randomUUID(),
+        contrato_id: id,
+        contrato: body.contrato,
+        motorista: body.motorista,
+        data: body.data || null,
+        fat_bruto: fatBruto,
+        comissao_total: Math.round(fatBruto * 0.10 * 100) / 100,
+        comissao_carga: Math.round(fatBruto * 0.05 * 100) / 100,
+        comissao_folha: Math.round(fatBruto * 0.05 * 100) / 100,
+        carga_paga: false,
+        folha_paga: false,
+        mes,
+        ano,
+      }),
     })
-
-    if (!resComissao.ok) {
-      console.error('Supabase comissoes error:', await resComissao.text())
-    }
 
     return NextResponse.json({ id, ok: true })
   } catch (e: any) {
