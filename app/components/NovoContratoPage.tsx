@@ -223,20 +223,27 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
   }
 
-  async function salvar(e: any) {
-    e.preventDefault(); setLoading(true); setErro('')
-    try {
-      const payload: any = { ...form }
-      payload.fat_bruto = parseFloat(payload.fat_bruto) || 0
-      payload.chapa = parseFloat(payload.chapa) || 0
-      payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
-      payload.placa_carreta = payload.placa_carreta || ''
-      if (!payload.data) delete payload.data
-      if (!payload.dt_pagamento) delete payload.dt_pagamento
-      await contratosAPI.criar(payload)
-      setAba('contratos')
-    } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
-  }
+ async function salvar(e: any) {
+  e.preventDefault(); setLoading(true); setErro('')
+  try {
+    const payload: any = { ...form }
+    payload.fat_bruto = parseFloat(payload.fat_bruto) || 0
+    payload.chapa = parseFloat(payload.chapa) || 0
+    payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
+    payload.placa_carreta = payload.placa_carreta || ''
+    if (!payload.data) delete payload.data
+    if (!payload.dt_pagamento) delete payload.dt_pagamento
+
+    // Chama a API route do Next.js em vez do backend direto
+    const res = await fetch('/api/contratos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) throw new Error(await res.text())
+    setAba('contratos')
+  } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
+}
 
   function clienteSelectValue() {
     const c = clientes.find(c => c.nome === form.cliente && formatCnpj(c.cnpj || '') === form.cnpj)
