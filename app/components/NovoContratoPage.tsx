@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { contratosAPI, motoristasAPI } from '../services/api'
+import { contratosAPI, motoristasAPI, caminhoesAPI } from '../services/api'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -8,6 +8,8 @@ const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => void }) {
   const [motoristas, setMotoristas] = useState<any[]>([])
   const [clientes, setClientes] = useState<any[]>([])
+  const [caminhoes, setCaminhoes] = useState<any[]>([])
+  const [carretas, setCarretas] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingIA, setLoadingIA] = useState(false)
   const [erro, setErro] = useState('')
@@ -23,6 +25,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   useEffect(() => {
     motoristasAPI.listar().then(setMotoristas).catch(() => {})
     fetchClientes()
+    caminhoesAPI.listar().then(setCaminhoes).catch(() => {})
+    fetchCarretas()
   }, [])
 
   async function fetchClientes() {
@@ -34,6 +38,16 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       setClientes(Array.isArray(data) ? data : [])
       return Array.isArray(data) ? data : []
     } catch { return [] }
+  }
+
+  async function fetchCarretas() {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/carretas?order=placa.asc`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      })
+      const data = await res.json()
+      setCarretas(Array.isArray(data) ? data : [])
+    } catch {}
   }
 
   function handle(e: any) {
@@ -67,15 +81,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     const longer = a.length > b.length ? a : b
     const shorter = a.length > b.length ? b : a
     let matches = 0
-    for (let i = 0; i < shorter.length; i++) {
-      if (longer.includes(shorter[i])) matches++
-    }
+    for (let i = 0; i < shorter.length; i++) { if (longer.includes(shorter[i])) matches++ }
     return matches / longer.length
   }
 
   function nomesSaoParecidos(nomeA: string, nomeB: string): boolean {
-    const a = normalizar(nomeA)
-    const b = normalizar(nomeB)
+    const a = normalizar(nomeA); const b = normalizar(nomeB)
     const palavrasA = a.split(' ').filter(p => p.length > 3)
     const palavrasB = b.split(' ').filter(p => p.length > 3)
     const emComum = palavrasA.filter(p => palavrasB.some(pb =>
@@ -87,8 +98,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   function encontrarClienteLista(lista: any[], nomeIA: string, cnpjIA?: string, origemIA?: string) {
     if (!nomeIA && !cnpjIA) return null
     const nomeNorm = nomeIA ? normalizar(nomeIA) : ''
-
-    // 1. Match por CNPJ — só aceita se o nome também for parecido
     if (cnpjIA) {
       const cnpjLimpo = cnpjIA.replace(/\D/g, '')
       if (cnpjLimpo.length === 14) {
@@ -96,32 +105,19 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         if (found && nomeNorm && nomesSaoParecidos(nomeIA, found.nome)) return found
       }
     }
-
     if (!nomeNorm) return null
-
-    // 2. Match exato por nome com desempate por cidade
     const todosExatos = lista.filter(c => normalizar(c.nome) === nomeNorm)
     if (todosExatos.length === 1) return todosExatos[0]
     if (todosExatos.length > 1) {
       if (origemIA) {
         const cidadeOrigem = normalizar(origemIA.split('-')[0].trim())
         const porCidade = todosExatos.find(c =>
-          normalizar(c.cidade || '').includes(cidadeOrigem) ||
-          cidadeOrigem.includes(normalizar(c.cidade || ''))
+          normalizar(c.cidade || '').includes(cidadeOrigem) || cidadeOrigem.includes(normalizar(c.cidade || ''))
         )
         if (porCidade) return porCidade
       }
-      if (cnpjIA) {
-        const cnpjParcial = cnpjIA.replace(/\D/g, '').slice(0, 8)
-        const porCnpj = todosExatos.find(c =>
-          (c.cnpj || '').replace(/\D/g, '').startsWith(cnpjParcial)
-        )
-        if (porCnpj) return porCnpj
-      }
       return todosExatos[0]
     }
-
-    // 3. Um contém o outro com desempate por cidade
     const todosContem = lista.filter(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
@@ -131,15 +127,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       if (origemIA) {
         const cidadeOrigem = normalizar(origemIA.split('-')[0].trim())
         const porCidade = todosContem.find(c =>
-          normalizar(c.cidade || '').includes(cidadeOrigem) ||
-          cidadeOrigem.includes(normalizar(c.cidade || ''))
+          normalizar(c.cidade || '').includes(cidadeOrigem) || cidadeOrigem.includes(normalizar(c.cidade || ''))
         )
         if (porCidade) return porCidade
       }
       return todosContem[0]
     }
-
-    // 4. Palavra por palavra com tolerância a OCR
     const found = lista.find(c => {
       const nomeCad = normalizar(c.nome)
       const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
@@ -158,8 +151,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       return matches.length >= Math.max(2, Math.floor(palavrasIA.length * 0.6))
     })
     if (found) return found
-
-    // 5. Similaridade alta
     let melhorScore = 0, melhorCliente = null
     for (const c of lista) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
@@ -168,16 +159,31 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return melhorCliente
   }
 
+  // Encontra caminhão pela placa lida pela IA
+  function encontrarCaminhao(placaIA: string) {
+    if (!placaIA) return null
+    const placa = placaIA.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+    return caminhoes.find(c =>
+      c.placa?.replace(/[^A-Z0-9]/gi, '').toUpperCase() === placa
+    ) || null
+  }
+
+  // Encontra carreta pela placa lida pela IA
+  function encontrarCarreta(placaIA: string) {
+    if (!placaIA) return null
+    const placa = placaIA.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+    return carretas.find(c =>
+      c.placa?.replace(/[^A-Z0-9]/gi, '').toUpperCase() === placa
+    ) || null
+  }
+
   async function lerComIA(e: any) {
     const file = e.target.files?.[0]
     if (!file) return
     setLoadingIA(true); setErro('')
     try {
-      // Garante clientes carregados antes do matching
       let clientesAtuais = clientes
-      if (clientesAtuais.length === 0) {
-        clientesAtuais = await fetchClientes()
-      }
+      if (clientesAtuais.length === 0) clientesAtuais = await fetchClientes()
 
       const base64 = await new Promise<string>((res, rej) => {
         const r = new FileReader()
@@ -208,42 +214,46 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       const clienteEncontrado = encontrarClienteLista(
         clientesAtuais,
         parsed.cliente_nome_completo || parsed.cliente || '',
-        parsed.cnpj || '',
-        parsed.origem || ''
+        parsed.cnpj || '', parsed.origem || ''
       )
+
+      // Tenta encontrar caminhão e carreta nos cadastros
+      const caminhaoEncontrado = encontrarCaminhao(parsed.placa || '')
+      const carretaEncontrada = encontrarCarreta(parsed.placa_carreta || '')
 
       setForm(f => ({
         ...f,
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
-        motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
+        motorista: motoristaEncontrado ? motoristaEncontrado.nome : (parsed.motorista || ''),
         cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
         cnpj: clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : parsed.cnpj ? formatCnpj(parsed.cnpj) : '',
+        // Usa placa do cadastro se encontrou, senão mantém o que a IA leu
+        placa: caminhaoEncontrado ? caminhaoEncontrado.placa : (parsed.placa || ''),
+        placa_carreta: carretaEncontrada ? carretaEncontrada.placa : (parsed.placa_carreta || ''),
       }))
     } catch { setErro('Não foi possível ler o documento. Preencha manualmente.') }
     finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
   }
 
- async function salvar(e: any) {
-  e.preventDefault(); setLoading(true); setErro('')
-  try {
-    const payload: any = { ...form }
-    payload.fat_bruto = parseFloat(payload.fat_bruto) || 0
-    payload.chapa = parseFloat(payload.chapa) || 0
-    payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
-    payload.placa_carreta = payload.placa_carreta || ''
-    if (!payload.data) delete payload.data
-    if (!payload.dt_pagamento) delete payload.dt_pagamento
-
-    // Chama a API route do Next.js em vez do backend direto
-    const res = await fetch('/api/contratos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) throw new Error(await res.text())
-    setAba('contratos')
-  } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
-}
+  async function salvar(e: any) {
+    e.preventDefault(); setLoading(true); setErro('')
+    try {
+      const payload: any = { ...form }
+      payload.fat_bruto = parseFloat(payload.fat_bruto) || 0
+      payload.chapa = parseFloat(payload.chapa) || 0
+      payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
+      payload.placa_carreta = payload.placa_carreta || ''
+      if (!payload.data) delete payload.data
+      if (!payload.dt_pagamento) delete payload.dt_pagamento
+      const res = await fetch('/api/contratos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setAba('contratos')
+    } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
+  }
 
   function clienteSelectValue() {
     const c = clientes.find(c => c.nome === form.cliente && formatCnpj(c.cnpj || '') === form.cnpj)
@@ -254,6 +264,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   }
 
   const IC = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+  const ICwarn = "w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50"
 
   return (
     <div className="p-6 max-w-4xl">
@@ -309,14 +320,31 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           </div>
         </div>
 
+        {/* Placas — dropdowns com cadastrados */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Placa do Caminhão</label>
-            <input name="placa" value={form.placa} onChange={handle} className={IC} />
+            <select name="placa" value={form.placa} onChange={handle} className={form.placa && !caminhoes.find(c => c.placa === form.placa) ? ICwarn : IC}>
+              <option value="">Selecione...</option>
+              {caminhoes.map(c => (
+                <option key={c.id} value={c.placa}>{c.placa}{c.modelo ? ` · ${c.modelo}` : ''}</option>
+              ))}
+            </select>
+            {form.placa && !caminhoes.find(c => c.placa === form.placa) && (
+              <p className="text-xs text-orange-500 mt-1">⚠️ Placa lida pela IA não encontrada no cadastro — selecione manualmente</p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Placa da Carreta</label>
-            <input name="placa_carreta" value={form.placa_carreta} onChange={handle} className={IC} />
+            <select name="placa_carreta" value={form.placa_carreta} onChange={handle} className={form.placa_carreta && !carretas.find(c => c.placa === form.placa_carreta) ? ICwarn : IC}>
+              <option value="">Selecione...</option>
+              {carretas.map(c => (
+                <option key={c.id} value={c.placa}>{c.placa}{c.modelo ? ` · ${c.modelo}` : ''}</option>
+              ))}
+            </select>
+            {form.placa_carreta && !carretas.find(c => c.placa === form.placa_carreta) && (
+              <p className="text-xs text-orange-500 mt-1">⚠️ Placa lida pela IA não encontrada no cadastro — selecione manualmente</p>
+            )}
           </div>
         </div>
 
