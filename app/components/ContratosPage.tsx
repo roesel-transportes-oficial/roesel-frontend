@@ -6,8 +6,11 @@ import { Search, Save, Trash2, ChevronRight, ArrowLeft, FileText, DollarSign, Ch
 
 interface Contrato {
   id: string; contrato: string; data: string; cliente: string
-  motorista: string; placa: string; frota: string; origem: string
-  destino: string; fat_bruto: number; status: string; obs: string
+  cliente_nome_completo: string; cnpj: string; motorista: string
+  cpf_motorista: string; placa: string; placa_carreta: string
+  frota: string; origem: string; destino: string; fat_bruto: number
+  qtd_veiculos: number; chapa: number; status: string; obs: string
+  adiantamento_pago: boolean; dt_pagamento: string
 }
 
 interface Motorista { id: string; nome: string }
@@ -31,14 +34,22 @@ export default function ContratosPage() {
 
   const [editData, setEditData] = useState('')
   const [editCliente, setEditCliente] = useState('')
+  const [editClienteNomeCompleto, setEditClienteNomeCompleto] = useState('')
+  const [editCnpj, setEditCnpj] = useState('')
   const [editMotorista, setEditMotorista] = useState('')
+  const [editCpfMotorista, setEditCpfMotorista] = useState('')
   const [editPlaca, setEditPlaca] = useState('')
+  const [editPlacaCarreta, setEditPlacaCarreta] = useState('')
   const [editFrota, setEditFrota] = useState('')
   const [editOrigem, setEditOrigem] = useState('')
   const [editDestino, setEditDestino] = useState('')
   const [editFatBruto, setEditFatBruto] = useState('')
+  const [editQtdVeiculos, setEditQtdVeiculos] = useState('')
+  const [editChapa, setEditChapa] = useState('')
   const [editStatus, setEditStatus] = useState('ABERTO')
   const [editObs, setEditObs] = useState('')
+  const [editAdiantamentoPago, setEditAdiantamentoPago] = useState(false)
+  const [editDtPagamento, setEditDtPagamento] = useState('')
 
   useEffect(() => {
     fetch_()
@@ -65,14 +76,22 @@ export default function ContratosPage() {
     setSel(c)
     setEditData(c.data || '')
     setEditCliente(c.cliente || '')
+    setEditClienteNomeCompleto(c.cliente_nome_completo || '')
+    setEditCnpj(c.cnpj || '')
     setEditMotorista(c.motorista || '')
+    setEditCpfMotorista(c.cpf_motorista || '')
     setEditPlaca(c.placa || '')
+    setEditPlacaCarreta(c.placa_carreta || '')
     setEditFrota(c.frota || '')
     setEditOrigem(c.origem || '')
     setEditDestino(c.destino || '')
     setEditFatBruto(String(c.fat_bruto || ''))
+    setEditQtdVeiculos(String(c.qtd_veiculos || ''))
+    setEditChapa(String(c.chapa || ''))
     setEditStatus(c.status || 'ABERTO')
     setEditObs(c.obs || '')
+    setEditAdiantamentoPago(c.adiantamento_pago || false)
+    setEditDtPagamento(c.dt_pagamento || '')
     setConfirmExcluir(false)
   }
 
@@ -83,10 +102,24 @@ export default function ContratosPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') await contratosAPI.atualizar(sel.id, {
-      data: editData, cliente: editCliente, motorista: editMotorista,
-      placa: editPlaca, frota: editFrota, origem: editOrigem,
-      destino: editDestino, fat_bruto: parseFloat(editFatBruto) || 0,
-      status: editStatus, obs: editObs
+      data: editData,
+      cliente: editCliente,
+      cliente_nome_completo: editClienteNomeCompleto,
+      cnpj: editCnpj,
+      motorista: editMotorista,
+      cpf_motorista: editCpfMotorista,
+      placa: editPlaca,
+      placa_carreta: editPlacaCarreta,
+      frota: editFrota,
+      origem: editOrigem,
+      destino: editDestino,
+      fat_bruto: parseFloat(editFatBruto) || 0,
+      qtd_veiculos: parseInt(editQtdVeiculos) || 0,
+      chapa: parseInt(editChapa) || 0,
+      status: editStatus,
+      obs: editObs,
+      adiantamento_pago: editAdiantamentoPago,
+      dt_pagamento: editDtPagamento || null,
     })
     await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
   }
@@ -136,6 +169,7 @@ export default function ContratosPage() {
             </div>
 
             <div className="p-5 space-y-4">
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LabelClass}>Data</label>
@@ -157,6 +191,16 @@ export default function ContratosPage() {
               </div>
 
               <div>
+                <label className={LabelClass}>Cliente Nome Completo</label>
+                <input value={editClienteNomeCompleto} onChange={e => setEditClienteNomeCompleto(e.target.value)} className={InputClass} />
+              </div>
+
+              <div>
+                <label className={LabelClass}>CNPJ</label>
+                <input value={editCnpj} onChange={e => setEditCnpj(e.target.value)} className={InputClass} />
+              </div>
+
+              <div>
                 <label className={LabelClass}>Motorista</label>
                 <select value={editMotorista} onChange={e => setEditMotorista(e.target.value)} className={InputClass}>
                   <option value="">Selecione...</option>
@@ -164,14 +208,30 @@ export default function ContratosPage() {
                 </select>
               </div>
 
+              <div>
+                <label className={LabelClass}>CPF Motorista</label>
+                <input value={editCpfMotorista} onChange={e => setEditCpfMotorista(e.target.value)} className={InputClass} />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={LabelClass}>Placa</label>
+                  <label className={LabelClass}>Placa Cavalo</label>
                   <input value={editPlaca} onChange={e => setEditPlaca(e.target.value.toUpperCase())} className={InputClass} />
                 </div>
                 <div>
+                  <label className={LabelClass}>Placa Carreta</label>
+                  <input value={editPlacaCarreta} onChange={e => setEditPlacaCarreta(e.target.value.toUpperCase())} className={InputClass} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className={LabelClass}>Frota</label>
                   <input value={editFrota} onChange={e => setEditFrota(e.target.value)} className={InputClass} />
+                </div>
+                <div>
+                  <label className={LabelClass}>Qtd. Veículos</label>
+                  <input type="number" value={editQtdVeiculos} onChange={e => setEditQtdVeiculos(e.target.value)} className={InputClass} />
                 </div>
               </div>
 
@@ -186,9 +246,33 @@ export default function ContratosPage() {
                 </div>
               </div>
 
-              <div>
-                <label className={LabelClass}>Faturamento Bruto (R$)</label>
-                <input type="number" value={editFatBruto} onChange={e => setEditFatBruto(e.target.value)} className={InputClass} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LabelClass}>Frete Contratado (R$)</label>
+                  <input type="number" value={editFatBruto} onChange={e => setEditFatBruto(e.target.value)} className={InputClass} />
+                </div>
+                <div>
+                  <label className={LabelClass}>Chapa (R$)</label>
+                  <input type="number" value={editChapa} onChange={e => setEditChapa(e.target.value)} className={InputClass} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LabelClass}>Data Pagamento</label>
+                  <input type="date" value={editDtPagamento} onChange={e => setEditDtPagamento(e.target.value)} className={InputClass} />
+                </div>
+                <div className="flex flex-col justify-end pb-1">
+                  <label className="flex items-center gap-2 cursor-pointer mt-5">
+                    <input
+                      type="checkbox"
+                      checked={editAdiantamentoPago}
+                      onChange={e => setEditAdiantamentoPago(e.target.checked)}
+                      className="w-4 h-4 accent-red-600"
+                    />
+                    <span className={LabelClass}>Adiantamento Pago</span>
+                  </label>
+                </div>
               </div>
 
               <div>
@@ -321,6 +405,7 @@ export default function ContratosPage() {
                   <p className="text-xs text-gray-400 mt-0.5">
                     {fmtData(c.data)}
                     {c.origem && c.destino && ` · ${c.origem} → ${c.destino}`}
+                    {c.placa_carreta && ` · Carreta: ${c.placa_carreta}`}
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
