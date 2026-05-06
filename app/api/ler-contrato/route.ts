@@ -111,12 +111,18 @@ CAMPOS A EXTRAIR:
 "fat_bruto": valor do frete. Procure por:
   - "Frete Contratado" (pode ter sinal + na frente)
   - "(+) Frete Contratado:"
-  ATENÇÃO: em valores brasileiros a VÍRGULA é o separador DECIMAL e o PONTO é separador de milhar.
-  Ex: "22.878,98" → retorne "22878.98"
-  Ex: "8.527,22" → retorne "8527.22"
-  Ex: "6.706,67" → retorne "6706.67"
-  Ex: "22878,98" → retorne "22878.98"
-  Sempre retorne com ponto como decimal, sem pontos de milhar.
+  ATENÇÃO MÁXIMA AO FORMATO BRASILEIRO:
+  - A VÍRGULA é o separador DECIMAL (últimos 2 dígitos são centavos)
+  - O PONTO é separador de MILHAR (ignore-o)
+  - SEMPRE retorne com ponto como decimal e SEMPRE com 2 casas decimais
+  Exemplos obrigatórios:
+    "22.878,98" → "22878.98"  ✅
+    "8.527,22"  → "8527.22"   ✅
+    "6.706,67"  → "6706.67"   ✅
+    "2.741,19"  → "2741.19"   ✅
+    "274119"    → ERRADO ❌ (perdeu a vírgula decimal)
+    "2741,19"   → "2741.19"   ✅
+  Se o valor no documento for "2.741,19", retorne "2741.19", NUNCA "274119".
 
 "qtd_veiculos": quantidade de veículos. Procure por:
   - Campo "Quant.:"
@@ -159,6 +165,7 @@ JSON de retorno (retorne SOMENTE isso):
 
   const data = await response.json()
   const text = data.content?.[0]?.text || '{}'
+
   try {
     const parsed = JSON.parse(text.trim())
 
@@ -175,9 +182,16 @@ JSON de retorno (retorne SOMENTE isso):
     }
 
     // Garante fat_bruto como número com ponto decimal
-    if (parsed.fat_bruto && typeof parsed.fat_bruto === 'string') {
-      const limpo = parsed.fat_bruto.replace(/\./g, '').replace(',', '.')
-      const num = parseFloat(limpo)
+    if (parsed.fat_bruto !== undefined && parsed.fat_bruto !== '') {
+      let val = String(parsed.fat_bruto).trim()
+      if (!val.includes('.') && !val.includes(',') && val.length > 2) {
+        // Sem separador nenhum: assume últimos 2 dígitos são centavos
+        val = val.slice(0, -2) + '.' + val.slice(-2)
+      } else {
+        // Remove pontos de milhar, converte vírgula decimal
+        val = val.replace(/\./g, '').replace(',', '.')
+      }
+      const num = parseFloat(val)
       if (!isNaN(num)) parsed.fat_bruto = String(num)
     }
 
