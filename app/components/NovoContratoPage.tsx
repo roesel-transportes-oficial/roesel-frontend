@@ -162,14 +162,13 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return melhorCliente
   }
 
-  // Normaliza placa para comparação (remove não alfanuméricos e confusões OCR)
+  // ── MATCHING DE PLACAS ──
   function normalizaPlaca(p: string) {
     return p.replace(/[^A-Z0-9]/gi, '').toUpperCase()
       .replace(/O/g, '0')
       .replace(/I/g, '1')
   }
 
-  // Conta caracteres diferentes entre duas strings de mesmo tamanho
   function diffChars(a: string, b: string): number {
     if (a.length !== b.length) return 99
     let diff = 0
@@ -177,24 +176,36 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return diff
   }
 
-  function encontrarCaminhao(placaIA: string) {
+  function encontrarPorPlaca(lista: any[], placaIA: string): any | null {
     if (!placaIA) return null
     const placaNorm = normalizaPlaca(placaIA)
+
     // 1. Match exato normalizado
-    const exato = caminhoes.find(c => normalizaPlaca(c.placa) === placaNorm)
+    const exato = lista.find(c => normalizaPlaca(c.placa) === placaNorm)
     if (exato) return exato
-    // 2. Tolerância de 1 caractere (erros de OCR)
-    const proximo = caminhoes.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
-    return proximo || null
+
+    // 2. Tolerância de 1 caractere
+    const umChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
+    if (umChar) return umChar
+
+    // 3. Match pelos últimos 4 caracteres (parte numérica — mais confiável no OCR)
+    if (placaNorm.length >= 4) {
+      const sufixo = placaNorm.slice(-4)
+      const porSufixo = lista.find(c => normalizaPlaca(c.placa).endsWith(sufixo))
+      if (porSufixo) return porSufixo
+    }
+
+    // 4. Tolerância de 2 caracteres (último recurso)
+    const doisChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 2)
+    return doisChar || null
+  }
+
+  function encontrarCaminhao(placaIA: string) {
+    return encontrarPorPlaca(caminhoes, placaIA)
   }
 
   function encontrarCarreta(placaIA: string) {
-    if (!placaIA) return null
-    const placaNorm = normalizaPlaca(placaIA)
-    const exato = carretas.find(c => normalizaPlaca(c.placa) === placaNorm)
-    if (exato) return exato
-    const proximo = carretas.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
-    return proximo || null
+    return encontrarPorPlaca(carretas, placaIA)
   }
 
   async function lerComIA(e: any) {
@@ -241,7 +252,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       const caminhaoEncontrado = encontrarCaminhao(parsed.placa || '')
       const carretaEncontrada = encontrarCarreta(parsed.placa_carreta || '')
 
-      // Guarda o que a IA leu para mostrar como dica
       setPlacaLidaIA(parsed.placa || '')
       setPlacaCarretaLidaIA(parsed.placa_carreta || '')
 
