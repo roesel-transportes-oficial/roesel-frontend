@@ -15,6 +15,9 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const [erro, setErro] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const [placaLidaIA, setPlacaLidaIA] = useState('')
+  const [placaCarretaLidaIA, setPlacaCarretaLidaIA] = useState('')
+
   const [form, setForm] = useState({
     motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
     frota: '', contrato: '', data: '', fat_bruto: '', chapa: '',
@@ -159,28 +162,46 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return melhorCliente
   }
 
-  // Encontra caminhão pela placa lida pela IA
-  function encontrarCaminhao(placaIA: string) {
-    if (!placaIA) return null
-    const placa = placaIA.replace(/[^A-Z0-9]/gi, '').toUpperCase()
-    return caminhoes.find(c =>
-      c.placa?.replace(/[^A-Z0-9]/gi, '').toUpperCase() === placa
-    ) || null
+  // Normaliza placa para comparação (remove não alfanuméricos e confusões OCR)
+  function normalizaPlaca(p: string) {
+    return p.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+      .replace(/O/g, '0')
+      .replace(/I/g, '1')
   }
 
-  // Encontra carreta pela placa lida pela IA
+  // Conta caracteres diferentes entre duas strings de mesmo tamanho
+  function diffChars(a: string, b: string): number {
+    if (a.length !== b.length) return 99
+    let diff = 0
+    for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) diff++ }
+    return diff
+  }
+
+  function encontrarCaminhao(placaIA: string) {
+    if (!placaIA) return null
+    const placaNorm = normalizaPlaca(placaIA)
+    // 1. Match exato normalizado
+    const exato = caminhoes.find(c => normalizaPlaca(c.placa) === placaNorm)
+    if (exato) return exato
+    // 2. Tolerância de 1 caractere (erros de OCR)
+    const proximo = caminhoes.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
+    return proximo || null
+  }
+
   function encontrarCarreta(placaIA: string) {
     if (!placaIA) return null
-    const placa = placaIA.replace(/[^A-Z0-9]/gi, '').toUpperCase()
-    return carretas.find(c =>
-      c.placa?.replace(/[^A-Z0-9]/gi, '').toUpperCase() === placa
-    ) || null
+    const placaNorm = normalizaPlaca(placaIA)
+    const exato = carretas.find(c => normalizaPlaca(c.placa) === placaNorm)
+    if (exato) return exato
+    const proximo = carretas.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
+    return proximo || null
   }
 
   async function lerComIA(e: any) {
     const file = e.target.files?.[0]
     if (!file) return
     setLoadingIA(true); setErro('')
+    setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
     try {
       let clientesAtuais = clientes
       if (clientesAtuais.length === 0) clientesAtuais = await fetchClientes()
@@ -217,9 +238,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         parsed.cnpj || '', parsed.origem || ''
       )
 
-      // Tenta encontrar caminhão e carreta nos cadastros
       const caminhaoEncontrado = encontrarCaminhao(parsed.placa || '')
       const carretaEncontrada = encontrarCarreta(parsed.placa_carreta || '')
+
+      // Guarda o que a IA leu para mostrar como dica
+      setPlacaLidaIA(parsed.placa || '')
+      setPlacaCarretaLidaIA(parsed.placa_carreta || '')
 
       setForm(f => ({
         ...f,
@@ -227,9 +251,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         motorista: motoristaEncontrado ? motoristaEncontrado.nome : (parsed.motorista || ''),
         cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
         cnpj: clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : parsed.cnpj ? formatCnpj(parsed.cnpj) : '',
-        // Usa placa do cadastro se encontrou, senão mantém o que a IA leu
-        placa: caminhaoEncontrado ? caminhaoEncontrado.placa : (parsed.placa || ''),
-        placa_carreta: carretaEncontrada ? carretaEncontrada.placa : (parsed.placa_carreta || ''),
+        placa: caminhaoEncontrado ? caminhaoEncontrado.placa : '',
+        placa_carreta: carretaEncontrada ? carretaEncontrada.placa : '',
       }))
     } catch { setErro('Não foi possível ler o documento. Preencha manualmente.') }
     finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
@@ -264,7 +287,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   }
 
   const IC = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-  const ICwarn = "w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-orange-50"
+  const ICwarn = "w-full border border-orange-300 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
 
   return (
     <div className="p-6 max-w-4xl">
@@ -283,6 +306,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       {erro && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg text-sm">{erro}</div>}
 
       <form onSubmit={salvar} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Motorista *</label>
@@ -320,30 +344,42 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           </div>
         </div>
 
-        {/* Placas — dropdowns com cadastrados */}
+        {/* Placas */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Placa do Caminhão</label>
-            <select name="placa" value={form.placa} onChange={handle} className={form.placa && !caminhoes.find(c => c.placa === form.placa) ? ICwarn : IC}>
+            <select name="placa" value={form.placa} onChange={handle} className={form.placa ? IC : ICwarn}>
               <option value="">Selecione...</option>
               {caminhoes.map(c => (
                 <option key={c.id} value={c.placa}>{c.placa}{c.modelo ? ` · ${c.modelo}` : ''}</option>
               ))}
             </select>
-            {form.placa && !caminhoes.find(c => c.placa === form.placa) && (
-              <p className="text-xs text-orange-500 mt-1">⚠️ Placa lida pela IA não encontrada no cadastro — selecione manualmente</p>
+            {placaLidaIA && (
+              <p className="text-xs mt-1 text-gray-400">
+                IA leu: <span className="font-mono font-semibold text-gray-600">{placaLidaIA}</span>
+                {form.placa
+                  ? <span className="text-green-600 ml-1">✅ vinculado a {form.placa}</span>
+                  : <span className="text-orange-500 ml-1">⚠️ não encontrada — selecione manualmente</span>
+                }
+              </p>
             )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Placa da Carreta</label>
-            <select name="placa_carreta" value={form.placa_carreta} onChange={handle} className={form.placa_carreta && !carretas.find(c => c.placa === form.placa_carreta) ? ICwarn : IC}>
+            <select name="placa_carreta" value={form.placa_carreta} onChange={handle} className={form.placa_carreta ? IC : ICwarn}>
               <option value="">Selecione...</option>
               {carretas.map(c => (
                 <option key={c.id} value={c.placa}>{c.placa}{c.modelo ? ` · ${c.modelo}` : ''}</option>
               ))}
             </select>
-            {form.placa_carreta && !carretas.find(c => c.placa === form.placa_carreta) && (
-              <p className="text-xs text-orange-500 mt-1">⚠️ Placa lida pela IA não encontrada no cadastro — selecione manualmente</p>
+            {placaCarretaLidaIA && (
+              <p className="text-xs mt-1 text-gray-400">
+                IA leu: <span className="font-mono font-semibold text-gray-600">{placaCarretaLidaIA}</span>
+                {form.placa_carreta
+                  ? <span className="text-green-600 ml-1">✅ vinculado a {form.placa_carreta}</span>
+                  : <span className="text-orange-500 ml-1">⚠️ não encontrada — selecione manualmente</span>
+                }
+              </p>
             )}
           </div>
         </div>
