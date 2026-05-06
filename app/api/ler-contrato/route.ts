@@ -15,6 +15,9 @@ const MAPA_FROTA: Record<string, string> = {
   '4923/4723': '4923/4723',
   '287': '287',
   'S287': '287',
+  'SD287': '287',
+  'S0287': '287',
+  'SO287': '287',
   '135': '135',
   'M005': 'M005',
   'M009': 'M009',
@@ -50,81 +53,73 @@ export async function POST(req: NextRequest) {
             text: `Analise este contrato de transporte rodoviário brasileiro e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem explicações.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REGRA PRINCIPAL — IDENTIFICAR O CLIENTE:
+IDENTIFICAÇÃO DO CLIENTE — REGRA CRÍTICA:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-O contrato tem dois lados:
-- CONTRATANTE = empresa cliente (quem paga). Ex: SADA, AUTOPORT, BRAZUL, etc.
-- CONTRATADO = Carlos Alberto Roesel Transportes (nossa empresa — NUNCA é o cliente)
+O contrato tem DOIS lados distintos:
+- CONTRATANTE = empresa cliente (quem paga o frete). Exemplos: SADA, AUTOPORT, BRAZUL, DACUNHA, etc.
+- CONTRATADO = Carlos Alberto Roesel Transportes (transportadora — NUNCA é o cliente)
 
-O cliente pode aparecer como:
-- Seção "CONTRATANTE" com campo "Nome:"
-- Empresa no cabeçalho/topo do documento (nome da empresa emitente)
-- Campo "Nome:" antes do CNPJ no início do contrato
+ATENÇÃO: leia o documento com cuidado. O CONTRATANTE está na seção "CONTRATANTE" ou no topo/cabeçalho como emitente do documento. O CNPJ correto é o do CONTRATANTE, não do CONTRATADO.
 
-NUNCA coloque "Carlos Alberto Roesel" em nenhum campo.
+NUNCA coloque "Carlos Alberto Roesel" como cliente.
+NUNCA use o CNPJ da seção "CONTRATADO" (66.330.549/0001-52).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CAMPOS A EXTRAIR:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-"contrato": número do contrato principal. ATENÇÃO — regras de prioridade:
-  1. Se existir campo "Contrato:" na primeira linha/cabeçalho, use ESSE valor exato (ex: "Contrato: 2026/284494-13" → "2026/284494-13")
-  2. Se existir "VIAGENS:" no título, use o número após ele (ex: "VIAGENS: 48587238" → "48587238")
-  NÃO use campos "Viagem:", "Planejamento:" ou outros — apenas "Contrato:" ou "VIAGENS:".
-  Leia o número com MÁXIMA atenção, caractere por caractere.
+"contrato": número do contrato. Prioridade:
+  1. Número após "VIAGENS:" no título (ex: "VIAGENS: 933117" → "933117")
+  2. Campo "Contrato:" na primeira linha (ex: "Contrato: 2026/284494-13" → "2026/284494-13")
+  Leia caractere por caractere com atenção máxima.
 
 "data": data do CONTRATO. Formato YYYY-MM-DD. Prioridade:
   1. "Data Contrato:" — USE ESTE se existir
   2. "Data de Pagamento:"
   3. "Data:" no cabeçalho
-  NUNCA use "Prazo do Contrato" — é prazo de entrega.
+  NUNCA use "Prazo do Contrato".
 
-"cliente_nome_completo": nome EXATO da empresa CONTRATANTE.
-  - Seção "CONTRATANTE" campo "Nome:" OU nome no cabeçalho/topo
+"cliente_nome_completo": nome EXATO do CONTRATANTE.
+  Leia a seção "CONTRATANTE" campo "Nome:" com atenção total.
+  Exemplos válidos: "DACUNHA NORDESTE TRANSPORTES LTDA", "SADA TRANSPORTES E ARMAZENAGENS LTDA", "BRAZUL TRANSPORTE DE VEÍCULOS LTDA", "AUTOPORT TRANSPORTES E LOGISTICA LTDA".
   NUNCA coloque Carlos Alberto Roesel.
 
-"cnpj": CNPJ do CONTRATANTE. Leia 14 dígitos um por um.
-  Formato XX.XXX.XXX/XXXX-XX. Associado ao cliente, não ao contratado.
+"cnpj": CNPJ do CONTRATANTE. Leia 14 dígitos um por um diretamente da seção CONTRATANTE.
+  NÃO use CNPJ da seção CONTRATADO (66330549000152).
   Se tiver dúvida retorne "".
 
-"motorista": nome da PESSOA FÍSICA motorista.
-  - Seção "MOTORISTA" ou "Motorista/Preposto" campo "NOME:"
+"motorista": pessoa física na seção "MOTORISTA" ou "Motorista/Preposto" campo "NOME:".
   NUNCA coloque nome de empresa.
 
-"placa": placa do caminhão/cavalo mecânico. Procure por:
-  "Placa Cavalo Mecânico:", "Placa Caminhão:", "Placa Cavalo:"
-  7 caracteres. Não confunda: I↔1, H↔N, F↔T, 0↔O, 3↔B. Releia duas vezes.
+"placa": placa do caminhão. Procure: "Placa Cavalo Mecânico:", "Placa Caminhão:", "Placa Cavalo:".
+  ATENÇÃO MÁXIMA: leia cada um dos 7 caracteres da esquerda para direita, um por um.
+  Padrão antigo: 3 letras + 4 números (ex: QMZ9808).
+  Padrão Mercosul: 3 letras + 1 número + 1 letra + 2 números (ex: QMZ9B08).
+  Confusões PROIBIDAS: 0≠O, 1≠I, 8≠B, 9≠q, Z≠2, G≠Q, M≠N.
+  Depois de ler, RELEIA os 7 caracteres de trás para frente para confirmar.
 
-"placa_carreta": placa da carreta. Procure por:
-  "Placa Semi-reboque:", "Placa Carreta:", "Placa Semirreboque:"
-  Mesmas regras acima.
+"placa_carreta": placa da carreta. Procure: "Placa Semi-reboque:", "Placa Carreta:".
+  MESMAS regras de leitura da placa. Releia duas vezes antes de responder.
 
-"frota": número após "Frota:" — pode ter letras (ex: "S287", "M005").
+"frota": valor exato após "Frota:" incluindo prefixos (ex: "SD287", "S287", "M005", "116").
 
-"fat_bruto": valor do frete. Procure por "Frete Contratado" ou "(+) Frete Contratado:".
-  FORMATO BRASILEIRO — REGRAS CRÍTICAS:
-  - VÍRGULA = separador DECIMAL (centavos)
-  - PONTO = separador de MILHAR (ignorar)
-  - Retorne SEMPRE no formato americano com PONTO decimal
-  Exemplos:
-    "2.741,19" → retorne "2741.19"
-    "22.878,98" → retorne "22878.98"
-    "8.527,22"  → retorne "8527.22"
-    "6.706,67"  → retorne "6706.67"
-    "2741,19"   → retorne "2741.19"
-  NUNCA remova a parte decimal. NUNCA retorne "274119" quando o valor é "2741.19".
+"fat_bruto": valor do frete contratado.
+  FORMATO BRASILEIRO: VÍRGULA = decimal, PONTO = milhar.
+  Retorne com PONTO decimal, 2 casas.
+  Ex: "16.445,76" → "16445.76"
+  Ex: "2.741,19" → "2741.19"
+  NUNCA retorne sem decimal (ex: NUNCA "1644576").
 
-"qtd_veiculos": número total de veículos. Procure "Quant.:" ou "Veículos:".
-  Retorne apenas o inteiro total.
+"qtd_veiculos": total de veículos. Campo "Quant.:" ou "Veículos:". Apenas inteiro.
 
-"origem": cidade e estado de origem.
-"destino": cidade e estado de destino final.
+"origem": cidade e estado de origem exatos do documento.
+"destino": cidade e estado de destino final exatos do documento.
 "status": sempre "ABERTO"
 "chapa": sempre ""
 "obs": sempre ""
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JSON de retorno (retorne SOMENTE isso):
+JSON de retorno (SOMENTE isso):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {
   "motorista": "",
@@ -162,34 +157,34 @@ JSON de retorno (retorne SOMENTE isso):
       if (frotaConvertida) parsed.frota = frotaConvertida
     }
 
-    // Limpa CNPJ inválido
-    if (parsed.cnpj && parsed.cnpj.replace(/\D/g, '').length < 14) {
-      parsed.cnpj = ''
+    // Limpa CNPJ inválido ou do contratado
+    const CNPJ_CONTRATADO = '66330549000152'
+    if (parsed.cnpj) {
+      const cnpjLimpo = parsed.cnpj.replace(/\D/g, '')
+      if (cnpjLimpo.length < 14 || cnpjLimpo === CNPJ_CONTRATADO) {
+        parsed.cnpj = ''
+      }
     }
 
     // Garante fat_bruto como número com ponto decimal
     if (parsed.fat_bruto !== undefined && parsed.fat_bruto !== '') {
       let val = String(parsed.fat_bruto).trim()
-
       if (val.includes(',')) {
         // Formato brasileiro: ponto=milhar, vírgula=decimal
         val = val.replace(/\./g, '').replace(',', '.')
       } else if (val.includes('.')) {
-        // Já tem ponto — verifica se é milhar ou decimal
+        // Já tem ponto — verifica se são múltiplos (milhar) ou único (decimal)
         const partes = val.split('.')
         if (partes.length > 2) {
-          // Múltiplos pontos = separadores de milhar, sem decimal
+          // Múltiplos pontos = separadores de milhar
           val = val.replace(/\./g, '')
           if (val.length > 2) val = val.slice(0, -2) + '.' + val.slice(-2)
         }
-        // Se tem só um ponto, já está no formato correto (ex: "2741.19")
+        // Um único ponto = já está correto como decimal
       } else {
-        // Sem separador nenhum: assume últimos 2 dígitos são centavos
-        if (val.length > 2) {
-          val = val.slice(0, -2) + '.' + val.slice(-2)
-        }
+        // Sem separador: assume últimos 2 dígitos são centavos
+        if (val.length > 2) val = val.slice(0, -2) + '.' + val.slice(-2)
       }
-
       const num = parseFloat(val)
       if (!isNaN(num)) parsed.fat_bruto = String(num)
     }
