@@ -67,72 +67,58 @@ NUNCA coloque "Carlos Alberto Roesel" em nenhum campo.
 CAMPOS A EXTRAIR:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-"contrato": número do contrato. Procure por:
-  - Número após "VIAGENS:" no título (ex: "VIAGENS: 48587238" → "48587238")
-  - Campo "Contrato:" (ex: "Contrato: 2026/284294-1" → "2026/284294-1")
-  - Número principal no cabeçalho do documento
+"contrato": número do contrato principal. ATENÇÃO — regras de prioridade:
+  1. Se existir campo "Contrato:" na primeira linha/cabeçalho, use ESSE valor exato (ex: "Contrato: 2026/284494-13" → "2026/284494-13")
+  2. Se existir "VIAGENS:" no título, use o número após ele (ex: "VIAGENS: 48587238" → "48587238")
+  NÃO use campos "Viagem:", "Planejamento:" ou outros — apenas "Contrato:" ou "VIAGENS:".
+  Leia o número com MÁXIMA atenção, caractere por caractere.
 
-"data": data do CONTRATO (não prazo de entrega). Formato YYYY-MM-DD. Procure por:
-  - "Data de Pagamento:"
-  - "Data Contrato:" (use ESTE se existir, é o mais confiável)
-  - "Data:" no cabeçalho
-  NUNCA use "Prazo do Contrato" — esse é prazo de entrega, não a data.
+"data": data do CONTRATO. Formato YYYY-MM-DD. Prioridade:
+  1. "Data Contrato:" — USE ESTE se existir
+  2. "Data de Pagamento:"
+  3. "Data:" no cabeçalho
+  NUNCA use "Prazo do Contrato" — é prazo de entrega.
 
-"cliente_nome_completo": nome EXATO da empresa CONTRATANTE. Procure por:
-  - Seção "CONTRATANTE" campo "Nome:"
-  - Nome da empresa emitente no topo/cabeçalho
-  NUNCA coloque Carlos Alberto Roesel ou variações.
+"cliente_nome_completo": nome EXATO da empresa CONTRATANTE.
+  - Seção "CONTRATANTE" campo "Nome:" OU nome no cabeçalho/topo
+  NUNCA coloque Carlos Alberto Roesel.
 
-"cnpj": CNPJ do CONTRATANTE (cliente). Leia 14 dígitos um por um.
-  - Pode estar no formato XX.XXX.XXX/XXXX-XX
-  - Associado ao nome do cliente, não ao contratado
-  - Se tiver dúvida retorne ""
+"cnpj": CNPJ do CONTRATANTE. Leia 14 dígitos um por um.
+  Formato XX.XXX.XXX/XXXX-XX. Associado ao cliente, não ao contratado.
+  Se tiver dúvida retorne "".
 
-"motorista": nome da PESSOA FÍSICA motorista. Procure por:
-  - Seção "MOTORISTA" — campo com nome completo
-  - Seção "Motorista/Preposto" — campo "NOME:"
-  NUNCA coloque o nome da empresa.
+"motorista": nome da PESSOA FÍSICA motorista.
+  - Seção "MOTORISTA" ou "Motorista/Preposto" campo "NOME:"
+  NUNCA coloque nome de empresa.
 
 "placa": placa do caminhão/cavalo mecânico. Procure por:
-  - "Placa Cavalo Mecânico:"
-  - "Placa Caminhão:"
-  - "Placa Cavalo:"
-  Leia 7 caracteres um por um. Padrão antigo: 3 letras + 4 números. Padrão Mercosul: 3 letras + 1 número + 1 letra + 2 números.
-  Não confunda: I↔1, H↔N, H↔I, F↔T, F↔P, 0↔O, 3↔B, 8↔B. Releia duas vezes.
+  "Placa Cavalo Mecânico:", "Placa Caminhão:", "Placa Cavalo:"
+  7 caracteres. Não confunda: I↔1, H↔N, F↔T, 0↔O, 3↔B. Releia duas vezes.
 
-"placa_carreta": placa da carreta/semirreboque. Procure por:
-  - "Placa Semi-reboque:"
-  - "Placa Carreta:"
-  - "Placa Semirreboque:"
-  Mesmas regras de leitura da placa acima.
+"placa_carreta": placa da carreta. Procure por:
+  "Placa Semi-reboque:", "Placa Carreta:", "Placa Semirreboque:"
+  Mesmas regras acima.
 
-"frota": número após "Frota:" — pode conter letras como prefixo (ex: "S287", "M005").
+"frota": número após "Frota:" — pode ter letras (ex: "S287", "M005").
 
-"fat_bruto": valor do frete. Procure por:
-  - "Frete Contratado" (pode ter sinal + na frente)
-  - "(+) Frete Contratado:"
-  ATENÇÃO MÁXIMA AO FORMATO BRASILEIRO:
-  - A VÍRGULA é o separador DECIMAL (últimos 2 dígitos são centavos)
-  - O PONTO é separador de MILHAR (ignore-o)
-  - SEMPRE retorne com ponto como decimal e SEMPRE com 2 casas decimais
-  Exemplos obrigatórios:
-    "22.878,98" → "22878.98"  ✅
-    "8.527,22"  → "8527.22"   ✅
-    "6.706,67"  → "6706.67"   ✅
-    "2.741,19"  → "2741.19"   ✅
-    "274119"    → ERRADO ❌ (perdeu a vírgula decimal)
-    "2741,19"   → "2741.19"   ✅
-  Se o valor no documento for "2.741,19", retorne "2741.19", NUNCA "274119".
+"fat_bruto": valor do frete. Procure por "Frete Contratado" ou "(+) Frete Contratado:".
+  FORMATO BRASILEIRO — REGRAS CRÍTICAS:
+  - VÍRGULA = separador DECIMAL (centavos)
+  - PONTO = separador de MILHAR (ignorar)
+  - Retorne SEMPRE no formato americano com PONTO decimal
+  Exemplos:
+    "2.741,19" → retorne "2741.19"
+    "22.878,98" → retorne "22878.98"
+    "8.527,22"  → retorne "8527.22"
+    "6.706,67"  → retorne "6706.67"
+    "2741,19"   → retorne "2741.19"
+  NUNCA remova a parte decimal. NUNCA retorne "274119" quando o valor é "2741.19".
 
-"qtd_veiculos": quantidade de veículos. Procure por:
-  - Campo "Quant.:"
-  - Campo "Veículos:" (pegue o número TOTAL, não por destino)
-  Retorne apenas o número inteiro.
+"qtd_veiculos": número total de veículos. Procure "Quant.:" ou "Veículos:".
+  Retorne apenas o inteiro total.
 
-"origem": cidade e estado de origem. Ex: "IGARAPE - MG" ou "Cariacica / ES"
-
-"destino": cidade e estado de destino final. Ex: "DUQUE DE CAXIAS - RJ" ou "Contagem / MG"
-
+"origem": cidade e estado de origem.
+"destino": cidade e estado de destino final.
 "status": sempre "ABERTO"
 "chapa": sempre ""
 "obs": sempre ""
@@ -184,13 +170,26 @@ JSON de retorno (retorne SOMENTE isso):
     // Garante fat_bruto como número com ponto decimal
     if (parsed.fat_bruto !== undefined && parsed.fat_bruto !== '') {
       let val = String(parsed.fat_bruto).trim()
-      if (!val.includes('.') && !val.includes(',') && val.length > 2) {
-        // Sem separador nenhum: assume últimos 2 dígitos são centavos
-        val = val.slice(0, -2) + '.' + val.slice(-2)
-      } else {
-        // Remove pontos de milhar, converte vírgula decimal
+
+      if (val.includes(',')) {
+        // Formato brasileiro: ponto=milhar, vírgula=decimal
         val = val.replace(/\./g, '').replace(',', '.')
+      } else if (val.includes('.')) {
+        // Já tem ponto — verifica se é milhar ou decimal
+        const partes = val.split('.')
+        if (partes.length > 2) {
+          // Múltiplos pontos = separadores de milhar, sem decimal
+          val = val.replace(/\./g, '')
+          if (val.length > 2) val = val.slice(0, -2) + '.' + val.slice(-2)
+        }
+        // Se tem só um ponto, já está no formato correto (ex: "2741.19")
+      } else {
+        // Sem separador nenhum: assume últimos 2 dígitos são centavos
+        if (val.length > 2) {
+          val = val.slice(0, -2) + '.' + val.slice(-2)
+        }
       }
+
       const num = parseFloat(val)
       if (!isNaN(num)) parsed.fat_bruto = String(num)
     }
