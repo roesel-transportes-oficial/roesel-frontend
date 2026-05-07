@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [{
         role: 'user',
         content: [
@@ -79,59 +79,59 @@ CAMPOS A EXTRAIR:
   ⚠️ Corrigir OCR: B→8, O→0, I→1, S→5, G→6, Z→2.
 
 "data": Formato YYYY-MM-DD.
-  TIPO A → "Data de Pagamento:" no topo direito (seção CONTRATANTE)
+  TIPO A → "Data de Pagamento:" no topo direito
   TIPO B → "Data Contrato:" no topo direito
   ⚠️ NUNCA use "Data de Saída:" nem "Prazo do Contrato:".
-  ⚠️ Formato do documento é DD/MM/AAAA → converta para AAAA-MM-DD.
-  ⚠️ Ano é 2025 ou 2026. Leia os 4 dígitos com atenção.
+  ⚠️ Formato DD/MM/AAAA → converta para AAAA-MM-DD.
+  ⚠️ Ano é 2025 ou 2026.
 
 "cliente_nome_completo":
   TIPO A → seção "CONTRATANTE" campo "Nome:"
   TIPO B → campo "Nome:" no cabeçalho
   NUNCA coloque Carlos Alberto Roesel.
 
-"cnpj": CNPJ do cliente. 14 dígitos. NUNCA use 66330549000152. Se dúvida retorne "".
+"cnpj": CNPJ do cliente. 14 dígitos. NUNCA use 66330549000152.
 
 "motorista":
   TIPO A → seção "MOTORISTA" campo "Nome:"
   TIPO B → seção "Motorista/Preposto" campo "NOME:"
-  NUNCA coloque nome de empresa.
 
-"placa": placa do caminhão.
+"placa":
   TIPO A → "Placa Cavalo Mecânico:"
   TIPO B → "Placa Caminhão:"
-  7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2.
+  7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B.
 
 "placa_carreta":
   TIPO A → "Placa Semi-reboque:"
   TIPO B → "Placa Carreta:"
-  Mesmas regras. Releia duas vezes.
 
-"frota": valor exato após "Frota:" incluindo letras se houver (ex: "8082S", "80825").
+"frota": valor exato após "Frota:".
 
-"fat_bruto": ━━ ATENÇÃO MÁXIMA ━━
-  Este campo é o VALOR FINANCEIRO DO FRETE em reais (R$).
+"fat_bruto":
+  TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO", linha "Frete Contratado"
+    ❌ NUNCA use "Peso:" — é peso em KG, não dinheiro!
+  TIPO B → linha "(+) Frete Contratado: X.XXX,XX" — valor após os dois pontos
+  Formato: VÍRGULA=decimal, PONTO=milhar → retorne com ponto e 2 casas.
 
-  TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO"
-    ✅ USE: linha "Frete Contratado" — valor em R$ (ex: 8.731,88 ou 374,73)
-    ❌ NUNCA USE "Peso:" — está na seção SERVIÇOS CONTRATADOS, é peso em KG, NÃO é dinheiro!
-    ❌ NUNCA USE "Saldo a Receber", "Outros Créditos", "Vale-Pedágio", "Combustível"
+"qtd_veiculos": ━━ ATENÇÃO MÁXIMA ━━
+  TIPO A → campo "Quant.:" — número simples, ex: "Quant: 10" → 10
 
-  TIPO B → seção "Valor do Serviço Contratado e Quitação"
-    ✅ USE: linha "(+) Frete Contratado: X.XXX,XX" — o valor após os dois pontos
-    ❌ NUNCA USE outros campos
+  TIPO B → campo "Veículos:" — REGRA CRÍTICA:
+    O formato é: "Veículos: TOTAL  X CIDADE1 / X CIDADE2 / X CIDADE3"
+    O TOTAL é o número que aparece IMEDIATAMENTE após "Veículos:" antes de qualquer cidade.
+    Os números que aparecem depois (como "1 FEIRA DE SANTANA", "1 JUAZEIRO") são a DISTRIBUIÇÃO por cidade — IGNORE-OS para este campo.
 
-  Formato brasileiro: VÍRGULA=decimal, PONTO=milhar.
-  "8.731,88"→"8731.88" | "1.500,00"→"1500.00" | "374,73"→"374.73"
-  SEMPRE com ponto decimal e 2 casas.
+    Exemplos obrigatórios:
+    "Veículos: 6  1 FEIRA DE SANTANA / 1 JUAZEIRO DO NORTE / 1 PETROLINA 1 TERESINA / 1 MOSSORO / 1 NATAL"
+    → qtd_veiculos = 6  ✅  (NÃO 1 ❌)
 
-"qtd_veiculos":
-  TIPO A → campo "Quant.:" — apenas o número inteiro
-  TIPO B → campo "Veículos:" — pegue o PRIMEIRO número logo após "Veículos:", que é o TOTAL.
-    ⚠️ ATENÇÃO: após o total vem a distribuição por cidade. Pegue SOMENTE o total.
-    Ex: "Veículos: 6  1 FEIRA DE SANTANA / 1 JUAZEIRO DO NORTE / 1 PETROLINA" → retorne 6 (NÃO 1)
-    Ex: "Veículos: 3  3 JUIZ DE FORA" → retorne 3
-  Apenas inteiro.
+    "Veículos: 3  3 JUIZ DE FORA"
+    → qtd_veiculos = 3  ✅
+
+    "Veículos: 11  11 CONTAGEM"
+    → qtd_veiculos = 11  ✅
+
+    Sempre retorne o número TOTAL, nunca o da distribuição.
 
 "origem": cidade e estado de origem.
 "destino": cidade e estado de destino final.
@@ -178,7 +178,7 @@ JSON de retorno (SOMENTE isso):
       if (frotaConvertida) parsed.frota = frotaConvertida
     }
 
-    // Normaliza número do contrato — corrige confusões OCR
+    // Normaliza número do contrato
     if (parsed.contrato) {
       parsed.contrato = String(parsed.contrato)
         .replace(/B/g, '8')
