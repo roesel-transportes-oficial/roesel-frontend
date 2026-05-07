@@ -17,6 +17,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
   const [placaLidaIA, setPlacaLidaIA] = useState('')
   const [placaCarretaLidaIA, setPlacaCarretaLidaIA] = useState('')
+  const [contratoLidoIA, setContratoLidoIA] = useState(false)
 
   const [form, setForm] = useState({
     motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
@@ -162,21 +163,13 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return melhorCliente
   }
 
-  // ── MATCHING DE MOTORISTA ──
   function encontrarMotorista(lista: any[], nomeIA: string): any | null {
     if (!nomeIA) return null
     const nomeNorm = normalizar(nomeIA)
-
     return lista.find(m => {
       const nomeBanco = normalizar(m.nome)
-
-      // 1. Match exato
       if (nomeBanco === nomeNorm) return true
-
-      // 2. Um contém o outro
       if (nomeBanco.includes(nomeNorm) || nomeNorm.includes(nomeBanco)) return true
-
-      // 3. Primeiro + último nome batem
       const palavrasIA = nomeNorm.split(' ').filter(Boolean)
       const palavrasBanco = nomeBanco.split(' ').filter(Boolean)
       const primeiroIA = palavrasIA[0] || ''
@@ -184,8 +177,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       const primeiroBanco = palavrasBanco[0] || ''
       const ultimoBanco = palavrasBanco[palavrasBanco.length - 1] || ''
       if (primeiroIA.length > 3 && primeiroBanco === primeiroIA && ultimoBanco === ultimoIA) return true
-
-      // 4. Tolerância de até 2 erros distribuídos entre as palavras (OCR)
       if (palavrasIA.length >= 2 && palavrasIA.length === palavrasBanco.length) {
         let difTotal = 0
         for (let i = 0; i < palavrasIA.length; i++) {
@@ -198,16 +189,13 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         }
         if (difTotal <= 2) return true
       }
-
       return false
     }) || null
   }
 
-  // ── MATCHING DE PLACAS ──
   function normalizaPlaca(p: string) {
     return p.replace(/[^A-Z0-9]/gi, '').toUpperCase()
-      .replace(/O/g, '0')
-      .replace(/I/g, '1')
+      .replace(/O/g, '0').replace(/I/g, '1')
   }
 
   function diffChars(a: string, b: string): number {
@@ -220,19 +208,15 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   function encontrarPorPlaca(lista: any[], placaIA: string): any | null {
     if (!placaIA) return null
     const placaNorm = normalizaPlaca(placaIA)
-
     const exato = lista.find(c => normalizaPlaca(c.placa) === placaNorm)
     if (exato) return exato
-
     const umChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
     if (umChar) return umChar
-
     if (placaNorm.length >= 4) {
       const sufixo = placaNorm.slice(-4)
       const porSufixo = lista.find(c => normalizaPlaca(c.placa).endsWith(sufixo))
       if (porSufixo) return porSufixo
     }
-
     const doisChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 2)
     return doisChar || null
   }
@@ -244,7 +228,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     const file = e.target.files?.[0]
     if (!file) return
     setLoadingIA(true); setErro('')
-    setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
+    setPlacaLidaIA(''); setPlacaCarretaLidaIA(''); setContratoLidoIA(false)
     try {
       let clientesAtuais = clientes
       if (clientesAtuais.length === 0) clientesAtuais = await fetchClientes()
@@ -263,7 +247,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       })
       const parsed = await response.json()
 
-      // Usa ativo !== false para incluir motoristas com ativo null/undefined
       const motoristasAtivos = motoristas.filter(m => m.ativo !== false)
       const motoristaEncontrado = encontrarMotorista(motoristasAtivos, parsed.motorista || '')
       const clienteEncontrado = encontrarClienteLista(
@@ -276,6 +259,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
       setPlacaLidaIA(parsed.placa || '')
       setPlacaCarretaLidaIA(parsed.placa_carreta || '')
+      if (parsed.contrato) setContratoLidoIA(true)
 
       setForm(f => ({
         ...f,
@@ -320,6 +304,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
   const IC = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
   const ICwarn = "w-full border border-orange-300 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+  const ICconfirm = "w-full border-2 border-orange-400 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
 
   return (
     <div className="p-6 max-w-4xl">
@@ -350,8 +335,24 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nº Contrato *</label>
-            <input name="contrato" value={form.contrato} onChange={handle} required className={IC} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Nº Contrato *
+              {contratoLidoIA && (
+                <span className="ml-2 text-xs text-orange-500 font-medium">⚠️ Confira no documento físico</span>
+              )}
+            </label>
+            <input
+              name="contrato"
+              value={form.contrato}
+              onChange={e => { handle(e); setContratoLidoIA(false) }}
+              required
+              className={contratoLidoIA ? ICconfirm : IC}
+            />
+            {contratoLidoIA && (
+              <p className="text-xs mt-1 text-orange-500">
+                OCR pode confundir dígitos similares (9↔2, 5↔1, 7↔2). Verifique antes de salvar.
+              </p>
+            )}
           </div>
         </div>
 
