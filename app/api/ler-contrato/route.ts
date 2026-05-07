@@ -90,48 +90,45 @@ CAMPOS A EXTRAIR:
   TIPO B → campo "Nome:" no cabeçalho
   NUNCA coloque Carlos Alberto Roesel.
 
-"cnpj": CNPJ do cliente. 14 dígitos. NUNCA use 66330549000152.
+"cnpj": CNPJ do cliente. 14 dígitos. NUNCA use 66330549000152. Se dúvida retorne "".
 
 "motorista":
   TIPO A → seção "MOTORISTA" campo "Nome:"
   TIPO B → seção "Motorista/Preposto" campo "NOME:"
+  NUNCA coloque nome de empresa.
 
 "placa":
   TIPO A → "Placa Cavalo Mecânico:"
   TIPO B → "Placa Caminhão:"
-  7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B.
+  7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2.
 
 "placa_carreta":
   TIPO A → "Placa Semi-reboque:"
   TIPO B → "Placa Carreta:"
+  Mesmas regras. Releia duas vezes.
 
 "frota": valor exato após "Frota:".
 
 "fat_bruto":
   TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO", linha "Frete Contratado"
     ❌ NUNCA use "Peso:" — é peso em KG, não dinheiro!
+    ❌ NUNCA use "Saldo a Receber", "Outros Créditos", "Vale-Pedágio"
   TIPO B → linha "(+) Frete Contratado: X.XXX,XX" — valor após os dois pontos
-  Formato: VÍRGULA=decimal, PONTO=milhar → retorne com ponto e 2 casas.
+  Formato: VÍRGULA=decimal, PONTO=milhar.
+  "8.731,88"→"8731.88" | "1.500,00"→"1500.00" | "374,73"→"374.73"
+  SEMPRE com ponto decimal e 2 casas.
 
-"qtd_veiculos": ━━ ATENÇÃO MÁXIMA ━━
-  TIPO A → campo "Quant.:" — número simples, ex: "Quant: 10" → 10
+"qtd_veiculos":
+  TIPO A → campo "Quant.:" — número direto.
 
-  TIPO B → campo "Veículos:" — REGRA CRÍTICA:
-    O formato é: "Veículos: TOTAL  X CIDADE1 / X CIDADE2 / X CIDADE3"
-    O TOTAL é o número que aparece IMEDIATAMENTE após "Veículos:" antes de qualquer cidade.
-    Os números que aparecem depois (como "1 FEIRA DE SANTANA", "1 JUAZEIRO") são a DISTRIBUIÇÃO por cidade — IGNORE-OS para este campo.
-
-    Exemplos obrigatórios:
-    "Veículos: 6  1 FEIRA DE SANTANA / 1 JUAZEIRO DO NORTE / 1 PETROLINA 1 TERESINA / 1 MOSSORO / 1 NATAL"
-    → qtd_veiculos = 6  ✅  (NÃO 1 ❌)
-
-    "Veículos: 3  3 JUIZ DE FORA"
-    → qtd_veiculos = 3  ✅
-
-    "Veículos: 11  11 CONTAGEM"
-    → qtd_veiculos = 11  ✅
-
-    Sempre retorne o número TOTAL, nunca o da distribuição.
+  TIPO B → campo "Veículos:" — siga esta ordem:
+    1. PRIMEIRO leia o número total que aparece logo após "Veículos:" antes de qualquer cidade.
+       Ex: "Veículos: 6  1 FEIRA DE SANTANA / ..." → total = 6 ✅
+    2. SE não conseguir identificar o total com clareza, SOME os números da distribuição por cidade como conferência.
+       Ex: "1 FEIRA DE SANTANA / 1 JUAZEIRO / 1 PETROLINA / 1 TERESINA / 1 MOSSORO / 1 NATAL" → 1+1+1+1+1+1 = 6
+       Ex: "1 BELO HORIZONTE / 7 CONTAGEM" → 1+7 = 8
+    Os dois métodos devem dar o mesmo resultado. Use como verificação.
+  Retorne apenas o inteiro total.
 
 "origem": cidade e estado de origem.
 "destino": cidade e estado de destino final.
