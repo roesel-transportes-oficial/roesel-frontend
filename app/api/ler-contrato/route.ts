@@ -73,21 +73,23 @@ CAMPOS A EXTRAIR:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 "contrato":
-  TIPO A → número após "VIAGENS:" no título
-  TIPO B → campo "Contrato:" primeira linha
-  ⚠️ Contém APENAS dígitos, barras (/) e hífens (-). NUNCA letras.
-  ⚠️ Corrigir OCR: B→8, O→0, I→1, S→5, G→6, Z→2.
+  TIPO A → número após "VIAGENS:" no título do documento.
+  TIPO B → campo "Contrato:" que fica na PRIMEIRA LINHA do cabeçalho do contrato, logo abaixo do título "CONTRATO DE TRANSPORTE...".
+    ⚠️ ATENÇÃO TIPO B: o formato é sempre AAAA/NNNNNN-N (ex: "2026/284957-1", "2026/284483-5").
+    ⚠️ NUNCA use o campo "Número:" da seção Contratado — esse é outro campo interno.
+    ⚠️ NUNCA use "Viagem:", "Planejamento:" — apenas "Contrato:".
+  ⚠️ Contém APENAS dígitos, barras (/) e hífens (-). Corrigir OCR: B→8, O→0, I→1, S→5, G→6, Z→2.
 
 "data": Formato YYYY-MM-DD.
   TIPO A → "Data de Pagamento:" no topo direito
-  TIPO B → "Data Contrato:" no topo direito
-  ⚠️ NUNCA use "Data de Saída:" nem "Prazo do Contrato:".
-  ⚠️ Formato DD/MM/AAAA → converta para AAAA-MM-DD.
-  ⚠️ Ano é 2025 ou 2026.
+  TIPO B → "Data Contrato:" no topo direito (mesma linha do campo "Contrato:")
+    ⚠️ Leia o DIA com atenção — OCR confunde 6 com 5, 8 com 3, etc.
+  ⚠️ NUNCA use "Data de Saída:", "Prazo do Contrato:", "Emitido em:".
+  ⚠️ Formato DD/MM/AAAA → converta para AAAA-MM-DD. Ano é 2025 ou 2026.
 
 "cliente_nome_completo":
   TIPO A → seção "CONTRATANTE" campo "Nome:"
-  TIPO B → campo "Nome:" no cabeçalho
+  TIPO B → campo "Nome:" no cabeçalho (empresa emitente, ex: AUTOPORT TRANSPORTES E LOGISTICA LTDA)
   NUNCA coloque Carlos Alberto Roesel.
 
 "cnpj": CNPJ do cliente. 14 dígitos. NUNCA use 66330549000152. Se dúvida retorne "".
@@ -100,7 +102,7 @@ CAMPOS A EXTRAIR:
 "placa":
   TIPO A → "Placa Cavalo Mecânico:"
   TIPO B → "Placa Caminhão:"
-  7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2.
+  7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2. Releia de trás para frente.
 
 "placa_carreta":
   TIPO A → "Placa Semi-reboque:"
@@ -115,16 +117,14 @@ CAMPOS A EXTRAIR:
     ❌ NUNCA use "Saldo a Receber", "Outros Créditos", "Vale-Pedágio"
   TIPO B → linha "(+) Frete Contratado: X.XXX,XX" — valor após os dois pontos
   Formato: VÍRGULA=decimal, PONTO=milhar.
-  "8.731,88"→"8731.88" | "1.500,00"→"1500.00" | "374,73"→"374.73"
+  "18.674,58"→"18674.58" | "1.500,00"→"1500.00" | "374,73"→"374.73"
   SEMPRE com ponto decimal e 2 casas.
 
 "qtd_veiculos":
   TIPO A → campo "Quant.:" — número direto.
-
   TIPO B → campo "Veículos:" — siga esta ordem:
-    1. PRIMEIRO leia o número total que aparece logo após "Veículos:" antes de qualquer cidade.
-       Ex: "Veículos: 6  1 FEIRA DE SANTANA / ..." → total = 6 ✅
-    2. SE não conseguir identificar o total com clareza, SOME os números da distribuição por cidade como conferência.
+    1. PRIMEIRO leia o número total logo após "Veículos:" antes de qualquer cidade.
+    2. SE não conseguir, SOME os números da distribuição por cidade.
        Ex: "1 FEIRA DE SANTANA / 1 JUAZEIRO / 1 PETROLINA / 1 TERESINA / 1 MOSSORO / 1 NATAL" → 1+1+1+1+1+1 = 6
        Ex: "1 BELO HORIZONTE / 7 CONTAGEM" → 1+7 = 8
     Os dois métodos devem dar o mesmo resultado. Use como verificação.
@@ -176,8 +176,9 @@ JSON de retorno (SOMENTE isso):
     }
 
     // Normaliza número do contrato
+    // Para TIPO B, garante que tenha barra (formato AAAA/NNNNNN-N)
     if (parsed.contrato) {
-      parsed.contrato = String(parsed.contrato)
+      let contrato = String(parsed.contrato)
         .replace(/B/g, '8')
         .replace(/O/g, '0')
         .replace(/I/g, '1')
@@ -186,6 +187,14 @@ JSON de retorno (SOMENTE isso):
         .replace(/Z/g, '2')
         .replace(/[A-Z]/g, '')
         .replace(/[^0-9\/\-]/g, '')
+
+      // Se o resultado for um número pequeno sem barra (ex: "71"),
+      // provavelmente é o campo "Número:" errado — limpa para forçar correção manual
+      if (/^\d{1,4}$/.test(contrato)) {
+        contrato = ''
+      }
+
+      parsed.contrato = contrato
     }
 
     // Limpa CNPJ inválido ou do contratado
