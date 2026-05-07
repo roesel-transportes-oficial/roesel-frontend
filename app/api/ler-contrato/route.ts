@@ -55,16 +55,19 @@ export async function POST(req: NextRequest) {
             text: `Analise este contrato de transporte rodoviário brasileiro e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem explicações.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXISTEM 2 TIPOS DE CONTRATO:
+EXISTEM 3 TIPOS DE CONTRATO:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TIPO A (SADA / BRAZUL / DACUNHA): seções em caixa alta "CONTRATANTE", "CONTRATADO", "EQUIPAMENTOS DE TRANSPORTE", "MOTORISTA", "SERVIÇOS CONTRATADOS", "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO". Número do contrato após "VIAGENS:" no título.
-TIPO B (AUTOPORT): cabeçalho com logo AUTOPORT, campos "Contrato:", "Data Contrato:", seções "Contratado", "Veículo", "Motorista/Preposto", "Valor do Serviço Contratado e Quitação".
+TIPO A (SADA): documento digital/PDF com seções em caixa alta "CONTRATANTE", "CONTRATADO", "EQUIPAMENTOS DE TRANSPORTE", "MOTORISTA", "SERVIÇOS CONTRATADOS", "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO". Número após "VIAGENS:" no título.
+
+TIPO B (BRAZUL / DACUNHA): mesma estrutura do TIPO A com seções em caixa alta, porém emitido por outras empresas. Número após "VIAGENS:" no título.
+
+TIPO C (AUTOPORT): cabeçalho com logo AUTOPORT, campos "Contrato:", "Data Contrato:", seções "Contratado", "Veículo", "Motorista/Preposto", "Valor do Serviço Contratado e Quitação".
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IDENTIFICAÇÃO DO CLIENTE:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TIPO A → cliente na seção "CONTRATANTE" campo "Nome:"
-TIPO B → cliente no cabeçalho campo "Nome:" (empresa emitente)
+TIPO A/B → cliente na seção "CONTRATANTE" campo "Nome:"
+TIPO C → cliente no cabeçalho campo "Nome:" (empresa emitente, ex: AUTOPORT)
 CONTRATADO = Carlos Alberto Roesel Transportes — NUNCA é o cliente.
 CNPJ do contratado é sempre 66330549000152 — NUNCA use esse.
 
@@ -73,65 +76,75 @@ CAMPOS A EXTRAIR:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 "contrato":
-  TIPO A → número após "VIAGENS:" no título do documento.
-  TIPO B → campo "Contrato:" que fica na PRIMEIRA LINHA do cabeçalho do contrato, logo abaixo do título "CONTRATO DE TRANSPORTE...".
-    ⚠️ ATENÇÃO TIPO B: o formato é sempre AAAA/NNNNNN-N (ex: "2026/284957-1", "2026/284483-5").
-    ⚠️ NUNCA use o campo "Número:" da seção Contratado — esse é outro campo interno.
-    ⚠️ NUNCA use "Viagem:", "Planejamento:" — apenas "Contrato:".
-  ⚠️ Contém APENAS dígitos, barras (/) e hífens (-). Corrigir OCR: B→8, O→0, I→1, S→5, G→6, Z→2.
+  TIPO A/B → número após "VIAGENS:" no título do documento.
+  TIPO C → campo "Contrato:" na primeira linha do cabeçalho. Formato AAAA/NNNNNN-N (ex: "2026/284957-1").
+    ⚠️ TIPO C: NUNCA use "Número:", "Viagem:", "Planejamento:".
+  ⚠️ Apenas dígitos, barras (/) e hífens (-). OCR: B→8, O→0, I→1, S→5, G→6, Z→2.
 
 "data": Formato YYYY-MM-DD.
-  TIPO A → "Data de Pagamento:" no topo direito
-  TIPO B → "Data Contrato:" no topo direito (mesma linha do campo "Contrato:")
-    ⚠️ Leia o DIA com atenção — OCR confunde 6 com 5, 8 com 3, etc.
+  TIPO A/B → "Data de Pagamento:" no topo direito da seção CONTRATANTE
+  TIPO C → "Data Contrato:" no topo direito do cabeçalho
   ⚠️ NUNCA use "Data de Saída:", "Prazo do Contrato:", "Emitido em:".
-  ⚠️ Formato DD/MM/AAAA → converta para AAAA-MM-DD. Ano é 2025 ou 2026.
+  ⚠️ Leia DD/MM/AAAA — OCR confunde: 6↔5, 8↔3, 0↔6. Leia cada dígito separadamente.
+  Ano é 2025 ou 2026. Converta para AAAA-MM-DD.
 
 "cliente_nome_completo":
-  TIPO A → seção "CONTRATANTE" campo "Nome:"
-  TIPO B → campo "Nome:" no cabeçalho (empresa emitente, ex: AUTOPORT TRANSPORTES E LOGISTICA LTDA)
+  TIPO A/B → seção "CONTRATANTE" campo "Nome:"
+  TIPO C → campo "Nome:" no cabeçalho (empresa emitente)
   NUNCA coloque Carlos Alberto Roesel.
 
-"cnpj": CNPJ do cliente. 14 dígitos. NUNCA use 66330549000152. Se dúvida retorne "".
+"cnpj": CNPJ do cliente.
+  TIPO A/B → campo "CNPJ:" dentro da seção "CONTRATANTE". Leia os 14 dígitos um por um.
+    ⚠️ NUNCA use o CNPJ da seção "CONTRATADO".
+  TIPO C → campo "CNPJ:" no cabeçalho, NA MESMA ÁREA do nome do cliente emitente.
+    ⚠️ O documento tem vários CNPJs — use APENAS o do cabeçalho junto ao nome da empresa.
+    ⚠️ NUNCA use CNPJs da seção "Contratado" nem de outras seções.
+  NUNCA use 66330549000152. Se dúvida retorne "".
 
 "motorista":
-  TIPO A → seção "MOTORISTA" campo "Nome:"
-  TIPO B → seção "Motorista/Preposto" campo "NOME:"
+  TIPO A/B → seção "MOTORISTA" campo "Nome:"
+  TIPO C → seção "Motorista/Preposto" campo "NOME:"
   NUNCA coloque nome de empresa.
 
 "placa":
-  TIPO A → "Placa Cavalo Mecânico:"
-  TIPO B → "Placa Caminhão:"
+  TIPO A/B → "Placa Cavalo Mecânico:"
+  TIPO C → "Placa Caminhão:"
   7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2. Releia de trás para frente.
 
 "placa_carreta":
-  TIPO A → "Placa Semi-reboque:"
-  TIPO B → "Placa Carreta:"
+  TIPO A/B → "Placa Semi-reboque:"
+  TIPO C → "Placa Carreta:"
   Mesmas regras. Releia duas vezes.
 
 "frota": valor exato após "Frota:".
 
 "fat_bruto":
-  TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO", linha "Frete Contratado"
-    ❌ NUNCA use "Peso:" — é peso em KG, não dinheiro!
+  TIPO A/B → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO", linha "Frete Contratado"
+    ❌ NUNCA use "Peso:" — é peso da carga em KG, NÃO é dinheiro!
     ❌ NUNCA use "Saldo a Receber", "Outros Créditos", "Vale-Pedágio"
-  TIPO B → linha "(+) Frete Contratado: X.XXX,XX" — valor após os dois pontos
+  TIPO C → linha "(+) Frete Contratado: X.XXX,XX" — valor após os dois pontos
+    ❌ NUNCA use "Saldo a Receber", "Pedágio", "Reembolso"
   Formato: VÍRGULA=decimal, PONTO=milhar.
-  "18.674,58"→"18674.58" | "1.500,00"→"1500.00" | "374,73"→"374.73"
+  "18.674,58"→"18674.58" | "8.731,88"→"8731.88" | "374,73"→"374.73"
   SEMPRE com ponto decimal e 2 casas.
 
 "qtd_veiculos":
-  TIPO A → campo "Quant.:" — número direto.
-  TIPO B → campo "Veículos:" — siga esta ordem:
-    1. PRIMEIRO leia o número total logo após "Veículos:" antes de qualquer cidade.
-    2. SE não conseguir, SOME os números da distribuição por cidade.
-       Ex: "1 FEIRA DE SANTANA / 1 JUAZEIRO / 1 PETROLINA / 1 TERESINA / 1 MOSSORO / 1 NATAL" → 1+1+1+1+1+1 = 6
-       Ex: "1 BELO HORIZONTE / 7 CONTAGEM" → 1+7 = 8
-    Os dois métodos devem dar o mesmo resultado. Use como verificação.
-  Retorne apenas o inteiro total.
+  TIPO A/B → campo "Quant.:" — número direto.
+  TIPO C → campo "Veículos:":
+    1. Leia o total logo após "Veículos:" antes de qualquer cidade.
+    2. Se não identificar, some a distribuição: "1 CIDADE A / 7 CIDADE B" → 1+7=8.
+  Inteiro.
 
-"origem": cidade e estado de origem.
-"destino": cidade e estado de destino final.
+"origem":
+  TIPO A/B → campo "Origem:" na seção SERVIÇOS CONTRATADOS. Leia com atenção.
+  TIPO C → campo "Origem:" na seção Serviços Contratados.
+  ⚠️ Leia exatamente o que está escrito — não confunda com outras cidades do documento.
+
+"destino":
+  TIPO A/B → campo "Destino:" na seção SERVIÇOS CONTRATADOS.
+  TIPO C → campo "Destino Final:" na seção Serviços Contratados.
+  ⚠️ Leia exatamente o que está escrito.
+
 "status": sempre "ABERTO"
 "chapa": sempre ""
 "obs": sempre ""
@@ -176,7 +189,6 @@ JSON de retorno (SOMENTE isso):
     }
 
     // Normaliza número do contrato
-    // Para TIPO B, garante que tenha barra (formato AAAA/NNNNNN-N)
     if (parsed.contrato) {
       let contrato = String(parsed.contrato)
         .replace(/B/g, '8')
@@ -188,11 +200,8 @@ JSON de retorno (SOMENTE isso):
         .replace(/[A-Z]/g, '')
         .replace(/[^0-9\/\-]/g, '')
 
-      // Se o resultado for um número pequeno sem barra (ex: "71"),
-      // provavelmente é o campo "Número:" errado — limpa para forçar correção manual
-      if (/^\d{1,4}$/.test(contrato)) {
-        contrato = ''
-      }
+      // Número pequeno sem barra = campo errado (ex: "71")
+      if (/^\d{1,4}$/.test(contrato)) contrato = ''
 
       parsed.contrato = contrato
     }
