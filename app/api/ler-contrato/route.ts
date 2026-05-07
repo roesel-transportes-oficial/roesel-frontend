@@ -54,41 +54,42 @@ export async function POST(req: NextRequest) {
             text: `Analise este contrato de transporte rodoviário brasileiro e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem explicações.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXISTEM 3 TIPOS DE CONTRATO — identifique qual é antes de extrair:
+EXISTEM 2 TIPOS DE CONTRATO:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TIPO A (SADA / BRAZUL / DACUNHA): tem seções em caixa alta "CONTRATANTE", "CONTRATADO", "EQUIPAMENTOS DE TRANSPORTE", "MOTORISTA", "SERVIÇOS CONTRATADOS", "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO". Número do contrato após "VIAGENS:" no título.
-TIPO B (AUTOPORT): tem cabeçalho com logo AUTOPORT, campos "Contrato:", "Data Contrato:", seções "Contratado", "Veículo", "Motorista/Preposto", "Valor do Serviço Contratado e Quitação".
+TIPO A (SADA / BRAZUL / DACUNHA): seções em caixa alta "CONTRATANTE", "CONTRATADO", "EQUIPAMENTOS DE TRANSPORTE", "MOTORISTA", "SERVIÇOS CONTRATADOS", "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO". Número do contrato após "VIAGENS:" no título.
+TIPO B (AUTOPORT): cabeçalho com logo AUTOPORT, campos "Contrato:", "Data Contrato:", seções "Contratado", "Veículo", "Motorista/Preposto", "Valor do Serviço Contratado e Quitação".
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 IDENTIFICAÇÃO DO CLIENTE:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- TIPO A: cliente está na seção "CONTRATANTE" campo "Nome:"
-- TIPO B: cliente é a empresa do cabeçalho (ex: AUTOPORT TRANSPORTES E LOGISTICA LTDA) campo "Nome:"
-- CONTRATADO = Carlos Alberto Roesel Transportes — NUNCA é o cliente
-- CNPJ do contratado é sempre 66330549000152 — NUNCA use esse
+TIPO A → cliente na seção "CONTRATANTE" campo "Nome:"
+TIPO B → cliente no cabeçalho campo "Nome:" (empresa emitente)
+CONTRATADO = Carlos Alberto Roesel Transportes — NUNCA é o cliente.
+CNPJ do contratado é sempre 66330549000152 — NUNCA use esse.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CAMPOS A EXTRAIR:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 "contrato":
-  TIPO A → número após "VIAGENS:" no título (ex: "VIAGENS: 48587440" → "48587440")
-  TIPO B → campo "Contrato:" primeira linha (ex: "Contrato: 2026/284494-13" → "2026/284494-13")
+  TIPO A → número após "VIAGENS:" no título
+  TIPO B → campo "Contrato:" primeira linha
 
-"data": Formato YYYY-MM-DD. Leia o ANO com atenção (4 dígitos).
-  TIPO A → campo "Data de Pagamento:" no topo direito (seção CONTRATANTE)
-  TIPO B → campo "Data Contrato:" no topo direito
-  NUNCA use "Data de Saída" (é data de saída do veículo, não do contrato)
-  NUNCA use "Prazo do Contrato" (é prazo de entrega)
+"data": REGRAS CRÍTICAS — Formato YYYY-MM-DD.
+  TIPO A → campo "Data de Pagamento:" que aparece no TOPO DIREITO do documento, na mesma linha do nome do CONTRATANTE. Exemplo: "Data de Pagamento: 03/03/2026" → "2026-03-03".
+  TIPO B → campo "Data Contrato:" no topo direito. Exemplo: "Data Contrato: 02/03/2026" → "2026-03-02".
+  ⚠️ NUNCA use "Data de Saída:" — essa é a data de saída do veículo, não do contrato.
+  ⚠️ NUNCA use "Prazo do Contrato:" — esse é o prazo de entrega.
+  ⚠️ O ANO deve ser lido com atenção: os contratos são de 2025 ou 2026. Leia os 4 dígitos do ano separadamente.
+  ⚠️ O formato no documento é DD/MM/AAAA. Converta corretamente para AAAA-MM-DD.
+  Exemplo correto: "03/03/2026" → "2026-03-03". NÃO "2025-01-03", NÃO "2026-03-01".
 
 "cliente_nome_completo":
   TIPO A → seção "CONTRATANTE" campo "Nome:"
-  TIPO B → campo "Nome:" no cabeçalho/topo (empresa emitente)
+  TIPO B → campo "Nome:" no cabeçalho
   NUNCA coloque Carlos Alberto Roesel.
 
-"cnpj": CNPJ do cliente (CONTRATANTE). 14 dígitos.
-  NUNCA use 66330549000152.
-  Se tiver dúvida retorne "".
+"cnpj": CNPJ do cliente. 14 dígitos. NUNCA use 66330549000152. Se dúvida retorne "".
 
 "motorista":
   TIPO A → seção "MOTORISTA" campo "Nome:"
@@ -99,24 +100,23 @@ CAMPOS A EXTRAIR:
   TIPO A → "Placa Cavalo Mecânico:"
   TIPO B → "Placa Caminhão:"
   Leia os 7 caracteres UM POR UM da esquerda para direita.
-  Padrão antigo: 3 letras + 4 números. Mercosul: 3 letras + 1 número + 1 letra + 2 números.
-  Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2.
-  Releia de trás para frente para confirmar.
+  Mercosul: 3 letras + 1 número + 1 letra + 2 números (ex: TDJ3C49).
+  Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2. Releia de trás para frente.
 
-"placa_carreta": 
+"placa_carreta":
   TIPO A → "Placa Semi-reboque:"
   TIPO B → "Placa Carreta:"
-  Mesmas regras de leitura. Releia duas vezes.
+  Mesmas regras. Releia duas vezes.
 
-"frota": valor exato após "Frota:" (pode ter letras, ex: "SD287", "80825", "116").
+"frota": valor exato após "Frota:" (ex: "SD287", "80825", "116").
 
-"fat_bruto": ATENÇÃO — valor do FRETE em reais.
-  TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO", linha "Frete Contratado" (ex: "374,73" ou "8.527,22")
-    ⚠️ NÃO use "Peso:" da seção SERVIÇOS CONTRATADOS — Peso é peso em kg, NÃO é valor financeiro!
+"fat_bruto": valor do FRETE em reais.
+  TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO", linha "Frete Contratado"
+    ⚠️ NÃO use "Peso:" — é peso da carga em kg, NÃO valor financeiro!
     ⚠️ NÃO use "Saldo a Receber" nem "Outros Créditos"
-  TIPO B → seção "Valor do Serviço Contratado e Quitação", linha "(+) Frete Contratado:" (ex: "2.741,19")
+  TIPO B → seção "Valor do Serviço Contratado e Quitação", linha "(+) Frete Contratado:"
   Formato: VÍRGULA = decimal, PONTO = milhar.
-  Ex: "374,73" → "374.73" | "8.527,22" → "8527.22" | "2.741,19" → "2741.19"
+  Ex: "374,73"→"374.73" | "8.527,22"→"8527.22" | "2.741,19"→"2741.19"
   SEMPRE retorne com ponto decimal e 2 casas.
 
 "qtd_veiculos":
@@ -175,6 +175,24 @@ JSON de retorno (SOMENTE isso):
       const cnpjLimpo = parsed.cnpj.replace(/\D/g, '')
       if (cnpjLimpo.length < 14 || cnpjLimpo === CNPJ_CONTRATADO) {
         parsed.cnpj = ''
+      }
+    }
+
+    // Valida e corrige data
+    if (parsed.data) {
+      const dataStr = String(parsed.data).trim()
+      // Tenta converter formato DD/MM/YYYY para YYYY-MM-DD se necessário
+      const matchBR = dataStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+      if (matchBR) {
+        parsed.data = `${matchBR[3]}-${matchBR[2]}-${matchBR[1]}`
+      }
+      // Valida: ano deve ser entre 2024 e 2027
+      const anoMatch = String(parsed.data).match(/^(\d{4})-/)
+      if (anoMatch) {
+        const ano = parseInt(anoMatch[1])
+        if (ano < 2024 || ano > 2027) {
+          parsed.data = ''
+        }
       }
     }
 
