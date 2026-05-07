@@ -113,27 +113,24 @@ CAMPOS A EXTRAIR:
   Este campo é o VALOR FINANCEIRO DO FRETE em reais (R$).
 
   TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO"
-    ✅ USE: linha "Frete Contratado" — é um valor em R$ (ex: 8.731,88 ou 374,73)
-    ❌ NUNCA USE "Peso:" — Peso está na seção SERVIÇOS CONTRATADOS e é peso em KG da carga (ex: 15044,00), NÃO é dinheiro!
+    ✅ USE: linha "Frete Contratado" — valor em R$ (ex: 8.731,88 ou 374,73)
+    ❌ NUNCA USE "Peso:" — está na seção SERVIÇOS CONTRATADOS, é peso em KG, NÃO é dinheiro!
     ❌ NUNCA USE "Saldo a Receber", "Outros Créditos", "Vale-Pedágio", "Combustível"
 
   TIPO B → seção "Valor do Serviço Contratado e Quitação"
-    ✅ USE: linha "(+) Frete Contratado:"
+    ✅ USE: linha "(+) Frete Contratado: X.XXX,XX" — o valor após os dois pontos
     ❌ NUNCA USE outros campos
 
-  Como diferenciar Frete de Peso:
-    - Frete Contratado fica na seção de PREÇOS/VALORES (parte de baixo do contrato)
-    - Peso fica na seção de SERVIÇOS CONTRATADOS junto com Origem/Destino/Quant.
-    - Frete tem R$ na frente ou está em coluna de valores monetários
-    - Peso tem "kg" ou "Peso:" antes do número
-
   Formato brasileiro: VÍRGULA=decimal, PONTO=milhar.
-  "8.731,88"→"8731.88" | "374,73"→"374.73" | "13.109,27"→"13109.27"
+  "8.731,88"→"8731.88" | "1.500,00"→"1500.00" | "374,73"→"374.73"
   SEMPRE com ponto decimal e 2 casas.
 
 "qtd_veiculos":
-  TIPO A → campo "Quant.:"
-  TIPO B → campo "Veículos:" (total)
+  TIPO A → campo "Quant.:" — apenas o número inteiro
+  TIPO B → campo "Veículos:" — pegue o PRIMEIRO número logo após "Veículos:", que é o TOTAL.
+    ⚠️ ATENÇÃO: após o total vem a distribuição por cidade. Pegue SOMENTE o total.
+    Ex: "Veículos: 6  1 FEIRA DE SANTANA / 1 JUAZEIRO DO NORTE / 1 PETROLINA" → retorne 6 (NÃO 1)
+    Ex: "Veículos: 3  3 JUIZ DE FORA" → retorne 3
   Apenas inteiro.
 
 "origem": cidade e estado de origem.
@@ -218,7 +215,6 @@ JSON de retorno (SOMENTE isso):
     }
 
     // Garante fat_bruto como número com ponto decimal
-    // Proteção extra: rejeita valores claramente absurdos (peso da carga)
     if (parsed.fat_bruto !== undefined && parsed.fat_bruto !== '') {
       let val = String(parsed.fat_bruto).trim()
       if (val.includes(',')) {
@@ -233,8 +229,6 @@ JSON de retorno (SOMENTE isso):
         if (val.length > 2) val = val.slice(0, -2) + '.' + val.slice(-2)
       }
       const num = parseFloat(val)
-      // Rejeita valores sem centavos que parecem ser peso (número inteiro redondo grande)
-      // Valores de frete quase sempre têm centavos
       if (!isNaN(num) && num > 0) {
         parsed.fat_bruto = String(num)
       } else {
