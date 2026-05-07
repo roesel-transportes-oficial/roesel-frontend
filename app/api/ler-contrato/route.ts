@@ -63,21 +63,17 @@ CAMPOS A EXTRAIR:
   TIPO A/B → "Data de Pagamento:" no topo direito
   TIPO C → "Data Contrato:" no topo direito
   ⚠️ NUNCA use "Data de Saída:", "Prazo do Contrato:", "Emitido em:".
-  ⚠️ Leia o DIA com atenção máxima — OCR confunde muito: 6↔5, 8↔3, 0↔6, 1↔7.
-  ⚠️ Leia cada dígito separadamente: primeiro dígito do dia, segundo dígito do dia.
-  Formato DD/MM/AAAA → converta para AAAA-MM-DD. Ano é 2025 ou 2026.
+  ⚠️ Leia cada dígito separadamente. Ano é 2025 ou 2026.
+  Formato DD/MM/AAAA → converta para AAAA-MM-DD.
 
 "cliente_nome_completo":
   TIPO A/B → seção "CONTRATANTE" campo "Nome:"
   TIPO C → campo "Nome:" no cabeçalho
   NUNCA coloque Carlos Alberto Roesel.
 
-"cnpj": CNPJ do cliente.
-  TIPO A/B → campo "CNPJ:" dentro da seção "CONTRATANTE". Leia os 14 dígitos UM POR UM.
-    ⚠️ NUNCA use CNPJ da seção "CONTRATADO".
-  TIPO C → campo "CNPJ:" no cabeçalho junto ao nome da empresa emitente. Leia os 14 dígitos UM POR UM.
-    ⚠️ O documento tem vários CNPJs — use SOMENTE o que está no cabeçalho com o nome do cliente.
-    ⚠️ NUNCA use CNPJs da seção "Contratado" nem de outras seções do documento.
+"cnpj": CNPJ do cliente. 14 dígitos.
+  TIPO A/B → campo "CNPJ:" na seção CONTRATANTE.
+  TIPO C → campo "CNPJ:" no cabeçalho junto ao nome da empresa emitente.
   NUNCA use 66330549000152. Se dúvida retorne "".
 
 "motorista":
@@ -85,15 +81,47 @@ CAMPOS A EXTRAIR:
   TIPO C → seção "Motorista/Preposto" campo "NOME:"
   NUNCA coloque nome de empresa.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LEITURA DE PLACAS — REGRAS CRÍTICAS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TODAS as placas seguem o padrão MERCOSUL: exatamente 7 caracteres no formato:
+  POSIÇÃO 1: LETRA
+  POSIÇÃO 2: LETRA
+  POSIÇÃO 3: LETRA
+  POSIÇÃO 4: ALGARISMO (0-9)
+  POSIÇÃO 5: LETRA
+  POSIÇÃO 6: ALGARISMO (0-9)
+  POSIÇÃO 7: ALGARISMO (0-9)
+  Exemplo: R M H 9 C 9 0
+
+PROCEDIMENTO OBRIGATÓRIO para cada placa:
+  1. Localize o campo da placa no documento
+  2. Leia os 7 caracteres UM POR UM da esquerda para a direita
+  3. Para cada posição, aplique a regra:
+     - Posições 1,2,3,5: devem ser LETRAS (A-Z). Se leu um número, você errou.
+     - Posições 4,6,7: devem ser ALGARISMOS (0-9). Se leu uma letra, você errou.
+     - Posição 4: se leu letra O → é 0, se leu letra I → é 1
+     - Posições 6,7: mesma regra
+  4. Valide: o resultado deve ter exatamente 7 chars no padrão AAA#A##
+  5. Se não bater com o padrão, RELEIA a placa do zero
+
+Confusões comuns a EVITAR:
+  - R ↔ P (traço vertical + curvas)
+  - H ↔ M ↔ N (traços verticais)
+  - 9 ↔ 4 ↔ 7 (numerais parecidos)
+  - C ↔ G ↔ 0 (letras/números curvos)
+  - 8 ↔ B (curvas duplas)
+  - 6 ↔ G ↔ 0
+
 "placa":
   TIPO A/B → "Placa Cavalo Mecânico:"
   TIPO C → "Placa Caminhão:"
-  7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2. Releia de trás para frente.
+  Aplique o procedimento acima. Resultado deve ser AAA#A##.
 
 "placa_carreta":
   TIPO A/B → "Placa Semi-reboque:"
   TIPO C → "Placa Carreta:"
-  Mesmas regras. Releia duas vezes.
+  Aplique o procedimento acima. Resultado deve ser AAA#A##.
 
 "frota": valor exato após "Frota:".
 
@@ -112,8 +140,7 @@ CAMPOS A EXTRAIR:
 "origem":
   TIPO A/B → campo "Origem:" na seção SERVIÇOS CONTRATADOS.
   TIPO C → campo "Origem:" na seção Serviços Contratados.
-  ⚠️ Leia EXATAMENTE o que está escrito. Não invente nem substitua por outra cidade.
-  ⚠️ OCR pode distorcer nomes de cidades — releia letra por letra se necessário.
+  ⚠️ Leia EXATAMENTE o que está escrito.
 
 "destino":
   TIPO A/B → campo "Destino:" na seção SERVIÇOS CONTRATADOS.
