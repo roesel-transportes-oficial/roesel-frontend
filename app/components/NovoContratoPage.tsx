@@ -162,6 +162,47 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return melhorCliente
   }
 
+  // ── MATCHING DE MOTORISTA ──
+  function encontrarMotorista(lista: any[], nomeIA: string): any | null {
+    if (!nomeIA) return null
+    const nomeNorm = normalizar(nomeIA)
+
+    return lista.find(m => {
+      const nomeBanco = normalizar(m.nome)
+
+      // 1. Match exato
+      if (nomeBanco === nomeNorm) return true
+
+      // 2. Um contém o outro
+      if (nomeBanco.includes(nomeNorm) || nomeNorm.includes(nomeBanco)) return true
+
+      // 3. Primeiro + último nome batem
+      const palavrasIA = nomeNorm.split(' ').filter(Boolean)
+      const palavrasBanco = nomeBanco.split(' ').filter(Boolean)
+      const primeiroIA = palavrasIA[0] || ''
+      const ultimoIA = palavrasIA[palavrasIA.length - 1] || ''
+      const primeiroBanco = palavrasBanco[0] || ''
+      const ultimoBanco = palavrasBanco[palavrasBanco.length - 1] || ''
+      if (primeiroIA.length > 3 && primeiroBanco === primeiroIA && ultimoBanco === ultimoIA) return true
+
+      // 4. Tolerância de até 2 erros distribuídos entre as palavras (OCR)
+      if (palavrasIA.length >= 2 && palavrasIA.length === palavrasBanco.length) {
+        let difTotal = 0
+        for (let i = 0; i < palavrasIA.length; i++) {
+          const a = palavrasIA[i], b = palavrasBanco[i]
+          if (a === b) continue
+          if (a.length !== b.length) { difTotal += 2; continue }
+          let d = 0
+          for (let j = 0; j < a.length; j++) if (a[j] !== b[j]) d++
+          difTotal += d
+        }
+        if (difTotal <= 2) return true
+      }
+
+      return false
+    }) || null
+  }
+
   // ── MATCHING DE PLACAS ──
   function normalizaPlaca(p: string) {
     return p.replace(/[^A-Z0-9]/gi, '').toUpperCase()
@@ -180,33 +221,24 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     if (!placaIA) return null
     const placaNorm = normalizaPlaca(placaIA)
 
-    // 1. Match exato normalizado
     const exato = lista.find(c => normalizaPlaca(c.placa) === placaNorm)
     if (exato) return exato
 
-    // 2. Tolerância de 1 caractere
     const umChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
     if (umChar) return umChar
 
-    // 3. Match pelos últimos 4 caracteres (parte numérica — mais confiável no OCR)
     if (placaNorm.length >= 4) {
       const sufixo = placaNorm.slice(-4)
       const porSufixo = lista.find(c => normalizaPlaca(c.placa).endsWith(sufixo))
       if (porSufixo) return porSufixo
     }
 
-    // 4. Tolerância de 2 caracteres (último recurso)
     const doisChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 2)
     return doisChar || null
   }
 
-  function encontrarCaminhao(placaIA: string) {
-    return encontrarPorPlaca(caminhoes, placaIA)
-  }
-
-  function encontrarCarreta(placaIA: string) {
-    return encontrarPorPlaca(carretas, placaIA)
-  }
+  function encontrarCaminhao(placaIA: string) { return encontrarPorPlaca(caminhoes, placaIA) }
+  function encontrarCarreta(placaIA: string) { return encontrarPorPlaca(carretas, placaIA) }
 
   async function lerComIA(e: any) {
     const file = e.target.files?.[0]
@@ -231,24 +263,14 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       })
       const parsed = await response.json()
 
-      const motoristaEncontrado = motoristas.find(m => {
-        const nomeIA = normalizar(parsed.motorista || '')
-        const nomeBanco = normalizar(m.nome)
-        if (nomeBanco === nomeIA || nomeBanco.includes(nomeIA) || nomeIA.includes(nomeBanco)) return true
-        const primeiroIA = nomeIA.split(' ')[0]
-        const primeiroBanco = nomeBanco.split(' ')[0]
-        if (primeiroIA.length > 3 && primeiroIA === primeiroBanco) {
-          return nomeIA.split(' ').pop() === nomeBanco.split(' ').pop()
-        }
-        return primeiroIA.length > 3 && primeiroIA === primeiroBanco
-      })
-
+      // Usa ativo !== false para incluir motoristas com ativo null/undefined
+      const motoristasAtivos = motoristas.filter(m => m.ativo !== false)
+      const motoristaEncontrado = encontrarMotorista(motoristasAtivos, parsed.motorista || '')
       const clienteEncontrado = encontrarClienteLista(
         clientesAtuais,
         parsed.cliente_nome_completo || parsed.cliente || '',
         parsed.cnpj || '', parsed.origem || ''
       )
-
       const caminhaoEncontrado = encontrarCaminhao(parsed.placa || '')
       const carretaEncontrada = encontrarCarreta(parsed.placa_carreta || '')
 
@@ -258,7 +280,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       setForm(f => ({
         ...f,
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
-        motorista: motoristaEncontrado ? motoristaEncontrado.nome : (parsed.motorista || ''),
+        motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
         cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
         cnpj: clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : parsed.cnpj ? formatCnpj(parsed.cnpj) : '',
         placa: caminhaoEncontrado ? caminhaoEncontrado.placa : '',
@@ -322,7 +344,9 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
             <label className="block text-sm font-medium text-gray-700 mb-1">Motorista *</label>
             <select name="motorista" value={form.motorista} onChange={handle} required className={IC}>
               <option value="">Selecione...</option>
-              {motoristas.filter(m => m.ativo).map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+              {motoristas.filter(m => m.ativo !== false).map(m => (
+                <option key={m.id} value={m.nome}>{m.nome}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -354,7 +378,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           </div>
         </div>
 
-        {/* Placas */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Placa do Caminhão</label>
