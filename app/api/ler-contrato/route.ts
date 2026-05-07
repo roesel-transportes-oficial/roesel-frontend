@@ -74,15 +74,18 @@ CAMPOS A EXTRAIR:
 "contrato":
   TIPO A → número após "VIAGENS:" no título
   TIPO B → campo "Contrato:" primeira linha
+  ⚠️ O número do contrato contém APENAS dígitos, barras (/) e hífens (-). NUNCA contém letras.
+  ⚠️ Confusões OCR a corrigir: B→8, O→0, I→1, S→5, G→6, Z→2.
+  Ex: "2026/2B4696-17" → "2026/284696-17" (B=8)
 
-"data": REGRAS CRÍTICAS — Formato YYYY-MM-DD.
-  TIPO A → campo "Data de Pagamento:" que aparece no TOPO DIREITO do documento, na mesma linha do nome do CONTRATANTE. Exemplo: "Data de Pagamento: 03/03/2026" → "2026-03-03".
-  TIPO B → campo "Data Contrato:" no topo direito. Exemplo: "Data Contrato: 02/03/2026" → "2026-03-02".
-  ⚠️ NUNCA use "Data de Saída:" — essa é a data de saída do veículo, não do contrato.
-  ⚠️ NUNCA use "Prazo do Contrato:" — esse é o prazo de entrega.
-  ⚠️ O ANO deve ser lido com atenção: os contratos são de 2025 ou 2026. Leia os 4 dígitos do ano separadamente.
+"data": Formato YYYY-MM-DD.
+  TIPO A → campo "Data de Pagamento:" no TOPO DIREITO do documento
+  TIPO B → campo "Data Contrato:" no topo direito
+  ⚠️ NUNCA use "Data de Saída:" — é data de saída do veículo, não do contrato.
+  ⚠️ NUNCA use "Prazo do Contrato:" — é prazo de entrega.
   ⚠️ O formato no documento é DD/MM/AAAA. Converta corretamente para AAAA-MM-DD.
-  Exemplo correto: "03/03/2026" → "2026-03-03". NÃO "2025-01-03", NÃO "2026-03-01".
+  ⚠️ Leia o ANO com atenção — os contratos são de 2025 ou 2026.
+  Exemplo correto: "03/03/2026" → "2026-03-03". NÃO "2025-01-03".
 
 "cliente_nome_completo":
   TIPO A → seção "CONTRATANTE" campo "Nome:"
@@ -169,6 +172,19 @@ JSON de retorno (SOMENTE isso):
       if (frotaConvertida) parsed.frota = frotaConvertida
     }
 
+    // Normaliza número do contrato — corrige confusões OCR (letras que parecem números)
+    if (parsed.contrato) {
+      parsed.contrato = String(parsed.contrato)
+        .replace(/B/g, '8')
+        .replace(/O/g, '0')
+        .replace(/I/g, '1')
+        .replace(/S/g, '5')
+        .replace(/G/g, '6')
+        .replace(/Z/g, '2')
+        .replace(/[A-Z]/g, '')
+        .replace(/[^0-9\/\-]/g, '')
+    }
+
     // Limpa CNPJ inválido ou do contratado
     const CNPJ_CONTRATADO = '66330549000152'
     if (parsed.cnpj) {
@@ -181,7 +197,7 @@ JSON de retorno (SOMENTE isso):
     // Valida e corrige data
     if (parsed.data) {
       const dataStr = String(parsed.data).trim()
-      // Tenta converter formato DD/MM/YYYY para YYYY-MM-DD se necessário
+      // Converte DD/MM/YYYY para YYYY-MM-DD se necessário
       const matchBR = dataStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
       if (matchBR) {
         parsed.data = `${matchBR[3]}-${matchBR[2]}-${matchBR[1]}`
@@ -190,9 +206,7 @@ JSON de retorno (SOMENTE isso):
       const anoMatch = String(parsed.data).match(/^(\d{4})-/)
       if (anoMatch) {
         const ano = parseInt(anoMatch[1])
-        if (ano < 2024 || ano > 2027) {
-          parsed.data = ''
-        }
+        if (ano < 2024 || ano > 2027) parsed.data = ''
       }
     }
 
