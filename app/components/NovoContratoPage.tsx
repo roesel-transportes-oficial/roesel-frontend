@@ -104,14 +104,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     if (!nomeIA && !cnpjIA) return null
     const nomeNorm = nomeIA ? normalizar(nomeIA) : ''
 
-    // 1. Match por CNPJ completo + nome parecido
     if (cnpjIA) {
       const cnpjLimpo = cnpjIA.replace(/\D/g, '')
       if (cnpjLimpo.length === 14) {
         const found = lista.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo)
         if (found && nomeNorm && nomesSaoParecidos(nomeIA, found.nome)) return found
       }
-      // 2. Match por CNPJ base (8 primeiros dígitos = mesma empresa, filial diferente)
       if (cnpjLimpo.length >= 8) {
         const base = cnpjLimpo.slice(0, 8)
         const porBase = lista.find(c => (c.cnpj || '').replace(/\D/g, '').startsWith(base))
@@ -121,7 +119,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
     if (!nomeNorm) return null
 
-    // 3. Match exato por nome
     const todosExatos = lista.filter(c => normalizar(c.nome) === nomeNorm)
     if (todosExatos.length === 1) return todosExatos[0]
     if (todosExatos.length > 1) {
@@ -135,7 +132,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       return todosExatos[0]
     }
 
-    // 4. Um contém o outro
     const todosContem = lista.filter(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
@@ -152,7 +148,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       return todosContem[0]
     }
 
-    // 5. Palavras em comum
     const found = lista.find(c => {
       const nomeCad = normalizar(c.nome)
       const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
@@ -172,7 +167,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     })
     if (found) return found
 
-    // 6. Similaridade alta
     let melhorScore = 0, melhorCliente = null
     for (const c of lista) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
@@ -211,8 +205,22 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     }) || null
   }
 
-  function normalizaPlaca(p: string) {
-    return p.replace(/[^A-Z0-9]/gi, '').toUpperCase().replace(/O/g, '0').replace(/I/g, '1')
+  // ── MATCHING DE PLACAS MERCOSUL ──
+  // Formato Mercosul: AAA#A## (3 letras + 1 número + 1 letra + 2 números)
+  function normalizaPlaca(p: string): string {
+    const clean = p.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+    if (clean.length === 7) {
+      // Posições numéricas: 3, 5, 6 → converte O→0 e I→1
+      // Posições de letra: 0,1,2,4 → mantém como está
+      return (
+        clean[0] + clean[1] + clean[2] +
+        clean[3].replace(/O/g, '0').replace(/I/g, '1') +
+        clean[4] +
+        clean[5].replace(/O/g, '0').replace(/I/g, '1') +
+        clean[6].replace(/O/g, '0').replace(/I/g, '1')
+      )
+    }
+    return clean.replace(/O/g, '0').replace(/I/g, '1')
   }
 
   function diffChars(a: string, b: string): number {
@@ -225,17 +233,60 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   function encontrarPorPlaca(lista: any[], placaIA: string): any | null {
     if (!placaIA) return null
     const placaNorm = normalizaPlaca(placaIA)
+
+    // 1. Match exato normalizado
     const exato = lista.find(c => normalizaPlaca(c.placa) === placaNorm)
     if (exato) return exato
+
+    // 2. Tolerância 1 char (mesmo tamanho)
     const umChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
     if (umChar) return umChar
+
+    // 3. Últimos 4 chars batem
     if (placaNorm.length >= 4) {
       const sufixo = placaNorm.slice(-4)
       const porSufixo = lista.find(c => normalizaPlaca(c.placa).endsWith(sufixo))
       if (porSufixo) return porSufixo
     }
+
+    // 4. Tolerância 2 chars (mesmo tamanho)
     const doisChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 2)
-    return doisChar || null
+    if (doisChar) return doisChar
+
+    // 5. Mercosul: IA leu 6 chars (esqueceu 1) — tenta inserir char faltante em cada posição
+    if (placaNorm.length === 6) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+      for (let i = 0; i <= 6; i++) {
+        for (const char of chars) {
+          const tentativa = normalizaPlaca(placaNorm.slice(0, i) + char + placaNorm.slice(i))
+          const found = lista.find(c => normalizaPlaca(c.placa) === tentativa)
+          if (found) return found
+        }
+      }
+    }
+
+    // 6. Prefixo 3 chars + sufixo 2 chars batem (tamanhos diferentes)
+    if (placaNorm.length >= 5) {
+      const prefixo = placaNorm.slice(0, 3)
+      const sufixo2 = placaNorm.slice(-2)
+      const porPrefixoSufixo = lista.find(c => {
+        const p = normalizaPlaca(c.placa)
+        return p.startsWith(prefixo) && p.endsWith(sufixo2)
+      })
+      if (porPrefixoSufixo) return porPrefixoSufixo
+    }
+
+    // 7. Só prefixo 3 chars + tamanhos próximos (último recurso)
+    if (placaNorm.length >= 3) {
+      const prefixo = placaNorm.slice(0, 3)
+      const porPrefixo = lista.find(c => {
+        const p = normalizaPlaca(c.placa)
+        return p.startsWith(prefixo) && Math.abs(p.length - placaNorm.length) <= 2
+      })
+      if (porPrefixo) return porPrefixo
+    }
+
+    return null
   }
 
   function encontrarCaminhao(p: string) { return encontrarPorPlaca(caminhoes, p) }
@@ -285,7 +336,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
         motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
         cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
-        // CNPJ: sempre usa o do banco se encontrou o cliente
         cnpj: clienteEncontrado?.cnpj
           ? formatCnpj(clienteEncontrado.cnpj)
           : parsed.cnpj ? formatCnpj(parsed.cnpj) : '',
@@ -327,10 +377,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const IC = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
   const ICwarn = "w-full border border-orange-300 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
   const ICconfirm = "w-full border-2 border-orange-400 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-
-  const avisoIA = camposIAAtivos
-    ? <span className="text-xs text-orange-500 font-medium ml-1">⚠️ Confira</span>
-    : null
+  const avisoIA = camposIAAtivos ? <span className="text-xs text-orange-500 font-medium ml-1">⚠️ Confira</span> : null
 
   return (
     <div className="p-6 max-w-4xl">
@@ -452,27 +499,24 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
             <input name="qtd_veiculos" type="number" value={form.qtd_veiculos} onChange={handle} className={IC} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Data {avisoIA}
-            </label>
-            <input name="data" type="date" value={form.data} onChange={e => { handle(e); setCamposIAAtivos(false) }}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data {avisoIA}</label>
+            <input name="data" type="date" value={form.data}
+              onChange={e => { handle(e); setCamposIAAtivos(false) }}
               className={camposIAAtivos ? ICconfirm : IC} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Origem {avisoIA}
-            </label>
-            <input name="origem" value={form.origem} onChange={e => { handle(e); setCamposIAAtivos(false) }}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Origem {avisoIA}</label>
+            <input name="origem" value={form.origem}
+              onChange={e => { handle(e); setCamposIAAtivos(false) }}
               className={camposIAAtivos ? ICconfirm : IC} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Destino {avisoIA}
-            </label>
-            <input name="destino" value={form.destino} onChange={e => { handle(e); setCamposIAAtivos(false) }}
+            <label className="block text-sm font-medium text-gray-700 mb-1">Destino {avisoIA}</label>
+            <input name="destino" value={form.destino}
+              onChange={e => { handle(e); setCamposIAAtivos(false) }}
               className={camposIAAtivos ? ICconfirm : IC} />
           </div>
         </div>
