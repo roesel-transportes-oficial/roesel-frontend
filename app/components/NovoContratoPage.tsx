@@ -18,6 +18,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const [placaLidaIA, setPlacaLidaIA] = useState('')
   const [placaCarretaLidaIA, setPlacaCarretaLidaIA] = useState('')
   const [contratoLidoIA, setContratoLidoIA] = useState(false)
+  const [camposIAAtivos, setCamposIAAtivos] = useState(false)
 
   const [form, setForm] = useState({
     motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
@@ -102,14 +103,25 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   function encontrarClienteLista(lista: any[], nomeIA: string, cnpjIA?: string, origemIA?: string) {
     if (!nomeIA && !cnpjIA) return null
     const nomeNorm = nomeIA ? normalizar(nomeIA) : ''
+
+    // 1. Match por CNPJ completo + nome parecido
     if (cnpjIA) {
       const cnpjLimpo = cnpjIA.replace(/\D/g, '')
       if (cnpjLimpo.length === 14) {
         const found = lista.find(c => (c.cnpj || '').replace(/\D/g, '') === cnpjLimpo)
         if (found && nomeNorm && nomesSaoParecidos(nomeIA, found.nome)) return found
       }
+      // 2. Match por CNPJ base (8 primeiros dígitos = mesma empresa, filial diferente)
+      if (cnpjLimpo.length >= 8) {
+        const base = cnpjLimpo.slice(0, 8)
+        const porBase = lista.find(c => (c.cnpj || '').replace(/\D/g, '').startsWith(base))
+        if (porBase && nomeNorm && nomesSaoParecidos(nomeIA, porBase.nome)) return porBase
+      }
     }
+
     if (!nomeNorm) return null
+
+    // 3. Match exato por nome
     const todosExatos = lista.filter(c => normalizar(c.nome) === nomeNorm)
     if (todosExatos.length === 1) return todosExatos[0]
     if (todosExatos.length > 1) {
@@ -122,6 +134,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       }
       return todosExatos[0]
     }
+
+    // 4. Um contém o outro
     const todosContem = lista.filter(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
@@ -137,6 +151,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       }
       return todosContem[0]
     }
+
+    // 5. Palavras em comum
     const found = lista.find(c => {
       const nomeCad = normalizar(c.nome)
       const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
@@ -155,6 +171,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       return matches.length >= Math.max(2, Math.floor(palavrasIA.length * 0.6))
     })
     if (found) return found
+
+    // 6. Similaridade alta
     let melhorScore = 0, melhorCliente = null
     for (const c of lista) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
@@ -194,8 +212,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   }
 
   function normalizaPlaca(p: string) {
-    return p.replace(/[^A-Z0-9]/gi, '').toUpperCase()
-      .replace(/O/g, '0').replace(/I/g, '1')
+    return p.replace(/[^A-Z0-9]/gi, '').toUpperCase().replace(/O/g, '0').replace(/I/g, '1')
   }
 
   function diffChars(a: string, b: string): number {
@@ -221,14 +238,15 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return doisChar || null
   }
 
-  function encontrarCaminhao(placaIA: string) { return encontrarPorPlaca(caminhoes, placaIA) }
-  function encontrarCarreta(placaIA: string) { return encontrarPorPlaca(carretas, placaIA) }
+  function encontrarCaminhao(p: string) { return encontrarPorPlaca(caminhoes, p) }
+  function encontrarCarreta(p: string) { return encontrarPorPlaca(carretas, p) }
 
   async function lerComIA(e: any) {
     const file = e.target.files?.[0]
     if (!file) return
     setLoadingIA(true); setErro('')
-    setPlacaLidaIA(''); setPlacaCarretaLidaIA(''); setContratoLidoIA(false)
+    setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
+    setContratoLidoIA(false); setCamposIAAtivos(false)
     try {
       let clientesAtuais = clientes
       if (clientesAtuais.length === 0) clientesAtuais = await fetchClientes()
@@ -260,13 +278,17 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       setPlacaLidaIA(parsed.placa || '')
       setPlacaCarretaLidaIA(parsed.placa_carreta || '')
       if (parsed.contrato) setContratoLidoIA(true)
+      setCamposIAAtivos(true)
 
       setForm(f => ({
         ...f,
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
         motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
         cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
-        cnpj: clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : parsed.cnpj ? formatCnpj(parsed.cnpj) : '',
+        // CNPJ: sempre usa o do banco se encontrou o cliente
+        cnpj: clienteEncontrado?.cnpj
+          ? formatCnpj(clienteEncontrado.cnpj)
+          : parsed.cnpj ? formatCnpj(parsed.cnpj) : '',
         placa: caminhaoEncontrado ? caminhaoEncontrado.placa : '',
         placa_carreta: carretaEncontrada ? carretaEncontrada.placa : '',
       }))
@@ -306,6 +328,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const ICwarn = "w-full border border-orange-300 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
   const ICconfirm = "w-full border-2 border-orange-400 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
 
+  const avisoIA = camposIAAtivos
+    ? <span className="text-xs text-orange-500 font-medium ml-1">⚠️ Confira</span>
+    : null
+
   return (
     <div className="p-6 max-w-4xl">
       <h1 className="text-xl font-bold text-gray-900 mb-6">📄 Novo Contrato</h1>
@@ -318,6 +344,11 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           {loadingIA ? '⏳ Lendo documento...' : '📎 Selecionar PDF ou Imagem'}
           <input ref={fileRef} type="file" accept=".pdf,image/*" onChange={lerComIA} disabled={loadingIA} className="hidden" />
         </label>
+        {camposIAAtivos && (
+          <p className="text-xs text-orange-600 mt-3 font-medium">
+            ⚠️ Campos preenchidos pela IA — confira data, origem, destino e nº contrato antes de salvar.
+          </p>
+        )}
       </div>
 
       {erro && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg text-sm">{erro}</div>}
@@ -336,10 +367,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Nº Contrato *
-              {contratoLidoIA && (
-                <span className="ml-2 text-xs text-orange-500 font-medium">⚠️ Confira no documento físico</span>
-              )}
+              Nº Contrato * {contratoLidoIA && <span className="text-xs text-orange-500 font-medium">⚠️ Confira no documento</span>}
             </label>
             <input
               name="contrato"
@@ -349,9 +377,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
               className={contratoLidoIA ? ICconfirm : IC}
             />
             {contratoLidoIA && (
-              <p className="text-xs mt-1 text-orange-500">
-                OCR pode confundir dígitos similares (9↔2, 5↔1, 7↔2). Verifique antes de salvar.
-              </p>
+              <p className="text-xs mt-1 text-orange-500">OCR confunde dígitos similares (9↔2, 5↔1, 7↔2).</p>
             )}
           </div>
         </div>
@@ -393,8 +419,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
                 IA leu: <span className="font-mono font-semibold text-gray-600">{placaLidaIA}</span>
                 {form.placa
                   ? <span className="text-green-600 ml-1">✅ vinculado a {form.placa}</span>
-                  : <span className="text-orange-500 ml-1">⚠️ não encontrada — selecione manualmente</span>
-                }
+                  : <span className="text-orange-500 ml-1">⚠️ não encontrada — selecione manualmente</span>}
               </p>
             )}
           </div>
@@ -411,8 +436,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
                 IA leu: <span className="font-mono font-semibold text-gray-600">{placaCarretaLidaIA}</span>
                 {form.placa_carreta
                   ? <span className="text-green-600 ml-1">✅ vinculado a {form.placa_carreta}</span>
-                  : <span className="text-orange-500 ml-1">⚠️ não encontrada — selecione manualmente</span>
-                }
+                  : <span className="text-orange-500 ml-1">⚠️ não encontrada — selecione manualmente</span>}
               </p>
             )}
           </div>
@@ -428,19 +452,28 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
             <input name="qtd_veiculos" type="number" value={form.qtd_veiculos} onChange={handle} className={IC} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
-            <input name="data" type="date" value={form.data} onChange={handle} className={IC} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Data {avisoIA}
+            </label>
+            <input name="data" type="date" value={form.data} onChange={e => { handle(e); setCamposIAAtivos(false) }}
+              className={camposIAAtivos ? ICconfirm : IC} />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Origem</label>
-            <input name="origem" value={form.origem} onChange={handle} className={IC} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Origem {avisoIA}
+            </label>
+            <input name="origem" value={form.origem} onChange={e => { handle(e); setCamposIAAtivos(false) }}
+              className={camposIAAtivos ? ICconfirm : IC} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Destino</label>
-            <input name="destino" value={form.destino} onChange={handle} className={IC} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Destino {avisoIA}
+            </label>
+            <input name="destino" value={form.destino} onChange={e => { handle(e); setCamposIAAtivos(false) }}
+              className={camposIAAtivos ? ICconfirm : IC} />
           </div>
         </div>
 
