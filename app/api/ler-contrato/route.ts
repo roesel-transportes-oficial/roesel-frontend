@@ -27,6 +27,7 @@ const MAPA_FROTA: Record<string, string> = {
   '4797/4717': '4797/4717',
   '8135': '8135',
   '80825': '80825',
+  '8082S': '80825',
 }
 
 export async function POST(req: NextRequest) {
@@ -74,18 +75,15 @@ CAMPOS A EXTRAIR:
 "contrato":
   TIPO A → número após "VIAGENS:" no título
   TIPO B → campo "Contrato:" primeira linha
-  ⚠️ O número do contrato contém APENAS dígitos, barras (/) e hífens (-). NUNCA contém letras.
-  ⚠️ Confusões OCR a corrigir: B→8, O→0, I→1, S→5, G→6, Z→2.
-  Ex: "2026/2B4696-17" → "2026/284696-17" (B=8)
+  ⚠️ Contém APENAS dígitos, barras (/) e hífens (-). NUNCA letras.
+  ⚠️ Corrigir OCR: B→8, O→0, I→1, S→5, G→6, Z→2.
 
 "data": Formato YYYY-MM-DD.
-  TIPO A → campo "Data de Pagamento:" no TOPO DIREITO do documento
-  TIPO B → campo "Data Contrato:" no topo direito
-  ⚠️ NUNCA use "Data de Saída:" — é data de saída do veículo, não do contrato.
-  ⚠️ NUNCA use "Prazo do Contrato:" — é prazo de entrega.
-  ⚠️ O formato no documento é DD/MM/AAAA. Converta corretamente para AAAA-MM-DD.
-  ⚠️ Leia o ANO com atenção — os contratos são de 2025 ou 2026.
-  Exemplo correto: "03/03/2026" → "2026-03-03". NÃO "2025-01-03".
+  TIPO A → "Data de Pagamento:" no topo direito (seção CONTRATANTE)
+  TIPO B → "Data Contrato:" no topo direito
+  ⚠️ NUNCA use "Data de Saída:" nem "Prazo do Contrato:".
+  ⚠️ Formato do documento é DD/MM/AAAA → converta para AAAA-MM-DD.
+  ⚠️ Ano é 2025 ou 2026. Leia os 4 dígitos com atenção.
 
 "cliente_nome_completo":
   TIPO A → seção "CONTRATANTE" campo "Nome:"
@@ -102,33 +100,44 @@ CAMPOS A EXTRAIR:
 "placa": placa do caminhão.
   TIPO A → "Placa Cavalo Mecânico:"
   TIPO B → "Placa Caminhão:"
-  Leia os 7 caracteres UM POR UM da esquerda para direita.
-  Mercosul: 3 letras + 1 número + 1 letra + 2 números (ex: TDJ3C49).
-  Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2. Releia de trás para frente.
+  7 caracteres, um por um. Não confunda: 0≠O, 1≠I, 8≠B, F≠T, G≠Q, Z≠2.
 
 "placa_carreta":
   TIPO A → "Placa Semi-reboque:"
   TIPO B → "Placa Carreta:"
   Mesmas regras. Releia duas vezes.
 
-"frota": valor exato após "Frota:" (ex: "SD287", "80825", "116").
+"frota": valor exato após "Frota:" incluindo letras se houver (ex: "8082S", "80825").
 
-"fat_bruto": valor do FRETE em reais.
-  TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO", linha "Frete Contratado"
-    ⚠️ NÃO use "Peso:" — é peso da carga em kg, NÃO valor financeiro!
-    ⚠️ NÃO use "Saldo a Receber" nem "Outros Créditos"
-  TIPO B → seção "Valor do Serviço Contratado e Quitação", linha "(+) Frete Contratado:"
-  Formato: VÍRGULA = decimal, PONTO = milhar.
-  Ex: "374,73"→"374.73" | "8.527,22"→"8527.22" | "2.741,19"→"2741.19"
-  SEMPRE retorne com ponto decimal e 2 casas.
+"fat_bruto": ━━ ATENÇÃO MÁXIMA ━━
+  Este campo é o VALOR FINANCEIRO DO FRETE em reais (R$).
+
+  TIPO A → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO"
+    ✅ USE: linha "Frete Contratado" — é um valor em R$ (ex: 8.731,88 ou 374,73)
+    ❌ NUNCA USE "Peso:" — Peso está na seção SERVIÇOS CONTRATADOS e é peso em KG da carga (ex: 15044,00), NÃO é dinheiro!
+    ❌ NUNCA USE "Saldo a Receber", "Outros Créditos", "Vale-Pedágio", "Combustível"
+
+  TIPO B → seção "Valor do Serviço Contratado e Quitação"
+    ✅ USE: linha "(+) Frete Contratado:"
+    ❌ NUNCA USE outros campos
+
+  Como diferenciar Frete de Peso:
+    - Frete Contratado fica na seção de PREÇOS/VALORES (parte de baixo do contrato)
+    - Peso fica na seção de SERVIÇOS CONTRATADOS junto com Origem/Destino/Quant.
+    - Frete tem R$ na frente ou está em coluna de valores monetários
+    - Peso tem "kg" ou "Peso:" antes do número
+
+  Formato brasileiro: VÍRGULA=decimal, PONTO=milhar.
+  "8.731,88"→"8731.88" | "374,73"→"374.73" | "13.109,27"→"13109.27"
+  SEMPRE com ponto decimal e 2 casas.
 
 "qtd_veiculos":
   TIPO A → campo "Quant.:"
   TIPO B → campo "Veículos:" (total)
   Apenas inteiro.
 
-"origem": cidade e estado de origem exatos.
-"destino": cidade e estado de destino final exatos.
+"origem": cidade e estado de origem.
+"destino": cidade e estado de destino final.
 "status": sempre "ABERTO"
 "chapa": sempre ""
 "obs": sempre ""
@@ -172,7 +181,7 @@ JSON de retorno (SOMENTE isso):
       if (frotaConvertida) parsed.frota = frotaConvertida
     }
 
-    // Normaliza número do contrato — corrige confusões OCR (letras que parecem números)
+    // Normaliza número do contrato — corrige confusões OCR
     if (parsed.contrato) {
       parsed.contrato = String(parsed.contrato)
         .replace(/B/g, '8')
@@ -197,12 +206,10 @@ JSON de retorno (SOMENTE isso):
     // Valida e corrige data
     if (parsed.data) {
       const dataStr = String(parsed.data).trim()
-      // Converte DD/MM/YYYY para YYYY-MM-DD se necessário
       const matchBR = dataStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
       if (matchBR) {
         parsed.data = `${matchBR[3]}-${matchBR[2]}-${matchBR[1]}`
       }
-      // Valida: ano deve ser entre 2024 e 2027
       const anoMatch = String(parsed.data).match(/^(\d{4})-/)
       if (anoMatch) {
         const ano = parseInt(anoMatch[1])
@@ -211,6 +218,7 @@ JSON de retorno (SOMENTE isso):
     }
 
     // Garante fat_bruto como número com ponto decimal
+    // Proteção extra: rejeita valores claramente absurdos (peso da carga)
     if (parsed.fat_bruto !== undefined && parsed.fat_bruto !== '') {
       let val = String(parsed.fat_bruto).trim()
       if (val.includes(',')) {
@@ -225,7 +233,13 @@ JSON de retorno (SOMENTE isso):
         if (val.length > 2) val = val.slice(0, -2) + '.' + val.slice(-2)
       }
       const num = parseFloat(val)
-      if (!isNaN(num)) parsed.fat_bruto = String(num)
+      // Rejeita valores sem centavos que parecem ser peso (número inteiro redondo grande)
+      // Valores de frete quase sempre têm centavos
+      if (!isNaN(num) && num > 0) {
+        parsed.fat_bruto = String(num)
+      } else {
+        parsed.fat_bruto = ''
+      }
     }
 
     // Garante qtd_veiculos como inteiro
