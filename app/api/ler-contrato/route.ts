@@ -58,6 +58,7 @@ CAMPOS A EXTRAIR:
   TIPO C → campo "Contrato:" primeira linha. Formato AAAA/NNNNNN-N.
     ⚠️ NUNCA use "Número:", "Viagem:", "Planejamento:".
   ⚠️ Apenas dígitos, barras e hífens. OCR: B→8, O→0, I→1, S→5, G→6, Z→2.
+    NUNCA USE "Viagem".
 
 "data": Formato YYYY-MM-DD.
   TIPO A/B → "Data de Pagamento:" no topo direito
@@ -220,3 +221,4 @@ JSON de retorno (SOMENTE isso):
     return NextResponse.json({ _erro: text }, { status: 200 })
   }
 }
+
