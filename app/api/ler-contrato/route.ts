@@ -54,11 +54,12 @@ CAMPOS A EXTRAIR:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 "contrato":
-  TIPO A/B → número após "VIAGENS:" no título.
+  TIPO A/B → número após "VIAGENS:" no título. Este número fica SOMENTE no título do documento, logo após a palavra "VIAGENS:". NÃO leia campos chamados "Viagem:", "Número:", "Nº:", "N°:", "Planejamento:" — esses campos NÃO existem no retorno JSON; se encontrar apenas esses, retorne "".
   TIPO C → campo "Contrato:" primeira linha. Formato AAAA/NNNNNN-N.
     ⚠️ NUNCA use "Número:", "Viagem:", "Planejamento:".
+    ⚠️ Se o campo "Contrato:" não estiver presente ou não tiver formato AAAA/NNNNNN-N, retorne "".
   ⚠️ Apenas dígitos, barras e hífens. OCR: B→8, O→0, I→1, S→5, G→6, Z→2.
-    NUNCA USE "Viagem".
+    NUNCA USE o valor do campo "Viagem" — ele não é o número do contrato.
 
 "data": Formato YYYY-MM-DD.
   TIPO A/B → "Data de Pagamento:" no topo direito
@@ -162,27 +163,49 @@ JSON de retorno (SOMENTE isso):
   try {
     const parsed = JSON.parse(text.trim())
 
+    // ── FROTA ──────────────────────────────────────────────────────────────
     if (parsed.frota) {
       const frotaLida = String(parsed.frota).trim()
       const frotaConvertida = MAPA_FROTA[frotaLida]
       if (frotaConvertida) parsed.frota = frotaConvertida
     }
 
+    // ── CONTRATO ───────────────────────────────────────────────────────────
     if (parsed.contrato) {
-      let contrato = String(parsed.contrato)
-        .replace(/B/g, '8').replace(/O/g, '0').replace(/I/g, '1')
-        .replace(/S/g, '5').replace(/G/g, '6').replace(/Z/g, '2')
-        .replace(/[A-Z]/g, '').replace(/[^0-9\/\-]/g, '')
-      if (/^\d{1,4}$/.test(contrato)) contrato = ''
-      parsed.contrato = contrato
+      let contrato = String(parsed.contrato).trim()
+
+      // 🔴 Rejeitar se o modelo retornou valor de campo proibido
+      const camposProibidos = /viagem|viag|numero|nro|n[°º]|planejamento/i
+      if (camposProibidos.test(contrato)) {
+        parsed.contrato = ''
+      } else {
+        // Limpeza OCR
+        contrato = contrato
+          .replace(/B/g, '8').replace(/O/g, '0').replace(/I/g, '1')
+          .replace(/S/g, '5').replace(/G/g, '6').replace(/Z/g, '2')
+          .replace(/[A-Z]/g, '').replace(/[^0-9\/\-]/g, '')
+
+        // Descartar se for número curto sem formato esperado (ex: número de viagem simples)
+        if (/^\d{1,4}$/.test(contrato)) contrato = ''
+
+        // 🔴 Tipo C: validar formato AAAA/NNNNN-N
+        if (contrato.includes('/')) {
+          const formatoAutoport = /^\d{4}\/\d{5,7}-\d$/.test(contrato)
+          if (!formatoAutoport) contrato = ''
+        }
+
+        parsed.contrato = contrato
+      }
     }
 
+    // ── CNPJ ───────────────────────────────────────────────────────────────
     const CNPJ_CONTRATADO = '66330549000152'
     if (parsed.cnpj) {
       const cnpjLimpo = parsed.cnpj.replace(/\D/g, '')
       if (cnpjLimpo.length < 14 || cnpjLimpo === CNPJ_CONTRATADO) parsed.cnpj = ''
     }
 
+    // ── DATA ───────────────────────────────────────────────────────────────
     if (parsed.data) {
       const dataStr = String(parsed.data).trim()
       const matchBR = dataStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
@@ -194,6 +217,7 @@ JSON de retorno (SOMENTE isso):
       }
     }
 
+    // ── FAT_BRUTO ──────────────────────────────────────────────────────────
     if (parsed.fat_bruto !== undefined && parsed.fat_bruto !== '') {
       let val = String(parsed.fat_bruto).trim()
       if (val.includes(',')) {
@@ -212,6 +236,7 @@ JSON de retorno (SOMENTE isso):
       else parsed.fat_bruto = ''
     }
 
+    // ── QTD_VEICULOS ───────────────────────────────────────────────────────
     if (parsed.qtd_veiculos) {
       parsed.qtd_veiculos = String(parseInt(String(parsed.qtd_veiculos)) || '')
     }
@@ -221,4 +246,3 @@ JSON de retorno (SOMENTE isso):
     return NextResponse.json({ _erro: text }, { status: 200 })
   }
 }
-
