@@ -40,7 +40,6 @@ export default function AbastecimentoPage() {
   const [confirmExcluir, setConfirmExcluir] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Viagens filtradas pelo caminhão selecionado
   const [viagensCaminhao, setViagensCaminhao] = useState<Viagem[]>([])
 
   const [editData, setEditData] = useState('')
@@ -93,7 +92,8 @@ export default function AbastecimentoPage() {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/fornecedores?order=nome.asc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
-      setFornecedores(Array.isArray(await res.json()) ? await res.clone().json() : [])
+      const data = await res.json()
+      setFornecedores(Array.isArray(data) ? data : [])
     } catch {}
   }
 
@@ -115,9 +115,48 @@ export default function AbastecimentoPage() {
     if (!found) return
     if (modo === 'cad') {
       setCadPosto(found.nome); setCadCidade(found.cidade || ''); setCadEstado(found.estado || '')
+      setCadCnpjPosto(found.cnpj || '')
     } else {
       setEditPosto(found.nome); setEditCidade(found.cidade || ''); setEditEstado(found.estado || '')
+      setEditCnpjPosto(found.cnpj || '')
     }
+  }
+
+  // Seleciona fornecedor pelo valor do dropdown (nome||cnpj)
+  function selecionarFornecedor(valor: string, modo: 'cad' | 'edit') {
+    if (!valor) {
+      if (modo === 'cad') { setCadPosto(''); setCadCnpjPosto(''); setCadCidade(''); setCadEstado('') }
+      else { setEditPosto(''); setEditCnpjPosto(''); setEditCidade(''); setEditEstado('') }
+      return
+    }
+    const [nome, cnpj] = valor.split('||')
+    const f = fornecedores.find(f => f.nome === nome)
+    if (modo === 'cad') {
+      setCadPosto(nome)
+      setCadCnpjPosto(cnpj || f?.cnpj || '')
+      setCadCidade(f?.cidade || '')
+      setCadEstado(f?.estado || '')
+    } else {
+      setEditPosto(nome)
+      setEditCnpjPosto(cnpj || f?.cnpj || '')
+      setEditCidade(f?.cidade || '')
+      setEditEstado(f?.estado || '')
+    }
+  }
+
+  function fornecedorSelectValue(nome: string, cnpj: string) {
+    const f = fornecedores.find(f => f.nome === nome)
+    if (f) return `${f.nome}||${f.cnpj || ''}`
+    return ''
+  }
+
+  function fmtCnpj(v: string) {
+    const d = v.replace(/\D/g,'').slice(0,14)
+    if (d.length <= 2) return d
+    if (d.length <= 5) return `${d.slice(0,2)}.${d.slice(2)}`
+    if (d.length <= 8) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}`
+    if (d.length <= 12) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8)}`
+    return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`
   }
 
   async function lerCupomComIA(file: File) {
@@ -148,11 +187,17 @@ export default function AbastecimentoPage() {
         if (d.valor_litro_arla) setCadValorLitroArla(String(d.valor_litro_arla))
       }
       if (d.cnpj_posto) {
-        setCadCnpjPosto(d.cnpj_posto)
         const cnpjLimpo = d.cnpj_posto.replace(/\D/g, '')
         const found = fornecedores.find(f => f.cnpj?.replace(/\D/g, '') === cnpjLimpo)
-        if (found) { setCadPosto(found.nome); setCadCidade(found.cidade || ''); setCadEstado(found.estado || '') }
-        else { if (d.cidade) setCadCidade(d.cidade); if (d.estado) setCadEstado(d.estado); if (d.nome_posto) setCadPosto(d.nome_posto) }
+        if (found) {
+          setCadPosto(found.nome); setCadCnpjPosto(found.cnpj || '')
+          setCadCidade(found.cidade || ''); setCadEstado(found.estado || '')
+        } else {
+          setCadCnpjPosto(d.cnpj_posto)
+          if (d.cidade) setCadCidade(d.cidade)
+          if (d.estado) setCadEstado(d.estado)
+          if (d.nome_posto) setCadPosto(d.nome_posto)
+        }
       }
       if (d.placa) {
         const cam = caminhoes.find(c => c.placa.replace(/[^A-Z0-9]/gi,'').toLowerCase() === d.placa.replace(/[^A-Z0-9]/gi,'').toLowerCase())
@@ -165,15 +210,6 @@ export default function AbastecimentoPage() {
       showMsg('✅ Dados extraídos do cupom com sucesso!')
     } catch { showMsg('⚠️ Erro ao processar o arquivo.') }
     finally { setLoadingIA(false) }
-  }
-
-  function fmtCnpj(v: string) {
-    const d = v.replace(/\D/g,'').slice(0,14)
-    if (d.length <= 2) return d
-    if (d.length <= 5) return `${d.slice(0,2)}.${d.slice(2)}`
-    if (d.length <= 8) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}`
-    if (d.length <= 12) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8)}`
-    return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`
   }
 
   function calcTotal(lc: string, vlc: string, la: string, vla: string) {
@@ -284,7 +320,6 @@ export default function AbastecimentoPage() {
     </button>
   )
 
-  // Bloco reutilizável de seleção de viagem
   const ViagemSelector = ({ value, onChange }: { value: string, onChange: (v: string) => void }) => (
     <div>
       <label className={LabelClass}>Viagem vinculada</label>
@@ -300,6 +335,18 @@ export default function AbastecimentoPage() {
     </div>
   )
 
+  // Opções do dropdown de fornecedor com CNPJ
+  const FornecedorOptions = () => (
+    <>
+      <option value="">Selecione...</option>
+      {fornecedores.map(f => (
+        <option key={f.id} value={`${f.nome}||${f.cnpj || ''}`}>
+          {f.nome}{f.cnpj ? ` · ${fmtCnpj(f.cnpj)}` : ''}
+        </option>
+      ))}
+    </>
+  )
+
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
       <button onClick={() => { setMostraCad(false); resetCad() }} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
@@ -313,7 +360,6 @@ export default function AbastecimentoPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-lg">Novo Abastecimento</h3>
 
-        {/* Import IA */}
         <div className="mb-5 p-4 bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-2xl">
           <p className="text-sm font-semibold text-gray-700">📎 Importar cupom fiscal</p>
           <p className="text-xs text-gray-500 mt-0.5 mb-3">Envie uma imagem ou PDF e a IA preencherá os campos automaticamente</p>
@@ -340,20 +386,25 @@ export default function AbastecimentoPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={LabelClass}>Fornecedor</label>
-              <select value={cadPosto} onChange={e => {
-                const f = fornecedores.find(f => f.nome === e.target.value)
-                setCadPosto(e.target.value)
-                if (f) { setCadCnpjPosto(f.cnpj || ''); setCadCidade(f.cidade || ''); setCadEstado(f.estado || '') }
-              }} className={InputClass}>
-                <option value="">Selecione...</option>
-                {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
+              <select
+                value={fornecedorSelectValue(cadPosto, cadCnpjPosto)}
+                onChange={e => selecionarFornecedor(e.target.value, 'cad')}
+                className={InputClass}
+              >
+                <FornecedorOptions />
               </select>
             </div>
             <div>
               <label className={LabelClass}>CNPJ</label>
-              <input value={fmtCnpj(cadCnpjPosto)}
-                onChange={e => { const val = e.target.value.replace(/\D/g,''); setCadCnpjPosto(val); if (val.length === 14) preencherFornecedor(val, 'cad') }}
-                placeholder="00.000.000/0000-00" maxLength={18} className={InputClass} />
+              <input
+                value={fmtCnpj(cadCnpjPosto)}
+                onChange={e => {
+                  const val = e.target.value.replace(/\D/g,'')
+                  setCadCnpjPosto(val)
+                  if (val.length === 14) preencherFornecedor(val, 'cad')
+                }}
+                placeholder="00.000.000/0000-00" maxLength={18} className={InputClass}
+              />
             </div>
           </div>
 
@@ -392,7 +443,6 @@ export default function AbastecimentoPage() {
             </div>
           )}
 
-          {/* Vínculo com viagem */}
           {cadCaminhaoId && <ViagemSelector value={cadViagemId} onChange={setCadViagemId} />}
 
           <div className="border-t border-gray-100 pt-3">
@@ -500,20 +550,25 @@ export default function AbastecimentoPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LabelClass}>Fornecedor</label>
-                  <select value={editPosto} onChange={e => {
-                    const f = fornecedores.find(f => f.nome === e.target.value)
-                    setEditPosto(e.target.value)
-                    if (f) { setEditCnpjPosto(f.cnpj || ''); setEditCidade(f.cidade || ''); setEditEstado(f.estado || '') }
-                  }} className={InputClass}>
-                    <option value="">Selecione...</option>
-                    {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
+                  <select
+                    value={fornecedorSelectValue(editPosto, editCnpjPosto)}
+                    onChange={e => selecionarFornecedor(e.target.value, 'edit')}
+                    className={InputClass}
+                  >
+                    <FornecedorOptions />
                   </select>
                 </div>
                 <div>
                   <label className={LabelClass}>CNPJ</label>
-                  <input value={fmtCnpj(editCnpjPosto)}
-                    onChange={e => { const val = e.target.value.replace(/\D/g,''); setEditCnpjPosto(val); if (val.length === 14) preencherFornecedor(val, 'edit') }}
-                    placeholder="00.000.000/0000-00" maxLength={18} className={InputClass} />
+                  <input
+                    value={fmtCnpj(editCnpjPosto)}
+                    onChange={e => {
+                      const val = e.target.value.replace(/\D/g,'')
+                      setEditCnpjPosto(val)
+                      if (val.length === 14) preencherFornecedor(val, 'edit')
+                    }}
+                    placeholder="00.000.000/0000-00" maxLength={18} className={InputClass}
+                  />
                 </div>
               </div>
 
@@ -537,7 +592,6 @@ export default function AbastecimentoPage() {
                 <input value={editMotorista} onChange={e => setEditMotorista(e.target.value)} className={InputClass} />
               </div>
 
-              {/* Vínculo com viagem */}
               <ViagemSelector value={editViagemId} onChange={setEditViagemId} />
 
               <div className="border-t border-gray-100 pt-3">
