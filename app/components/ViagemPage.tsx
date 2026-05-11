@@ -23,6 +23,75 @@ interface Contrato {
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 
+// ── FORA do ViagemPage para evitar remount a cada render ──
+interface ContratoSelectorProps {
+  selecionados: Contrato[]
+  todos: Contrato[]
+  onChange: (c: Contrato[]) => void
+  nomeMotorista: string
+  setCampos: (dados: any) => void
+  calcularAdiantamento: (nome: string, valor: number) => string
+  aplicarDadosContratos: (lista: Contrato[], nomeMotorista: string) => any
+}
+
+function ContratoSelector({
+  selecionados, todos, onChange, nomeMotorista, setCampos,
+  aplicarDadosContratos
+}: ContratoSelectorProps) {
+  const [busca, setBusca] = useState('')
+
+  const filtrados = busca.trim()
+    ? todos.filter(c =>
+        c.contrato?.includes(busca) ||
+        c.cliente?.toLowerCase().includes(busca.toLowerCase())
+      )
+    : todos
+
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <div className="p-2 bg-gray-50 border-b border-gray-100">
+        <input
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+          placeholder="Buscar contrato..."
+          className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-500 bg-white"
+        />
+      </div>
+      {selecionados.length > 0 && (
+        <div className="p-2 flex flex-wrap gap-1 border-b border-gray-100 bg-blue-50">
+          {selecionados.map(c => (
+            <span key={c.id} className="flex items-center gap-1 text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">
+              #{c.contrato} · {c.cliente}
+              <button onClick={() => {
+                const nova = selecionados.filter(s => s.id !== c.id)
+                onChange(nova)
+                const dados = aplicarDadosContratos(nova, nomeMotorista)
+                if (dados) setCampos(dados)
+                else setCampos({ empresa: '', valorContrato: '', qtdVeiculos: '', origem: '', destino: '', adiantamento: '0' })
+              }}><X size={10} /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="max-h-40 overflow-y-auto">
+        {filtrados.filter(c => !selecionados.find(s => s.id === c.id)).map(c => (
+          <button key={c.id} onClick={() => {
+            const nova = [...selecionados, c]
+            onChange(nova)
+            const dados = aplicarDadosContratos(nova, nomeMotorista)
+            if (dados) setCampos(dados)
+          }} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0">
+            <span className="font-semibold text-gray-700">#{c.contrato}</span>
+            <span className="text-gray-500 ml-2">{c.cliente}</span>
+            {c.origem && <span className="text-gray-400 ml-1">· {c.origem} → {c.destino}</span>}
+            {c.fat_bruto > 0 && <span className="text-green-600 ml-1">· R$ {c.fat_bruto?.toLocaleString('pt-BR')}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function ViagemPage() {
   const { perm } = useAuth()
   const [viagens, setViagens] = useState<Viagem[]>([])
@@ -35,9 +104,7 @@ export default function ViagemPage() {
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
-  const [contratosBusca, setContratosBusca] = useState('')
 
-  // Campos cadastro
   const [cadMotorista, setCadMotorista] = useState('')
   const [cadCaminhaoId, setCadCaminhaoId] = useState('')
   const [cadCaminhaoPlaca, setCadCaminhaoPlaca] = useState('')
@@ -56,7 +123,6 @@ export default function ViagemPage() {
   const [cadValorAdiantamento, setCadValorAdiantamento] = useState('')
   const [cadValorChapa, setCadValorChapa] = useState('')
 
-  // Campos edição
   const [editMotorista, setEditMotorista] = useState('')
   const [editCaminhaoId, setEditCaminhaoId] = useState('')
   const [editCaminhaoPlaca, setEditCaminhaoPlaca] = useState('')
@@ -146,27 +212,24 @@ export default function ViagemPage() {
     return ''
   }
 
-  // Calcula adiantamento: 5% do valor total se motorista tem adiantamento, senão 0
   function calcularAdiantamento(nomeMotorista: string, valorContrato: number): string {
     const motorista = motoristas.find(m => m.nome === nomeMotorista)
     if (!motorista || !motorista.adiantamento || !valorContrato) return '0'
     return (valorContrato * 0.05).toFixed(2)
   }
 
-  // Quando seleciona contratos, preenche campos automaticamente
   function aplicarDadosContratos(lista: Contrato[], nomeMotorista: string) {
     if (lista.length === 0) return null
     const primeiro = lista[0]
     const totalValor = lista.reduce((s, c) => s + (c.fat_bruto || 0), 0)
     const totalVeiculos = lista.reduce((s, c) => s + (c.qtd_veiculos || 0), 0)
-    const adiantamento = calcularAdiantamento(nomeMotorista, totalValor)
     return {
       empresa: primeiro.cliente || '',
       valorContrato: totalValor > 0 ? String(totalValor) : '',
       qtdVeiculos: totalVeiculos > 0 ? String(totalVeiculos) : '',
       origem: primeiro.origem || '',
       destino: primeiro.destino || '',
-      adiantamento,
+      adiantamento: calcularAdiantamento(nomeMotorista, totalValor),
     }
   }
 
@@ -185,13 +248,6 @@ export default function ViagemPage() {
         v.caminhao_placa?.toLowerCase().includes(busca.toLowerCase())
       )
     : viagens
-
-  const contratosFiltrados = contratosBusca.trim()
-    ? contratos.filter(c =>
-        c.contrato?.includes(contratosBusca) ||
-        c.cliente?.toLowerCase().includes(contratosBusca.toLowerCase())
-      )
-    : contratos
 
   async function selecionar(v: Viagem) {
     setSel(v)
@@ -308,264 +364,8 @@ export default function ViagemPage() {
     setMostraCad(false); showMsg('✅ Viagem registrada!')
   }
 
-  const ContratoSelector = ({
-    selecionados, onChange, nomeMotorista, setCampos
-  }: {
-    selecionados: Contrato[]
-    onChange: (c: Contrato[]) => void
-    nomeMotorista: string
-    setCampos: (dados: any) => void
-  }) => (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
-      <div className="p-2 bg-gray-50 border-b border-gray-100">
-        <input
-          value={contratosBusca}
-          onChange={e => setContratosBusca(e.target.value)}
-          placeholder="Buscar contrato..."
-          className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-500 bg-white"
-        />
-      </div>
-      {selecionados.length > 0 && (
-        <div className="p-2 flex flex-wrap gap-1 border-b border-gray-100 bg-blue-50">
-          {selecionados.map(c => (
-            <span key={c.id} className="flex items-center gap-1 text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">
-              #{c.contrato} · {c.cliente}
-              <button onClick={() => {
-                const nova = selecionados.filter(s => s.id !== c.id)
-                onChange(nova)
-                const dados = aplicarDadosContratos(nova, nomeMotorista)
-                if (dados) setCampos(dados)
-                else setCampos({ empresa: '', valorContrato: '', qtdVeiculos: '', origem: '', destino: '', adiantamento: '0' })
-              }}><X size={10} /></button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="max-h-40 overflow-y-auto">
-        {contratosFiltrados.filter(c => !selecionados.find(s => s.id === c.id)).map(c => (
-          <button key={c.id} onClick={() => {
-            const nova = [...selecionados, c]
-            onChange(nova)
-            const dados = aplicarDadosContratos(nova, nomeMotorista)
-            if (dados) setCampos(dados)
-          }}
-            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0">
-            <span className="font-semibold text-gray-700">#{c.contrato}</span>
-            <span className="text-gray-500 ml-2">{c.cliente}</span>
-            {c.origem && <span className="text-gray-400 ml-1">· {c.origem} → {c.destino}</span>}
-            {c.fat_bruto > 0 && <span className="text-green-600 ml-1">· R$ {c.fat_bruto?.toLocaleString('pt-BR')}</span>}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-
-  // Componente de formulário reutilizável
-  const FormCampos = ({ modo }: { modo: 'cad' | 'edit' }) => {
-    const isCad = modo === 'cad'
-    const motorista = isCad ? cadMotorista : editMotorista
-    const caminhaoId = isCad ? cadCaminhaoId : editCaminhaoId
-    const dataSaida = isCad ? cadDataSaida : editDataSaida
-    const setDataSaida = isCad ? setCadDataSaida : setEditDataSaida
-    const dataRetorno = isCad ? cadDataRetorno : editDataRetorno
-    const setDataRetorno = isCad ? setCadDataRetorno : setEditDataRetorno
-    const kmInicial = isCad ? cadKmInicial : editKmInicial
-    const setKmInicial = isCad ? setCadKmInicial : setEditKmInicial
-    const kmFinal = isCad ? cadKmFinal : editKmFinal
-    const setKmFinal = isCad ? setCadKmFinal : setEditKmFinal
-    const status = isCad ? cadStatus : editStatus
-    const setStatus = isCad ? setCadStatus : setEditStatus
-    const obs = isCad ? cadObs : editObs
-    const setObs = isCad ? setCadObs : setEditObs
-    const contratosAtivos = isCad ? cadContratos : editContratos
-    const setContratosAtivos = isCad ? setCadContratos : setEditContratos
-    const qtdVeiculos = isCad ? cadQtdVeiculos : editQtdVeiculos
-    const setQtdVeiculos = isCad ? setCadQtdVeiculos : setEditQtdVeiculos
-    const empresa = isCad ? cadEmpresa : editEmpresa
-    const setEmpresa = isCad ? setCadEmpresa : setEditEmpresa
-    const valorContrato = isCad ? cadValorContrato : editValorContrato
-    const setValorContrato = isCad ? setCadValorContrato : setEditValorContrato
-    const origem = isCad ? cadOrigem : editOrigem
-    const setOrigem = isCad ? setCadOrigem : setEditOrigem
-    const destino = isCad ? cadDestino : editDestino
-    const setDestino = isCad ? setCadDestino : setEditDestino
-    const valorAdiantamento = isCad ? cadValorAdiantamento : editValorAdiantamento
-    const setValorAdiantamento = isCad ? setCadValorAdiantamento : setEditValorAdiantamento
-    const valorChapa = isCad ? cadValorChapa : editValorChapa
-    const setValorChapa = isCad ? setCadValorChapa : setEditValorChapa
-
-    const temAdiantamento = motoristas.find(m => m.nome === motorista)?.adiantamento
-
-    return (
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={LC}>Motorista *</label>
-            <select value={motorista} onChange={e => {
-              const nome = e.target.value
-              if (isCad) setCadMotorista(nome)
-              else setEditMotorista(nome)
-              // Recalcula adiantamento ao trocar motorista
-              const totalValor = contratosAtivos.reduce((s, c) => s + (c.fat_bruto || 0), 0)
-              if (totalValor > 0) setValorAdiantamento(calcularAdiantamento(nome, totalValor))
-            }} className={IC}>
-              <option value="">Selecione...</option>
-              {motoristas.map(m => (
-                <option key={m.id} value={m.nome}>
-                  {m.nome} {m.adiantamento ? '· 💰' : ''}
-                </option>
-              ))}
-            </select>
-            {motorista && (
-              <p className="text-xs mt-1 font-medium">
-                {temAdiantamento
-                  ? <span className="text-green-600">✅ Com adiantamento (5% do frete)</span>
-                  : <span className="text-gray-400">❌ Sem adiantamento</span>
-                }
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={LC}>Caminhão *</label>
-            <select value={caminhaoId} onChange={async e => {
-              const cam = caminhoes.find(c => c.id === e.target.value)
-              if (isCad) {
-                setCadCaminhaoId(e.target.value)
-                setCadCaminhaoPlaca(cam?.placa || '')
-                if (e.target.value) setCadKmInicial(await buscarUltimoKm(e.target.value))
-              } else {
-                setEditCaminhaoId(e.target.value)
-                setEditCaminhaoPlaca(cam?.placa || '')
-              }
-            }} className={IC}>
-              <option value="">Selecione...</option>
-              {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={LC}>Data Saída</label>
-            <input type="date" value={dataSaida} onChange={e => setDataSaida(e.target.value)} className={IC} />
-          </div>
-          <div>
-            <label className={LC}>Data Retorno</label>
-            <input type="date" value={dataRetorno} onChange={e => setDataRetorno(e.target.value)} className={IC} />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className={LC}>KM Inicial</label>
-            <input type="number" value={kmInicial} onChange={e => setKmInicial(e.target.value)} placeholder="Automático" className={IC} />
-          </div>
-          <div>
-            <label className={LC}>KM Final</label>
-            <input type="number" value={kmFinal} onChange={e => setKmFinal(e.target.value)} placeholder="Automático" className={IC} />
-          </div>
-        </div>
-
-        {kmInicial && kmFinal && (
-          <div className="bg-blue-50 rounded-xl p-3">
-            <p className="text-xs text-blue-600 font-medium">
-              KM percorrido: <span className="font-bold text-blue-800">{(parseInt(kmFinal) - parseInt(kmInicial)).toLocaleString('pt-BR')} km</span>
-            </p>
-          </div>
-        )}
-
-        <div>
-          <label className={LC}>Status</label>
-          <select value={status} onChange={e => setStatus(e.target.value)} className={IC}>
-            <option value="EM ANDAMENTO">EM ANDAMENTO</option>
-            <option value="FINALIZADA">FINALIZADA</option>
-            <option value="CANCELADA">CANCELADA</option>
-          </select>
-        </div>
-
-        <div>
-          <label className={LC}>Contratos vinculados</label>
-          <p className="text-xs text-gray-400 mb-1">Ao selecionar, os campos abaixo são preenchidos automaticamente</p>
-          <ContratoSelector
-            selecionados={contratosAtivos}
-            onChange={setContratosAtivos}
-            nomeMotorista={motorista}
-            setCampos={(dados) => {
-              setEmpresa(dados.empresa)
-              setValorContrato(dados.valorContrato)
-              setQtdVeiculos(dados.qtdVeiculos)
-              setOrigem(dados.origem)
-              setDestino(dados.destino)
-              setValorAdiantamento(dados.adiantamento)
-            }}
-          />
-        </div>
-
-        {/* Dados da carga */}
-        <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
-          <p className="text-xs font-bold text-gray-500 uppercase">Dados da carga</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LC}>Empresa</label>
-              <input value={empresa} onChange={e => setEmpresa(e.target.value)} className={IC} placeholder="Ex: SADA" />
-            </div>
-            <div>
-              <label className={LC}>Qtd Veículos</label>
-              <input type="number" value={qtdVeiculos} onChange={e => setQtdVeiculos(e.target.value)} className={IC} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LC}>Origem</label>
-              <input value={origem} onChange={e => setOrigem(e.target.value)} className={IC} />
-            </div>
-            <div>
-              <label className={LC}>Destino</label>
-              <input value={destino} onChange={e => setDestino(e.target.value)} className={IC} />
-            </div>
-          </div>
-          <div>
-            <label className={LC}>Valor do Contrato (R$)</label>
-            <input type="number" step="0.01" value={valorContrato} onChange={e => {
-              setValorContrato(e.target.value)
-              setValorAdiantamento(calcularAdiantamento(motorista, parseFloat(e.target.value) || 0))
-            }} className={IC} />
-          </div>
-        </div>
-
-        {/* Valores financeiros */}
-        <div className="p-3 bg-green-50 rounded-xl border border-green-100 space-y-3">
-          <p className="text-xs font-bold text-green-700 uppercase">Valores financeiros</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LC}>Adiantamento (R$)</label>
-              <input
-                type="number" step="0.01"
-                value={valorAdiantamento}
-                onChange={e => setValorAdiantamento(e.target.value)}
-                className={IC}
-              />
-              <p className="text-xs text-gray-400 mt-0.5">
-                {temAdiantamento
-                  ? '5% do frete — calculado automaticamente, editável'
-                  : 'Motorista sem adiantamento'}
-              </p>
-            </div>
-            <div>
-              <label className={LC}>Chapa (R$)</label>
-              <input type="number" step="0.01" value={valorChapa} onChange={e => setValorChapa(e.target.value)} placeholder="250,00" className={IC} />
-              <p className="text-xs text-gray-400 mt-0.5">Deixe em branco se não houver chapa</p>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label className={LC}>Observações</label>
-          <textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} className={IC} />
-        </div>
-      </div>
-    )
-  }
+  const cadTemAdiantamento = motoristas.find(m => m.nome === cadMotorista)?.adiantamento
+  const editTemAdiantamento = motoristas.find(m => m.nome === editMotorista)?.adiantamento
 
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -574,7 +374,154 @@ export default function ViagemPage() {
       </button>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-lg">Nova Viagem</h3>
-        <FormCampos modo="cad" />
+        <div className="space-y-3">
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LC}>Motorista *</label>
+              <select value={cadMotorista} onChange={e => {
+                const nome = e.target.value
+                setCadMotorista(nome)
+                const totalValor = cadContratos.reduce((s, c) => s + (c.fat_bruto || 0), 0)
+                if (totalValor > 0) setCadValorAdiantamento(calcularAdiantamento(nome, totalValor))
+              }} className={IC}>
+                <option value="">Selecione...</option>
+                {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome} {m.adiantamento ? '· 💰' : ''}</option>)}
+              </select>
+              {cadMotorista && (
+                <p className="text-xs mt-1 font-medium">
+                  {cadTemAdiantamento
+                    ? <span className="text-green-600">✅ Com adiantamento (5% do frete)</span>
+                    : <span className="text-gray-400">❌ Sem adiantamento</span>}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={LC}>Caminhão *</label>
+              <select value={cadCaminhaoId} onChange={async e => {
+                const cam = caminhoes.find(c => c.id === e.target.value)
+                setCadCaminhaoId(e.target.value)
+                setCadCaminhaoPlaca(cam?.placa || '')
+                if (e.target.value) setCadKmInicial(await buscarUltimoKm(e.target.value))
+              }} className={IC}>
+                <option value="">Selecione...</option>
+                {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LC}>Data Saída</label>
+              <input type="date" value={cadDataSaida} onChange={e => setCadDataSaida(e.target.value)} className={IC} />
+            </div>
+            <div>
+              <label className={LC}>Data Retorno</label>
+              <input type="date" value={cadDataRetorno} onChange={e => setCadDataRetorno(e.target.value)} className={IC} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LC}>KM Inicial</label>
+              <input type="number" value={cadKmInicial} onChange={e => setCadKmInicial(e.target.value)} placeholder="Automático" className={IC} />
+            </div>
+            <div>
+              <label className={LC}>KM Final</label>
+              <input type="number" value={cadKmFinal} onChange={e => setCadKmFinal(e.target.value)} placeholder="Automático" className={IC} />
+            </div>
+          </div>
+
+          {cadKmInicial && cadKmFinal && (
+            <div className="bg-blue-50 rounded-xl p-3">
+              <p className="text-xs text-blue-600 font-medium">
+                KM percorrido: <span className="font-bold text-blue-800">{(parseInt(cadKmFinal) - parseInt(cadKmInicial)).toLocaleString('pt-BR')} km</span>
+              </p>
+            </div>
+          )}
+
+          <div>
+            <label className={LC}>Status</label>
+            <select value={cadStatus} onChange={e => setCadStatus(e.target.value)} className={IC}>
+              <option value="EM ANDAMENTO">EM ANDAMENTO</option>
+              <option value="FINALIZADA">FINALIZADA</option>
+              <option value="CANCELADA">CANCELADA</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={LC}>Contratos vinculados</label>
+            <p className="text-xs text-gray-400 mb-1">Ao selecionar, os campos abaixo são preenchidos automaticamente</p>
+            <ContratoSelector
+              selecionados={cadContratos}
+              todos={contratos}
+              onChange={setCadContratos}
+              nomeMotorista={cadMotorista}
+              setCampos={(dados) => {
+                setCadEmpresa(dados.empresa)
+                setCadValorContrato(dados.valorContrato)
+                setCadQtdVeiculos(dados.qtdVeiculos)
+                setCadOrigem(dados.origem)
+                setCadDestino(dados.destino)
+                setCadValorAdiantamento(dados.adiantamento)
+              }}
+              calcularAdiantamento={calcularAdiantamento}
+              aplicarDadosContratos={aplicarDadosContratos}
+            />
+          </div>
+
+          <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
+            <p className="text-xs font-bold text-gray-500 uppercase">Dados da carga</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={LC}>Empresa</label>
+                <input value={cadEmpresa} onChange={e => setCadEmpresa(e.target.value)} className={IC} placeholder="Ex: SADA" />
+              </div>
+              <div>
+                <label className={LC}>Qtd Veículos</label>
+                <input type="number" value={cadQtdVeiculos} onChange={e => setCadQtdVeiculos(e.target.value)} className={IC} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={LC}>Origem</label>
+                <input value={cadOrigem} onChange={e => setCadOrigem(e.target.value)} className={IC} />
+              </div>
+              <div>
+                <label className={LC}>Destino</label>
+                <input value={cadDestino} onChange={e => setCadDestino(e.target.value)} className={IC} />
+              </div>
+            </div>
+            <div>
+              <label className={LC}>Valor do Contrato (R$)</label>
+              <input type="number" step="0.01" value={cadValorContrato} onChange={e => {
+                setCadValorContrato(e.target.value)
+                setCadValorAdiantamento(calcularAdiantamento(cadMotorista, parseFloat(e.target.value) || 0))
+              }} className={IC} />
+            </div>
+          </div>
+
+          <div className="p-3 bg-green-50 rounded-xl border border-green-100 space-y-3">
+            <p className="text-xs font-bold text-green-700 uppercase">Valores financeiros</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={LC}>Adiantamento (R$)</label>
+                <input type="number" step="0.01" value={cadValorAdiantamento} onChange={e => setCadValorAdiantamento(e.target.value)} className={IC} />
+                <p className="text-xs text-gray-400 mt-0.5">{cadTemAdiantamento ? '5% do frete — editável' : 'Motorista sem adiantamento'}</p>
+              </div>
+              <div>
+                <label className={LC}>Chapa (R$)</label>
+                <input type="number" step="0.01" value={cadValorChapa} onChange={e => setCadValorChapa(e.target.value)} placeholder="250,00" className={IC} />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className={LC}>Observações</label>
+            <textarea value={cadObs} onChange={e => setCadObs(e.target.value)} rows={2} className={IC} />
+          </div>
+        </div>
+
         <div className="flex gap-2 pt-4">
           <button onClick={cadastrar} disabled={loading || !cadMotorista || !cadCaminhaoId}
             className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition">
@@ -613,8 +560,152 @@ export default function ViagemPage() {
                 </div>
               </div>
             </div>
-            <div className="p-5">
-              <FormCampos modo="edit" />
+            <div className="p-5 space-y-3">
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LC}>Motorista *</label>
+                  <select value={editMotorista} onChange={e => {
+                    const nome = e.target.value
+                    setEditMotorista(nome)
+                    const totalValor = editContratos.reduce((s, c) => s + (c.fat_bruto || 0), 0)
+                    if (totalValor > 0) setEditValorAdiantamento(calcularAdiantamento(nome, totalValor))
+                  }} className={IC}>
+                    <option value="">Selecione...</option>
+                    {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome} {m.adiantamento ? '· 💰' : ''}</option>)}
+                  </select>
+                  {editMotorista && (
+                    <p className="text-xs mt-1 font-medium">
+                      {editTemAdiantamento
+                        ? <span className="text-green-600">✅ Com adiantamento (5% do frete)</span>
+                        : <span className="text-gray-400">❌ Sem adiantamento</span>}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className={LC}>Caminhão *</label>
+                  <select value={editCaminhaoId} onChange={e => {
+                    const cam = caminhoes.find(c => c.id === e.target.value)
+                    setEditCaminhaoId(e.target.value)
+                    setEditCaminhaoPlaca(cam?.placa || '')
+                  }} className={IC}>
+                    <option value="">Selecione...</option>
+                    {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LC}>Data Saída</label>
+                  <input type="date" value={editDataSaida} onChange={e => setEditDataSaida(e.target.value)} className={IC} />
+                </div>
+                <div>
+                  <label className={LC}>Data Retorno</label>
+                  <input type="date" value={editDataRetorno} onChange={e => setEditDataRetorno(e.target.value)} className={IC} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LC}>KM Inicial</label>
+                  <input type="number" value={editKmInicial} onChange={e => setEditKmInicial(e.target.value)} placeholder="Automático" className={IC} />
+                </div>
+                <div>
+                  <label className={LC}>KM Final</label>
+                  <input type="number" value={editKmFinal} onChange={e => setEditKmFinal(e.target.value)} placeholder="Automático" className={IC} />
+                </div>
+              </div>
+
+              {editKmInicial && editKmFinal && (
+                <div className="bg-blue-50 rounded-xl p-3">
+                  <p className="text-xs text-blue-600 font-medium">
+                    KM percorrido: <span className="font-bold text-blue-800">{(parseInt(editKmFinal) - parseInt(editKmInicial)).toLocaleString('pt-BR')} km</span>
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className={LC}>Status</label>
+                <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={IC}>
+                  <option value="EM ANDAMENTO">EM ANDAMENTO</option>
+                  <option value="FINALIZADA">FINALIZADA</option>
+                  <option value="CANCELADA">CANCELADA</option>
+                </select>
+              </div>
+
+              <div>
+                <label className={LC}>Contratos vinculados</label>
+                <p className="text-xs text-gray-400 mb-1">Ao selecionar, os campos abaixo são preenchidos automaticamente</p>
+                <ContratoSelector
+                  selecionados={editContratos}
+                  todos={contratos}
+                  onChange={setEditContratos}
+                  nomeMotorista={editMotorista}
+                  setCampos={(dados) => {
+                    setEditEmpresa(dados.empresa)
+                    setEditValorContrato(dados.valorContrato)
+                    setEditQtdVeiculos(dados.qtdVeiculos)
+                    setEditOrigem(dados.origem)
+                    setEditDestino(dados.destino)
+                    setEditValorAdiantamento(dados.adiantamento)
+                  }}
+                  calcularAdiantamento={calcularAdiantamento}
+                  aplicarDadosContratos={aplicarDadosContratos}
+                />
+              </div>
+
+              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
+                <p className="text-xs font-bold text-gray-500 uppercase">Dados da carga</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={LC}>Empresa</label>
+                    <input value={editEmpresa} onChange={e => setEditEmpresa(e.target.value)} className={IC} placeholder="Ex: SADA" />
+                  </div>
+                  <div>
+                    <label className={LC}>Qtd Veículos</label>
+                    <input type="number" value={editQtdVeiculos} onChange={e => setEditQtdVeiculos(e.target.value)} className={IC} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={LC}>Origem</label>
+                    <input value={editOrigem} onChange={e => setEditOrigem(e.target.value)} className={IC} />
+                  </div>
+                  <div>
+                    <label className={LC}>Destino</label>
+                    <input value={editDestino} onChange={e => setEditDestino(e.target.value)} className={IC} />
+                  </div>
+                </div>
+                <div>
+                  <label className={LC}>Valor do Contrato (R$)</label>
+                  <input type="number" step="0.01" value={editValorContrato} onChange={e => {
+                    setEditValorContrato(e.target.value)
+                    setEditValorAdiantamento(calcularAdiantamento(editMotorista, parseFloat(e.target.value) || 0))
+                  }} className={IC} />
+                </div>
+              </div>
+
+              <div className="p-3 bg-green-50 rounded-xl border border-green-100 space-y-3">
+                <p className="text-xs font-bold text-green-700 uppercase">Valores financeiros</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={LC}>Adiantamento (R$)</label>
+                    <input type="number" step="0.01" value={editValorAdiantamento} onChange={e => setEditValorAdiantamento(e.target.value)} className={IC} />
+                    <p className="text-xs text-gray-400 mt-0.5">{editTemAdiantamento ? '5% do frete — editável' : 'Motorista sem adiantamento'}</p>
+                  </div>
+                  <div>
+                    <label className={LC}>Chapa (R$)</label>
+                    <input type="number" step="0.01" value={editValorChapa} onChange={e => setEditValorChapa(e.target.value)} placeholder="250,00" className={IC} />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className={LC}>Observações</label>
+                <textarea value={editObs} onChange={e => setEditObs(e.target.value)} rows={2} className={IC} />
+              </div>
+
               <div className="flex gap-2 pt-4">
                 <button onClick={salvar} disabled={loading}
                   className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
@@ -625,6 +716,7 @@ export default function ViagemPage() {
                   <Trash2 size={15}/>
                 </button>
               </div>
+
               {confirmExcluir && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-xl mt-3">
                   <p className="text-sm text-red-700 font-medium mb-3">⚠️ Excluir esta viagem?</p>
