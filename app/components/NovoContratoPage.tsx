@@ -336,9 +336,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
         motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
         cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
-        cnpj: clienteEncontrado?.cnpj
-          ? formatCnpj(clienteEncontrado.cnpj)
-          : parsed.cnpj ? formatCnpj(parsed.cnpj) : '',
+        // Prioriza CNPJ do contrato (IA leu), fallback para o do banco
+        cnpj: parsed.cnpj
+         ? formatCnpj(parsed.cnpj)
+        : clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : '',
         placa: caminhaoEncontrado ? caminhaoEncontrado.placa : '',
         placa_carreta: carretaEncontrada ? carretaEncontrada.placa : '',
       }))
