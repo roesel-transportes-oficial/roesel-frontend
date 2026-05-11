@@ -85,68 +85,53 @@ CAMPOS A EXTRAIR:
 LEITURA DE PLACAS — REGRAS CRÍTICAS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 TODAS as placas seguem o padrão MERCOSUL: exatamente 7 caracteres no formato:
-  POSIÇÃO 1: LETRA
-  POSIÇÃO 2: LETRA
-  POSIÇÃO 3: LETRA
+  POSIÇÃO 1: LETRA | POSIÇÃO 2: LETRA | POSIÇÃO 3: LETRA
   POSIÇÃO 4: ALGARISMO (0-9)
   POSIÇÃO 5: LETRA
-  POSIÇÃO 6: ALGARISMO (0-9)
-  POSIÇÃO 7: ALGARISMO (0-9)
+  POSIÇÃO 6: ALGARISMO (0-9) | POSIÇÃO 7: ALGARISMO (0-9)
   Exemplo: R M H 9 C 9 0
 
-PROCEDIMENTO OBRIGATÓRIO para cada placa:
-  1. Localize o campo da placa no documento
-  2. Leia os 7 caracteres UM POR UM da esquerda para a direita
-  3. Para cada posição, aplique a regra:
-     - Posições 1,2,3,5: devem ser LETRAS (A-Z). Se leu um número, você errou.
-     - Posições 4,6,7: devem ser ALGARISMOS (0-9). Se leu uma letra, você errou.
-     - Posição 4: se leu letra O → é 0, se leu letra I → é 1
-     - Posições 6,7: mesma regra
-  4. Valide: o resultado deve ter exatamente 7 chars no padrão AAA#A##
-  5. Se não bater com o padrão, RELEIA a placa do zero
+PROCEDIMENTO para cada placa:
+  1. Leia os 7 caracteres UM POR UM
+  2. Valide: pos 1,2,3,5 = LETRAS | pos 4,6,7 = ALGARISMOS
+  3. Se não bater com AAA#A##, RELEIA do zero
+  Não confunda: R↔P, H↔M↔N, 9↔4↔7, C↔G↔0, 8↔B
 
-Confusões comuns a EVITAR:
-  - R ↔ P (traço vertical + curvas)
-  - H ↔ M ↔ N (traços verticais)
-  - 9 ↔ 4 ↔ 7 (numerais parecidos)
-  - C ↔ G ↔ 0 (letras/números curvos)
-  - 8 ↔ B (curvas duplas)
-  - 6 ↔ G ↔ 0
-
-"placa":
-  TIPO A/B → "Placa Cavalo Mecânico:"
-  TIPO C → "Placa Caminhão:"
-  Aplique o procedimento acima. Resultado deve ser AAA#A##.
-
-"placa_carreta":
-  TIPO A/B → "Placa Semi-reboque:"
-  TIPO C → "Placa Carreta:"
-  Aplique o procedimento acima. Resultado deve ser AAA#A##.
+"placa": TIPO A/B → "Placa Cavalo Mecânico:" | TIPO C → "Placa Caminhão:"
+"placa_carreta": TIPO A/B → "Placa Semi-reboque:" | TIPO C → "Placa Carreta:"
 
 "frota": valor exato após "Frota:".
 
-"fat_bruto":
-  TIPO A/B → seção "PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO", linha "Frete Contratado"
-    ❌ NUNCA use "Peso:" — é peso em KG!
-    ❌ NUNCA use "Saldo a Receber", "Vale-Pedágio"
+"fat_bruto": ━━ ATENÇÃO MÁXIMA — LEIA COM CUIDADO ━━
+  O contrato tem DOIS campos numéricos que podem se confundir:
+  
+  CAMPO ERRADO — "Peso:" na seção SERVIÇOS CONTRATADOS:
+    → Fica na PARTE SUPERIOR do contrato, junto com Origem/Destino/Quant
+    → Representa QUILOGRAMAS da carga (ex: "Peso: 8724,00" = 8724 kg)
+    → ❌ NUNCA USE ESTE VALOR
+
+  CAMPO CORRETO — "Frete Contratado" na seção PREÇO DE SERVIÇOS CONTRATADOS E QUITAÇÃO:
+    → Fica na PARTE INFERIOR do contrato, na tabela de valores financeiros
+    → Representa REAIS a receber (ex: "Frete Contratado: 2.258,37" = R$ 2258,37)
+    → ✅ USE ESTE VALOR
+
+  Como diferenciar na dúvida:
+    - Se o número aparece junto com "Origem:", "Destino:", "Quant:" → é PESO → IGNORE
+    - Se o número aparece junto com "Adiantamento", "Vale-Pedágio", "Saldo" → é FRETE → USE
+
   TIPO C → linha "(+) Frete Contratado: X.XXX,XX" — valor após os dois pontos
-  Formato: VÍRGULA=decimal, PONTO=milhar → retorne com ponto e 2 casas.
+
+  Formato: VÍRGULA=decimal, PONTO=milhar.
+  "2.258,37"→"2258.37" | "8.731,88"→"8731.88" | "374,73"→"374.73"
+  SEMPRE com ponto decimal e 2 casas.
 
 "qtd_veiculos":
   TIPO A/B → campo "Quant.:"
   TIPO C → campo "Veículos:" — leia o total. Se não identificar, some a distribuição por cidade.
   Inteiro.
 
-"origem":
-  TIPO A/B → campo "Origem:" na seção SERVIÇOS CONTRATADOS.
-  TIPO C → campo "Origem:" na seção Serviços Contratados.
-  ⚠️ Leia EXATAMENTE o que está escrito.
-
-"destino":
-  TIPO A/B → campo "Destino:" na seção SERVIÇOS CONTRATADOS.
-  TIPO C → campo "Destino Final:" na seção Serviços Contratados.
-  ⚠️ Leia EXATAMENTE o que está escrito.
-
+"origem": campo "Origem:" exato. TIPO C → seção Serviços Contratados.
+"destino": campo "Destino:" exato. TIPO C → campo "Destino Final:".
 "status": sempre "ABERTO"
 "chapa": sempre ""
 "obs": sempre ""
@@ -225,6 +210,7 @@ JSON de retorno (SOMENTE isso):
           val = val.replace(/\./g, '')
           if (val.length > 2) val = val.slice(0, -2) + '.' + val.slice(-2)
         }
+        // Um único ponto = já está no formato correto (ex: "2258.37")
       } else {
         if (val.length > 2) val = val.slice(0, -2) + '.' + val.slice(-2)
       }
