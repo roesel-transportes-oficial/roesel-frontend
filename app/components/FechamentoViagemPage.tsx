@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { X, Search, List, Truck, User, Calendar, Gauge, MapPin, Fuel, ArrowRight, History, Download, Plus, CheckCircle2, CreditCard, Filter } from 'lucide-react'
+import { X, Search, List, Truck, User, Calendar, Gauge, MapPin, Fuel, ArrowRight, History, Download, Plus, CheckCircle2, CreditCard, Filter, AlertCircle } from 'lucide-react'
 
 type Motorista = { id: string; nome: string; caminhao_id?: string }
 type Caminhao = { id: string; placa: string }
 type Contrato = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
-type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; valor_combustivel?: number | null; litros_arla?: number | null; valor_arla?: number | null; placa?: string | null }
+type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; valor_combustivel?: number | null; litros_arla?: number | null; valor_arla?: number | null; placa?: string | null; caminhao_placa?: string | null }
 type Fechamento = {
   id: string
   created_at: string
@@ -97,29 +97,40 @@ export default function FechamentoViagemPage() {
       .then(({ data }) => { setCarregandoContratos(false); if (data) setContratosDisponiveis(data) })
   }, [motoristaId, motoristas])
 
-  // Carregar abastecimentos com busca flexível pela placa
+  // Carregar abastecimentos com busca ULTRA robusta
   useEffect(() => {
     if (!caminhao?.placa || !abastDataInicio || !abastDataFim) { setAbastecimentos([]); return }
     
-    const placaLimpa = caminhao.placa.replace(/[^a-zA-Z0-9]/g, '') // Remove traços e espaços
-    const placaComTraco = caminhao.placa.includes('-') ? caminhao.placa : `${caminhao.placa.slice(0,3)}-${caminhao.placa.slice(3)}`
+    const placaOriginal = caminhao.placa.trim()
+    const placaLimpa = placaOriginal.replace(/[^a-zA-Z0-9]/g, '')
+    const placaComTraco = placaOriginal.includes('-') ? placaOriginal : `${placaOriginal.slice(0,3)}-${placaOriginal.slice(3)}`
 
     setCarregandoAbastecimentos(true)
+    setErro('')
     
-    // Busca tentando os dois formatos de placa (com e sem traço)
-    supabase.from('abastecimentos').select('id, data, posto, litros_combustivel, valor_combustivel, litros_arla, valor_arla, placa')
-      .or(`placa.ilike.%${placaLimpa}%,placa.ilike.%${placaComTraco}%`)
-      .gte('data', abastDataInicio).lte('data', abastDataFim).order('data', { ascending: true })
+    // Busca tentando múltiplas colunas e formatos de placa
+    // Usamos ilike para ignorar maiúsculas/minúsculas
+    supabase.from('abastecimentos')
+      .select('*') // Pegamos tudo para garantir que não falte coluna
+      .gte('data', abastDataInicio)
+      .lte('data', abastDataFim)
+      .or(`placa.ilike.%${placaLimpa}%,placa.ilike.%${placaComTraco}%,caminhao_placa.ilike.%${placaLimpa}%,caminhao_placa.ilike.%${placaComTraco}%`)
+      .order('data', { ascending: true })
       .then(({ data, error }) => {
         setCarregandoAbastecimentos(false)
         if (error) {
-          console.error('Erro ao buscar abastecimentos:', error)
-          setErro('Erro ao buscar abastecimentos: ' + error.message)
+          console.error('Erro Supabase:', error)
+          setErro('Erro na busca: ' + error.message)
           return
         }
+        
         const lista = data || []
         setAbastecimentos(lista)
         setAbastSelecionados(new Set(lista.map(a => a.id)))
+        
+        if (lista.length === 0) {
+          console.log('Nenhum abastecimento encontrado para:', { placaLimpa, placaComTraco, abastDataInicio, abastDataFim })
+        }
       })
   }, [caminhao?.placa, abastDataInicio, abastDataFim])
 
@@ -273,7 +284,7 @@ export default function FechamentoViagemPage() {
                 </div>
               </div>
 
-              {/* Abastecimentos com Busca Flexível */}
+              {/* Abastecimentos com Busca ULTRA Robusta */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between bg-gray-50/50 gap-4">
                   <div className="flex items-center gap-3">
@@ -294,16 +305,22 @@ export default function FechamentoViagemPage() {
                   </div>
                 </div>
                 <div className="p-6">
+                  {erro && (
+                    <div className="mb-6 bg-red-50 border border-red-100 p-4 rounded-xl flex items-center gap-3 text-red-700 text-xs font-bold uppercase">
+                      <AlertCircle size={18} /> {erro}
+                    </div>
+                  )}
+
                   {!caminhao ? (
                     <p className="text-center py-12 text-sm text-gray-400 italic">Selecione o motorista para carregar os abastecimentos.</p>
                   ) : !abastDataInicio || !abastDataFim ? (
                     <p className="text-center py-12 text-sm text-gray-400 italic flex items-center justify-center gap-2"><Calendar size={16} /> Informe o período para buscar abastecimentos da placa {caminhao.placa}.</p>
                   ) : carregandoAbastecimentos ? (
-                    <div className="flex items-center justify-center py-12 gap-3"><div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div></div>
+                    <div className="flex items-center justify-center py-12 gap-3"><div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div><span className="text-xs font-bold text-gray-500 uppercase">Buscando no banco...</span></div>
                   ) : abastecimentos.length === 0 ? (
-                    <div className="text-center py-12 space-y-2">
-                      <p className="text-sm text-gray-400 italic">Nenhum abastecimento encontrado para a placa {caminhao.placa}.</p>
-                      <p className="text-[10px] text-gray-300 uppercase font-bold">Dica: Verifique se o período de busca está correto.</p>
+                    <div className="text-center py-12 space-y-4">
+                      <div className="bg-gray-50 inline-block p-4 rounded-full"><Fuel size={32} className="text-gray-200" /></div>
+                      <p className="text-sm text-gray-400 italic">Nenhum abastecimento encontrado para a placa {caminhao.placa} entre {fmtData(abastDataInicio)} e {fmtData(abastDataFim)}.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -318,7 +335,7 @@ export default function FechamentoViagemPage() {
                             <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1.5 mb-2"><MapPin size={10} /> {a.posto || 'POSTO NÃO IDENTIFICADO'}</p>
                             <div className="flex gap-2">
                               <span className="bg-white px-2 py-1 rounded border text-[10px] font-black text-gray-600 uppercase">Diesel: {a.litros_combustivel ? `${fmt(a.litros_combustivel)} L` : '—'}</span>
-                              {a.placa && <span className="bg-gray-100 px-2 py-1 rounded text-[9px] font-bold text-gray-400 uppercase">{a.placa}</span>}
+                              <span className="bg-gray-100 px-2 py-1 rounded text-[9px] font-bold text-gray-400 uppercase">{a.placa || a.caminhao_placa || 'PLACA OK'}</span>
                             </div>
                           </label>
                         )
