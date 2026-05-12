@@ -6,11 +6,7 @@ import { X } from 'lucide-react'
 type Motorista     = { id: string; nome: string }
 type Caminhao      = { id: string; placa: string }
 type Contrato      = { id: string; contrato: string; fat_bruto: number; cliente?: string; origem?: string; destino?: string }
-type Abastecimento = {
-  id: string; data: string; posto?: string
-  litros_combustivel?: number; valor_combustivel?: number
-  litros_arla?: number; valor_arla?: number
-}
+type Abastecimento = { id: string; data: string; posto?: string; litros_combustivel?: number; valor_combustivel?: number; litros_arla?: number; valor_arla?: number }
 
 export default function FechamentoViagemPage() {
   const [motoristas, setMotoristas]               = useState<Motorista[]>([])
