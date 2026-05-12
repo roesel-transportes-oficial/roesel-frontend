@@ -13,21 +13,21 @@ type Abastecimento = {
 }
 
 export default function FechamentoViagemPage() {
-  const [motoristas, setMotoristas]             = useState<Motorista[]>([])
-  const [motoristaId, setMotoristaId]           = useState('')
-  const [caminhao, setCaminhao]                 = useState<Caminhao | null>(null)
-  const [dataInicio, setDataInicio]             = useState('')
-  const [dataFim, setDataFim]                   = useState('')
-  const [kmInicial, setKmInicial]               = useState('')
-  const [kmFinal, setKmFinal]                   = useState('')
-  const [busca, setBusca]                       = useState('')
-  const [resultados, setResultados]             = useState<Contrato[]>([])
-  const [selecionados, setSelecionados]         = useState<Contrato[]>([])
-  const [abastecimentos, setAbastecimentos]     = useState<Abastecimento[]>([])
+  const [motoristas, setMotoristas]               = useState<Motorista[]>([])
+  const [motoristaId, setMotoristaId]             = useState('')
+  const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
+  const [dataInicio, setDataInicio]               = useState('')
+  const [dataFim, setDataFim]                     = useState('')
+  const [kmInicial, setKmInicial]                 = useState('')
+  const [kmFinal, setKmFinal]                     = useState('')
+  const [busca, setBusca]                         = useState('')
+  const [resultados, setResultados]               = useState<Contrato[]>([])
+  const [selecionados, setSelecionados]           = useState<Contrato[]>([])
+  const [abastecimentos, setAbastecimentos]       = useState<Abastecimento[]>([])
   const [abastSelecionados, setAbastSelecionados] = useState<Set<string>>(new Set())
-  const [salvando, setSalvando]                 = useState(false)
-  const [erro, setErro]                         = useState('')
-  const [sucesso, setSucesso]                   = useState(false)
+  const [salvando, setSalvando]                   = useState(false)
+  const [erro, setErro]                           = useState('')
+  const [sucesso, setSucesso]                     = useState(false)
 
   useEffect(() => {
     supabase.from('motoristas').select('id, nome').order('nome')
@@ -41,9 +41,10 @@ export default function FechamentoViagemPage() {
       .then(({ data }) => setCaminhao(data))
   }, [motoristaId])
 
-  // Abastecimentos automáticos → pré-seleciona todos
   useEffect(() => {
-    if (!motoristaId || !dataInicio || !dataFim) { setAbastecimentos([]); setAbastSelecionados(new Set()); return }
+    if (!motoristaId || !dataInicio || !dataFim) {
+      setAbastecimentos([]); setAbastSelecionados(new Set()); return
+    }
     supabase
       .from('abastecimentos')
       .select('id, data, posto, litros_combustivel, valor_combustivel, litros_arla, valor_arla')
@@ -54,7 +55,7 @@ export default function FechamentoViagemPage() {
       .then(({ data }) => {
         const lista = data || []
         setAbastecimentos(lista)
-        setAbastSelecionados(new Set(lista.map(a => a.id))) // pré-seleciona todos
+        setAbastSelecionados(new Set(lista.map(a => a.id)))
       })
   }, [motoristaId, dataInicio, dataFim])
 
@@ -79,7 +80,10 @@ export default function FechamentoViagemPage() {
     setSelecionados(prev => [...prev, c])
     setBusca(''); setResultados([])
   }
-  function remover(id: string) { setSelecionados(prev => prev.filter(c => c.id !== id)) }
+
+  function remover(id: string) {
+    setSelecionados(prev => prev.filter(c => c.id !== id))
+  }
 
   function toggleAbast(id: string) {
     setAbastSelecionados(prev => {
@@ -89,7 +93,6 @@ export default function FechamentoViagemPage() {
     })
   }
 
-  // Resumo usa só abastecimentos marcados
   const abastAtivos = useMemo(
     () => abastecimentos.filter(a => abastSelecionados.has(a.id)),
     [abastecimentos, abastSelecionados]
@@ -108,7 +111,9 @@ export default function FechamentoViagemPage() {
     if (!motoristaId || !dataInicio || !dataFim || !kmInicial || !kmFinal) {
       setErro('Preencha motorista, período e hodômetro.'); return
     }
-    if (selecionados.length === 0) { setErro('Adicione ao menos um contrato.'); return }
+    if (selecionados.length === 0) {
+      setErro('Adicione ao menos um contrato.'); return
+    }
     setSalvando(true)
 
     const { data: fech, error } = await supabase
@@ -163,7 +168,10 @@ export default function FechamentoViagemPage() {
           </label>
           <select
             value={motoristaId}
-            onChange={e => { setMotoristaId(e.target.value); setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set()) }}
+            onChange={e => {
+              setMotoristaId(e.target.value)
+              setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set())
+            }}
             className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
           >
             <option value="">Selecione o motorista...</option>
@@ -305,8 +313,10 @@ export default function FechamentoViagemPage() {
             </div>
           </div>
           <p className="text-xs text-gray-400 mb-4">
-            Carregados automaticamente de {fmtData(dataInicio)} até {fmtData(dataFim)} —
-            <span className="font-medium text-gray-600 ml-1">{abastSelecionados.size}/{abastecimentos.length} selecionados</span>
+            Carregados de {fmtData(dataInicio)} até {fmtData(dataFim)} —
+            <span className="font-medium text-gray-600 ml-1">
+              {abastSelecionados.size}/{abastecimentos.length} selecionados
+            </span>
           </p>
 
           {abastecimentos.length === 0 ? (
@@ -314,8 +324,8 @@ export default function FechamentoViagemPage() {
           ) : (
             <div className="space-y-2">
               {abastecimentos.map(a => {
-                const valor    = (a.valor_combustivel || 0) + (a.valor_arla || 0)
-                const marcado  = abastSelecionados.has(a.id)
+                const valor   = (a.valor_combustivel || 0) + (a.valor_arla || 0)
+                const marcado = abastSelecionados.has(a.id)
                 return (
                   <label key={a.id}
                     className={`flex items-center gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-colors select-none
