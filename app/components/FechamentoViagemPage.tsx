@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '@/services/supabase';
+import { supabase } from '../services/supabase';
 
 type Motorista = { id: string; nome: string };
 type Contrato = {
