@@ -5,7 +5,7 @@ import { X } from 'lucide-react'
 
 type Motorista     = { id: string; nome: string }
 type Caminhao      = { id: string; placa: string }
-type Contrato      = { id: string; numero_contrato: string; fat_bruto: number; cliente?: string; origem?: string; destino?: string }
+type Contrato      = { id: string; contrato: string; fat_bruto: number; cliente?: string; origem?: string; destino?: string }
 type Abastecimento = {
   id: string; data: string; posto?: string
   litros_combustivel?: number; valor_combustivel?: number
@@ -34,21 +34,24 @@ export default function FechamentoViagemPage() {
       .then(({ data }) => data && setMotoristas(data))
   }, [])
 
+  // Motorista → caminhão vinculado
   useEffect(() => {
     if (!motoristaId) { setCaminhao(null); return }
     supabase.from('caminhoes').select('id, placa')
-      .eq('motorista_atual', motoristaId).maybeSingle()
+      .eq('motorista_atual', motoristaId)
+      .maybeSingle()
       .then(({ data }) => setCaminhao(data))
   }, [motoristaId])
 
+  // Caminhão + período → abastecimentos automáticos por caminhao_id
   useEffect(() => {
-    if (!motoristaId || !dataInicio || !dataFim) {
+    if (!caminhao?.id || !dataInicio || !dataFim) {
       setAbastecimentos([]); setAbastSelecionados(new Set()); return
     }
     supabase
       .from('abastecimentos')
       .select('id, data, posto, litros_combustivel, valor_combustivel, litros_arla, valor_arla')
-      .eq('motorista_id', motoristaId)
+      .eq('caminhao_id', caminhao.id)
       .gte('data', dataInicio)
       .lte('data', dataFim)
       .order('data')
@@ -57,24 +60,24 @@ export default function FechamentoViagemPage() {
         setAbastecimentos(lista)
         setAbastSelecionados(new Set(lista.map(a => a.id)))
       })
-  }, [motoristaId, dataInicio, dataFim])
+  }, [caminhao, dataInicio, dataFim])
 
+  // Busca contratos por número ou cliente (sem filtro de motorista)
   useEffect(() => {
-    if (!busca.trim() || busca.length < 2 || !motoristaId) { setResultados([]); return }
+    if (!busca.trim() || busca.length < 2) { setResultados([]); return }
     const timer = setTimeout(() => {
       const jaAdicionados = new Set(selecionados.map(s => s.id))
       supabase
         .from('contratos')
-        .select('id, numero_contrato, fat_bruto, cliente, origem, destino')
-        .eq('motorista_id', motoristaId)
-        .or(`numero_contrato.ilike.%${busca}%,cliente.ilike.%${busca}%`)
+        .select('id, contrato, fat_bruto, cliente, origem, destino')
+        .or(`contrato.ilike.%${busca}%,cliente.ilike.%${busca}%`)
         .limit(8)
         .then(({ data }) =>
           setResultados((data || []).filter(c => !jaAdicionados.has(c.id)))
         )
     }, 300)
     return () => clearTimeout(timer)
-  }, [busca, motoristaId, selecionados])
+  }, [busca, selecionados])
 
   function adicionar(c: Contrato) {
     setSelecionados(prev => [...prev, c])
@@ -237,36 +240,32 @@ export default function FechamentoViagemPage() {
           <span className="text-sm font-normal text-gray-400 ml-2">({selecionados.length} adicionados)</span>
         </h2>
 
-        {motoristaId ? (
-          <div className="relative mb-4">
-            <input
-              type="text" value={busca} onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar contrato por número ou cliente..."
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
-            {resultados.length > 0 && (
-              <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-                {resultados.map(c => (
-                  <button key={c.id} onClick={() => adicionar(c)}
-                    className="w-full flex items-start justify-between px-4 py-3 text-sm hover:bg-red-50 transition text-left border-b last:border-0">
-                    <div>
-                      <span className="font-semibold text-gray-800">#{c.numero_contrato}</span>
-                      {c.cliente && <span className="text-gray-500 ml-2">· {c.cliente}</span>}
-                      {(c.origem || c.destino) && (
-                        <p className="text-xs text-gray-400 mt-0.5">📍 {c.origem || '—'} → {c.destino || '—'}</p>
-                      )}
-                    </div>
-                    <span className="text-green-700 font-semibold shrink-0 ml-4">
-                      {c.fat_bruto ? `R$ ${fmt(Number(c.fat_bruto))}` : '—'}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="text-gray-400 text-sm mb-4">Selecione um motorista para buscar contratos.</p>
-        )}
+        <div className="relative mb-4">
+          <input
+            type="text" value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar contrato por número ou cliente..."
+            className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+          />
+          {resultados.length > 0 && (
+            <div className="absolute z-10 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+              {resultados.map(c => (
+                <button key={c.id} onClick={() => adicionar(c)}
+                  className="w-full flex items-start justify-between px-4 py-3 text-sm hover:bg-red-50 transition text-left border-b last:border-0">
+                  <div>
+                    <span className="font-semibold text-gray-800">#{c.contrato}</span>
+                    {c.cliente && <span className="text-gray-500 ml-2">· {c.cliente}</span>}
+                    {(c.origem || c.destino) && (
+                      <p className="text-xs text-gray-400 mt-0.5">📍 {c.origem || '—'} → {c.destino || '—'}</p>
+                    )}
+                  </div>
+                  <span className="text-green-700 font-semibold shrink-0 ml-4">
+                    {c.fat_bruto ? `R$ ${fmt(Number(c.fat_bruto))}` : '—'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {selecionados.length === 0 ? (
           <p className="text-gray-400 text-sm">Nenhum contrato adicionado ainda.</p>
@@ -276,7 +275,7 @@ export default function FechamentoViagemPage() {
               <div key={c.id} className="flex items-start gap-3 px-4 py-3 rounded-lg border border-red-200 bg-red-50">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-sm text-gray-800">#{c.numero_contrato}</span>
+                    <span className="font-semibold text-sm text-gray-800">#{c.contrato}</span>
                     {c.cliente && <span className="text-gray-500 text-sm">· {c.cliente}</span>}
                     {c.fat_bruto > 0 && (
                       <span className="text-green-700 font-semibold text-sm ml-auto">R$ {fmt(Number(c.fat_bruto))}</span>
@@ -300,7 +299,7 @@ export default function FechamentoViagemPage() {
       </div>
 
       {/* ── Abastecimentos ── */}
-      {motoristaId && dataInicio && dataFim && (
+      {caminhao && dataInicio && dataFim && (
         <div className="bg-white rounded-xl shadow p-5">
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-base font-semibold text-gray-800">Abastecimentos</h2>
@@ -313,7 +312,7 @@ export default function FechamentoViagemPage() {
             </div>
           </div>
           <p className="text-xs text-gray-400 mb-4">
-            Carregados de {fmtData(dataInicio)} até {fmtData(dataFim)} —
+            {caminhao.placa} · {fmtData(dataInicio)} até {fmtData(dataFim)} —
             <span className="font-medium text-gray-600 ml-1">
               {abastSelecionados.size}/{abastecimentos.length} selecionados
             </span>
@@ -338,7 +337,7 @@ export default function FechamentoViagemPage() {
                       <span className="text-sm font-medium text-gray-700">{fmtData(a.data)}</span>
                       {a.posto && <span className="text-gray-500 text-sm ml-2">· {a.posto}</span>}
                     </div>
-                    <div className="text-right text-xs text-gray-500 shrink-0 space-x-3">
+                    <div className="flex items-center gap-3 text-xs text-gray-500 shrink-0">
                       {a.litros_combustivel ? <span>⛽ {Number(a.litros_combustivel).toFixed(0)} L</span> : null}
                       {a.litros_arla        ? <span>🔵 {Number(a.litros_arla).toFixed(0)} L</span>        : null}
                       {valor > 0 && <span className="font-semibold text-red-600">R$ {fmt(valor)}</span>}
