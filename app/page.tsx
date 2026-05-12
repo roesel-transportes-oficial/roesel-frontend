@@ -13,6 +13,7 @@ import AvariasPage from './components/AvariasPage'
 import PremiosPage from './components/PremiosPage'
 import ViagemPage from './components/ViagemPage'
 import FeriasPage from './components/FeriasPage'
+import FechamentoViagemPage from './components/FechamentoViagemPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -43,6 +44,7 @@ export default function Home() {
         {aba === 'novo'           && <NovoContratoPage setAba={setAba} />}
         {aba === 'contratos'      && <ContratosPage />}
         {aba === 'viagens'        && <ViagemPage />}
+        {aba === 'fechamento'     && <FechamentoViagemPage />}
         {aba === 'motorista'      && <MotoristaPage />}
         {aba === 'ferias'         && <FeriasPage />}
         {aba === 'caminhao'       && <CaminhaoPage />}
