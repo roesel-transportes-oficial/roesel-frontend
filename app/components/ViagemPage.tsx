@@ -1,14 +1,13 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
-import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, MapPin, X } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Save, Trash2, MapPin, X } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 
 interface Viagem {
   id: string; motorista: string; caminhao_id: string; caminhao_placa: string
-  data_saida: string; data_retorno: string; km_inicial: number; km_final: number
   status: string; obs: string; qtd_veiculos: number; empresa: string
   valor_contrato: number; origem: string; destino: string
   valor_adiantamento: number; valor_chapa: number
@@ -23,7 +22,6 @@ interface Contrato {
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 
-// ── FORA do ViagemPage para evitar remount a cada render ──
 interface ContratoSelectorProps {
   selecionados: Contrato[]
   todos: Contrato[]
@@ -94,52 +92,46 @@ function ContratoSelector({
 
 export default function ViagemPage() {
   const { perm } = useAuth()
-  const [viagens, setViagens] = useState<Viagem[]>([])
+  const [viagens, setViagens]     = useState<Viagem[]>([])
   const [motoristas, setMotoristas] = useState<Motorista[]>([])
-  const [caminhoes, setCaminhoes] = useState<Caminhao[]>([])
-  const [contratos, setContratos] = useState<Contrato[]>([])
-  const [busca, setBusca] = useState('')
-  const [sel, setSel] = useState<Viagem | null>(null)
-  const [mostraCad, setMostraCad] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [msg, setMsg] = useState('')
+  const [caminhoes, setCaminhoes]  = useState<Caminhao[]>([])
+  const [contratos, setContratos]  = useState<Contrato[]>([])
+  const [busca, setBusca]          = useState('')
+  const [sel, setSel]              = useState<Viagem | null>(null)
+  const [mostraCad, setMostraCad]  = useState(false)
+  const [loading, setLoading]      = useState(false)
+  const [msg, setMsg]              = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
 
-  const [cadMotorista, setCadMotorista] = useState('')
-  const [cadCaminhaoId, setCadCaminhaoId] = useState('')
-  const [cadCaminhaoPlaca, setCadCaminhaoPlaca] = useState('')
-  const [cadDataSaida, setCadDataSaida] = useState(new Date().toISOString().split('T')[0])
-  const [cadDataRetorno, setCadDataRetorno] = useState('')
-  const [cadKmInicial, setCadKmInicial] = useState('')
-  const [cadKmFinal, setCadKmFinal] = useState('')
-  const [cadStatus, setCadStatus] = useState('EM ANDAMENTO')
-  const [cadObs, setCadObs] = useState('')
-  const [cadContratos, setCadContratos] = useState<Contrato[]>([])
-  const [cadQtdVeiculos, setCadQtdVeiculos] = useState('')
-  const [cadEmpresa, setCadEmpresa] = useState('')
-  const [cadValorContrato, setCadValorContrato] = useState('')
-  const [cadOrigem, setCadOrigem] = useState('')
-  const [cadDestino, setCadDestino] = useState('')
+  // cadastro
+  const [cadMotorista, setCadMotorista]               = useState('')
+  const [cadCaminhaoId, setCadCaminhaoId]             = useState('')
+  const [cadCaminhaoPlaca, setCadCaminhaoPlaca]       = useState('')
+  const [cadStatus, setCadStatus]                     = useState('EM ANDAMENTO')
+  const [cadObs, setCadObs]                           = useState('')
+  const [cadContratos, setCadContratos]               = useState<Contrato[]>([])
+  const [cadQtdVeiculos, setCadQtdVeiculos]           = useState('')
+  const [cadEmpresa, setCadEmpresa]                   = useState('')
+  const [cadValorContrato, setCadValorContrato]       = useState('')
+  const [cadOrigem, setCadOrigem]                     = useState('')
+  const [cadDestino, setCadDestino]                   = useState('')
   const [cadValorAdiantamento, setCadValorAdiantamento] = useState('')
-  const [cadValorChapa, setCadValorChapa] = useState('')
+  const [cadValorChapa, setCadValorChapa]             = useState('')
 
-  const [editMotorista, setEditMotorista] = useState('')
-  const [editCaminhaoId, setEditCaminhaoId] = useState('')
-  const [editCaminhaoPlaca, setEditCaminhaoPlaca] = useState('')
-  const [editDataSaida, setEditDataSaida] = useState('')
-  const [editDataRetorno, setEditDataRetorno] = useState('')
-  const [editKmInicial, setEditKmInicial] = useState('')
-  const [editKmFinal, setEditKmFinal] = useState('')
-  const [editStatus, setEditStatus] = useState('EM ANDAMENTO')
-  const [editObs, setEditObs] = useState('')
-  const [editContratos, setEditContratos] = useState<Contrato[]>([])
-  const [editQtdVeiculos, setEditQtdVeiculos] = useState('')
-  const [editEmpresa, setEditEmpresa] = useState('')
-  const [editValorContrato, setEditValorContrato] = useState('')
-  const [editOrigem, setEditOrigem] = useState('')
-  const [editDestino, setEditDestino] = useState('')
+  // edição
+  const [editMotorista, setEditMotorista]               = useState('')
+  const [editCaminhaoId, setEditCaminhaoId]             = useState('')
+  const [editCaminhaoPlaca, setEditCaminhaoPlaca]       = useState('')
+  const [editStatus, setEditStatus]                     = useState('EM ANDAMENTO')
+  const [editObs, setEditObs]                           = useState('')
+  const [editContratos, setEditContratos]               = useState<Contrato[]>([])
+  const [editQtdVeiculos, setEditQtdVeiculos]           = useState('')
+  const [editEmpresa, setEditEmpresa]                   = useState('')
+  const [editValorContrato, setEditValorContrato]       = useState('')
+  const [editOrigem, setEditOrigem]                     = useState('')
+  const [editDestino, setEditDestino]                   = useState('')
   const [editValorAdiantamento, setEditValorAdiantamento] = useState('')
-  const [editValorChapa, setEditValorChapa] = useState('')
+  const [editValorChapa, setEditValorChapa]             = useState('')
 
   useEffect(() => {
     fetch_(); fetchMotoristas(); fetchCaminhoes(); fetchContratos()
@@ -147,7 +139,7 @@ export default function ViagemPage() {
 
   async function fetch_() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/viagens?order=data_saida.desc`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/viagens?order=created_at.desc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       setViagens(await res.json())
@@ -194,24 +186,6 @@ export default function ViagemPage() {
     } catch {}
   }
 
-  async function buscarUltimoKm(caminhaoId: string) {
-    try {
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/abastecimentos?caminhao_id=eq.${caminhaoId}&km=not.is.null&order=data.desc&limit=1`,
-        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
-      )
-      const data = await res.json()
-      if (Array.isArray(data) && data.length > 0 && data[0].km) return String(data[0].km)
-      const res2 = await fetch(
-        `${SUPABASE_URL}/rest/v1/viagens?caminhao_id=eq.${caminhaoId}&km_final=not.is.null&order=data_saida.desc&limit=1`,
-        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
-      )
-      const data2 = await res2.json()
-      if (Array.isArray(data2) && data2.length > 0 && data2[0].km_final) return String(data2[0].km_final)
-    } catch {}
-    return ''
-  }
-
   function calcularAdiantamento(nomeMotorista: string, valorContrato: number): string {
     const motorista = motoristas.find(m => m.nome === nomeMotorista)
     if (!motorista || !motorista.adiantamento || !valorContrato) return '0'
@@ -221,7 +195,7 @@ export default function ViagemPage() {
   function aplicarDadosContratos(lista: Contrato[], nomeMotorista: string) {
     if (lista.length === 0) return null
     const primeiro = lista[0]
-    const totalValor = lista.reduce((s, c) => s + (c.fat_bruto || 0), 0)
+    const totalValor    = lista.reduce((s, c) => s + (c.fat_bruto || 0), 0)
     const totalVeiculos = lista.reduce((s, c) => s + (c.qtd_veiculos || 0), 0)
     return {
       empresa: primeiro.cliente || '',
@@ -231,12 +205,6 @@ export default function ViagemPage() {
       destino: primeiro.destino || '',
       adiantamento: calcularAdiantamento(nomeMotorista, totalValor),
     }
-  }
-
-  function fmtData(d: string) {
-    if (!d) return ''
-    const [y, m, dia] = d.split('-')
-    return `${dia}/${m}/${y}`
   }
 
   function voltar() { setSel(null); setConfirmExcluir(false) }
@@ -254,10 +222,6 @@ export default function ViagemPage() {
     setEditMotorista(v.motorista || '')
     setEditCaminhaoId(v.caminhao_id || '')
     setEditCaminhaoPlaca(v.caminhao_placa || '')
-    setEditDataSaida(v.data_saida || '')
-    setEditDataRetorno(v.data_retorno || '')
-    setEditKmInicial(String(v.km_inicial || ''))
-    setEditKmFinal(String(v.km_final || ''))
     setEditStatus(v.status || 'EM ANDAMENTO')
     setEditObs(v.obs || '')
     setEditQtdVeiculos(String(v.qtd_veiculos || ''))
@@ -287,14 +251,16 @@ export default function ViagemPage() {
 
   function buildPayload(p: any) {
     return {
-      motorista: p.motorista, caminhao_id: p.caminhaoId, caminhao_placa: p.caminhaoPlaca,
-      data_saida: p.dataSaida, data_retorno: p.dataRetorno || null,
-      km_inicial: parseInt(p.kmInicial) || null, km_final: parseInt(p.kmFinal) || null,
-      status: p.status, obs: p.obs,
+      motorista: p.motorista,
+      caminhao_id: p.caminhaoId,
+      caminhao_placa: p.caminhaoPlaca,
+      status: p.status,
+      obs: p.obs,
       qtd_veiculos: parseInt(p.qtdVeiculos) || null,
       empresa: p.empresa,
       valor_contrato: parseFloat(p.valorContrato) || null,
-      origem: p.origem, destino: p.destino,
+      origem: p.origem,
+      destino: p.destino,
       valor_adiantamento: parseFloat(p.valorAdiantamento) || null,
       valor_chapa: parseFloat(p.valorChapa) || null,
     }
@@ -309,8 +275,6 @@ export default function ViagemPage() {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify(buildPayload({
           motorista: editMotorista, caminhaoId: editCaminhaoId, caminhaoPlaca: editCaminhaoPlaca,
-          dataSaida: editDataSaida, dataRetorno: editDataRetorno,
-          kmInicial: editKmInicial, kmFinal: editKmFinal,
           status: editStatus, obs: editObs,
           qtdVeiculos: editQtdVeiculos, empresa: editEmpresa,
           valorContrato: editValorContrato, origem: editOrigem, destino: editDestino,
@@ -343,8 +307,6 @@ export default function ViagemPage() {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
         body: JSON.stringify(buildPayload({
           motorista: cadMotorista, caminhaoId: cadCaminhaoId, caminhaoPlaca: cadCaminhaoPlaca,
-          dataSaida: cadDataSaida, dataRetorno: cadDataRetorno,
-          kmInicial: cadKmInicial, kmFinal: cadKmFinal,
           status: cadStatus, obs: cadObs,
           qtdVeiculos: cadQtdVeiculos, empresa: cadEmpresa,
           valorContrato: cadValorContrato, origem: cadOrigem, destino: cadDestino,
@@ -356,21 +318,57 @@ export default function ViagemPage() {
     }
     await fetch_(); setLoading(false)
     setCadMotorista(''); setCadCaminhaoId(''); setCadCaminhaoPlaca('')
-    setCadDataSaida(new Date().toISOString().split('T')[0]); setCadDataRetorno('')
-    setCadKmInicial(''); setCadKmFinal(''); setCadStatus('EM ANDAMENTO'); setCadObs('')
+    setCadStatus('EM ANDAMENTO'); setCadObs('')
     setCadContratos([]); setCadQtdVeiculos(''); setCadEmpresa('')
     setCadValorContrato(''); setCadOrigem(''); setCadDestino('')
     setCadValorAdiantamento(''); setCadValorChapa('')
     setMostraCad(false); showMsg('✅ Viagem registrada!')
   }
 
-  const cadTemAdiantamento = motoristas.find(m => m.nome === cadMotorista)?.adiantamento
+  const cadTemAdiantamento  = motoristas.find(m => m.nome === cadMotorista)?.adiantamento
   const editTemAdiantamento = motoristas.find(m => m.nome === editMotorista)?.adiantamento
+
+  // ── FORMULÁRIO CAMPOS COMPARTILHADOS ──
+  function FormCarga({ vals, sets }: { vals: any; sets: any }) {
+    return (
+      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
+        <p className="text-xs font-bold text-gray-500 uppercase">Dados da carga</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={LC}>Empresa</label>
+            <input value={vals.empresa} onChange={e => sets.setEmpresa(e.target.value)} className={IC} placeholder="Ex: SADA" />
+          </div>
+          <div>
+            <label className={LC}>Qtd Veículos</label>
+            <input type="number" value={vals.qtdVeiculos} onChange={e => sets.setQtdVeiculos(e.target.value)} className={IC} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={LC}>Origem</label>
+            <input value={vals.origem} onChange={e => sets.setOrigem(e.target.value)} className={IC} />
+          </div>
+          <div>
+            <label className={LC}>Destino</label>
+            <input value={vals.destino} onChange={e => sets.setDestino(e.target.value)} className={IC} />
+          </div>
+        </div>
+        <div>
+          <label className={LC}>Valor do Contrato (R$)</label>
+          <input type="number" step="0.01" value={vals.valorContrato}
+            onChange={e => {
+              sets.setValorContrato(e.target.value)
+              sets.setValorAdiantamento(sets.calcAdiant(parseFloat(e.target.value) || 0))
+            }} className={IC} />
+        </div>
+      </div>
+    )
+  }
 
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
       <button onClick={() => setMostraCad(false)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
-        <ArrowLeft size={16}/> Voltar
+        ← Voltar
       </button>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-lg">Nova Viagem</h3>
@@ -398,47 +396,16 @@ export default function ViagemPage() {
             </div>
             <div>
               <label className={LC}>Caminhão *</label>
-              <select value={cadCaminhaoId} onChange={async e => {
+              <select value={cadCaminhaoId} onChange={e => {
                 const cam = caminhoes.find(c => c.id === e.target.value)
                 setCadCaminhaoId(e.target.value)
                 setCadCaminhaoPlaca(cam?.placa || '')
-                if (e.target.value) setCadKmInicial(await buscarUltimoKm(e.target.value))
               }} className={IC}>
                 <option value="">Selecione...</option>
                 {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
               </select>
             </div>
           </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LC}>Data Saída</label>
-              <input type="date" value={cadDataSaida} onChange={e => setCadDataSaida(e.target.value)} className={IC} />
-            </div>
-            <div>
-              <label className={LC}>Data Retorno</label>
-              <input type="date" value={cadDataRetorno} onChange={e => setCadDataRetorno(e.target.value)} className={IC} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LC}>KM Inicial</label>
-              <input type="number" value={cadKmInicial} onChange={e => setCadKmInicial(e.target.value)} placeholder="Automático" className={IC} />
-            </div>
-            <div>
-              <label className={LC}>KM Final</label>
-              <input type="number" value={cadKmFinal} onChange={e => setCadKmFinal(e.target.value)} placeholder="Automático" className={IC} />
-            </div>
-          </div>
-
-          {cadKmInicial && cadKmFinal && (
-            <div className="bg-blue-50 rounded-xl p-3">
-              <p className="text-xs text-blue-600 font-medium">
-                KM percorrido: <span className="font-bold text-blue-800">{(parseInt(cadKmFinal) - parseInt(cadKmInicial)).toLocaleString('pt-BR')} km</span>
-              </p>
-            </div>
-          )}
 
           <div>
             <label className={LC}>Status</label>
@@ -453,17 +420,12 @@ export default function ViagemPage() {
             <label className={LC}>Contratos vinculados</label>
             <p className="text-xs text-gray-400 mb-1">Ao selecionar, os campos abaixo são preenchidos automaticamente</p>
             <ContratoSelector
-              selecionados={cadContratos}
-              todos={contratos}
-              onChange={setCadContratos}
+              selecionados={cadContratos} todos={contratos} onChange={setCadContratos}
               nomeMotorista={cadMotorista}
               setCampos={(dados) => {
-                setCadEmpresa(dados.empresa)
-                setCadValorContrato(dados.valorContrato)
-                setCadQtdVeiculos(dados.qtdVeiculos)
-                setCadOrigem(dados.origem)
-                setCadDestino(dados.destino)
-                setCadValorAdiantamento(dados.adiantamento)
+                setCadEmpresa(dados.empresa); setCadValorContrato(dados.valorContrato)
+                setCadQtdVeiculos(dados.qtdVeiculos); setCadOrigem(dados.origem)
+                setCadDestino(dados.destino); setCadValorAdiantamento(dados.adiantamento)
               }}
               calcularAdiantamento={calcularAdiantamento}
               aplicarDadosContratos={aplicarDadosContratos}
@@ -543,7 +505,7 @@ export default function ViagemPage() {
       {sel ? (
         <div>
           <button onClick={voltar} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
-            <ArrowLeft size={16}/> Voltar
+            ← Voltar
           </button>
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-6 py-5 bg-gradient-to-r from-red-600 to-red-700">
@@ -554,7 +516,7 @@ export default function ViagemPage() {
                 <div>
                   <h2 className="text-white font-bold text-xl">{sel.motorista}</h2>
                   <p className="text-white/80 text-sm">
-                    {sel.caminhao_placa} · {fmtData(sel.data_saida)} · {sel.status}
+                    {sel.caminhao_placa} · {sel.status}
                     {sel.empresa && ` · ${sel.empresa}`}
                   </p>
                 </div>
@@ -595,36 +557,6 @@ export default function ViagemPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LC}>Data Saída</label>
-                  <input type="date" value={editDataSaida} onChange={e => setEditDataSaida(e.target.value)} className={IC} />
-                </div>
-                <div>
-                  <label className={LC}>Data Retorno</label>
-                  <input type="date" value={editDataRetorno} onChange={e => setEditDataRetorno(e.target.value)} className={IC} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LC}>KM Inicial</label>
-                  <input type="number" value={editKmInicial} onChange={e => setEditKmInicial(e.target.value)} placeholder="Automático" className={IC} />
-                </div>
-                <div>
-                  <label className={LC}>KM Final</label>
-                  <input type="number" value={editKmFinal} onChange={e => setEditKmFinal(e.target.value)} placeholder="Automático" className={IC} />
-                </div>
-              </div>
-
-              {editKmInicial && editKmFinal && (
-                <div className="bg-blue-50 rounded-xl p-3">
-                  <p className="text-xs text-blue-600 font-medium">
-                    KM percorrido: <span className="font-bold text-blue-800">{(parseInt(editKmFinal) - parseInt(editKmInicial)).toLocaleString('pt-BR')} km</span>
-                  </p>
-                </div>
-              )}
-
               <div>
                 <label className={LC}>Status</label>
                 <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={IC}>
@@ -638,17 +570,12 @@ export default function ViagemPage() {
                 <label className={LC}>Contratos vinculados</label>
                 <p className="text-xs text-gray-400 mb-1">Ao selecionar, os campos abaixo são preenchidos automaticamente</p>
                 <ContratoSelector
-                  selecionados={editContratos}
-                  todos={contratos}
-                  onChange={setEditContratos}
+                  selecionados={editContratos} todos={contratos} onChange={setEditContratos}
                   nomeMotorista={editMotorista}
                   setCampos={(dados) => {
-                    setEditEmpresa(dados.empresa)
-                    setEditValorContrato(dados.valorContrato)
-                    setEditQtdVeiculos(dados.qtdVeiculos)
-                    setEditOrigem(dados.origem)
-                    setEditDestino(dados.destino)
-                    setEditValorAdiantamento(dados.adiantamento)
+                    setEditEmpresa(dados.empresa); setEditValorContrato(dados.valorContrato)
+                    setEditQtdVeiculos(dados.qtdVeiculos); setEditOrigem(dados.origem)
+                    setEditDestino(dados.destino); setEditValorAdiantamento(dados.adiantamento)
                   }}
                   calcularAdiantamento={calcularAdiantamento}
                   aplicarDadosContratos={aplicarDadosContratos}
@@ -765,11 +692,8 @@ export default function ViagemPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-gray-900">{v.motorista}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {v.caminhao_placa} · {fmtData(v.data_saida)}
+                    {v.caminhao_placa}
                     {v.empresa && ` · ${v.empresa}`}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    KM {v.km_inicial?.toLocaleString('pt-BR') || '-'} → {v.km_final?.toLocaleString('pt-BR') || '-'}
                     {v.origem && ` · ${v.origem} → ${v.destino}`}
                   </p>
                 </div>
@@ -781,7 +705,7 @@ export default function ViagemPage() {
                   )}
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     v.status === 'FINALIZADA' ? 'bg-green-100 text-green-700' :
-                    v.status === 'CANCELADA' ? 'bg-red-100 text-red-700' :
+                    v.status === 'CANCELADA'  ? 'bg-red-100 text-red-700' :
                     'bg-blue-100 text-blue-700'
                   }`}>{v.status}</span>
                 </div>
