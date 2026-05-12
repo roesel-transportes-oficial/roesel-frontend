@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { X, Search, List, Truck, User, Calendar, Gauge, MapPin, Fuel, ArrowRight, History, Download, Plus, CheckCircle2, CreditCard } from 'lucide-react'
+import { X, Search, List, Truck, User, Calendar, Gauge, MapPin, Fuel, ArrowRight, History, Download, Plus, CheckCircle2, CreditCard, Filter } from 'lucide-react'
 
 type Motorista = { id: string; nome: string; caminhao_id?: string }
 type Caminhao = { id: string; placa: string }
 type Contrato = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
-type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; valor_combustivel?: number | null; litros_arla?: number | null; valor_arla?: number | null }
+type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; valor_combustivel?: number | null; litros_arla?: number | null; valor_arla?: number | null; placa?: string | null }
 type Fechamento = {
   id: string
   created_at: string
@@ -34,6 +34,10 @@ export default function FechamentoViagemPage() {
   const [kmInicial, setKmInicial] = useState('')
   const [kmFinal, setKmFinal] = useState('')
   const [dataVencimento, setDataVencimento] = useState('')
+  
+  // Filtros específicos para Abastecimento
+  const [abastDataInicio, setAbastDataInicio] = useState('')
+  const [abastDataFim, setAbastDataFim] = useState('')
   
   const [buscaContrato, setBuscaContrato] = useState('')
   const [contratosDisponiveis, setContratosDisponiveis] = useState<Contrato[]>([])
@@ -93,20 +97,31 @@ export default function FechamentoViagemPage() {
       .then(({ data }) => { setCarregandoContratos(false); if (data) setContratosDisponiveis(data) })
   }, [motoristaId, motoristas])
 
-  // Carregar abastecimentos por placa e período
+  // Carregar abastecimentos com busca flexível pela placa
   useEffect(() => {
-    if (!caminhao?.placa || !dataInicio || !dataFim) { setAbastecimentos([]); return }
+    if (!caminhao?.placa || !abastDataInicio || !abastDataFim) { setAbastecimentos([]); return }
+    
+    const placaLimpa = caminhao.placa.replace(/[^a-zA-Z0-9]/g, '') // Remove traços e espaços
+    const placaComTraco = caminhao.placa.includes('-') ? caminhao.placa : `${caminhao.placa.slice(0,3)}-${caminhao.placa.slice(3)}`
+
     setCarregandoAbastecimentos(true)
-    supabase.from('abastecimentos').select('id, data, posto, litros_combustivel, valor_combustivel, litros_arla, valor_arla')
-      .eq('placa', caminhao.placa)
-      .gte('data', dataInicio).lte('data', dataFim).order('data', { ascending: true })
-      .then(({ data }) => {
+    
+    // Busca tentando os dois formatos de placa (com e sem traço)
+    supabase.from('abastecimentos').select('id, data, posto, litros_combustivel, valor_combustivel, litros_arla, valor_arla, placa')
+      .or(`placa.ilike.%${placaLimpa}%,placa.ilike.%${placaComTraco}%`)
+      .gte('data', abastDataInicio).lte('data', abastDataFim).order('data', { ascending: true })
+      .then(({ data, error }) => {
         setCarregandoAbastecimentos(false)
+        if (error) {
+          console.error('Erro ao buscar abastecimentos:', error)
+          setErro('Erro ao buscar abastecimentos: ' + error.message)
+          return
+        }
         const lista = data || []
         setAbastecimentos(lista)
         setAbastSelecionados(new Set(lista.map(a => a.id)))
       })
-  }, [caminhao?.placa, dataInicio, dataFim])
+  }, [caminhao?.placa, abastDataInicio, abastDataFim])
 
   // Funções de Ação
   function adicionarContrato(contrato: Contrato) {
@@ -250,26 +265,46 @@ export default function FechamentoViagemPage() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t border-gray-50">
-                  <div className="space-y-2"><label className="text-[10px] font-bold text-gray-500 uppercase">Saída</label><input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500" /></div>
-                  <div className="space-y-2"><label className="text-[10px] font-bold text-gray-500 uppercase">Retorno</label><input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500" /></div>
+                  <div className="space-y-2"><label className="text-[10px] font-bold text-gray-500 uppercase">Saída Viagem</label><input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500" /></div>
+                  <div className="space-y-2"><label className="text-[10px] font-bold text-gray-500 uppercase">Retorno Viagem</label><input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500" /></div>
                   <div className="space-y-2"><label className="text-[10px] font-bold text-gray-500 uppercase">KM Inicial</label><input type="number" value={kmInicial} onChange={e => setKmInicial(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500" /></div>
                   <div className="space-y-2"><label className="text-[10px] font-bold text-gray-500 uppercase">KM Final</label><input type="number" value={kmFinal} onChange={e => setKmFinal(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500" /></div>
                   <div className="space-y-2"><label className="text-[10px] font-bold text-red-600 uppercase flex items-center gap-1"><CreditCard size={10} /> Vencimento</label><input type="date" value={dataVencimento} onChange={e => setDataVencimento(e.target.value)} className="w-full bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-600" /></div>
                 </div>
               </div>
+
+              {/* Abastecimentos com Busca Flexível */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-                  <h2 className="text-xs font-black text-gray-700 uppercase tracking-widest flex items-center gap-2"><Fuel size={16} className="text-red-600" /> Abastecimentos (Placa: {caminhao?.placa || '—'})</h2>
+                <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between bg-gray-50/50 gap-4">
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-xs font-black text-gray-700 uppercase tracking-widest flex items-center gap-2"><Fuel size={16} className="text-red-600" /> Abastecimentos</h2>
+                    {caminhao && <span className="bg-red-600 text-white px-2 py-0.5 rounded text-[10px] font-black">{caminhao.placa}</span>}
+                  </div>
+                  
+                  <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
+                    <Filter size={14} className="text-gray-400 ml-2" />
+                    <input type="date" value={abastDataInicio} onChange={e => setAbastDataInicio(e.target.value)} className="text-[10px] font-bold outline-none border-none p-1" />
+                    <span className="text-gray-300">→</span>
+                    <input type="date" value={abastDataFim} onChange={e => setAbastDataFim(e.target.value)} className="text-[10px] font-bold outline-none border-none p-1" />
+                  </div>
+
                   <div className="flex gap-4">
                     <button onClick={() => setAbastSelecionados(new Set(abastecimentos.map(a => a.id)))} className="text-[10px] font-black text-red-600 uppercase">Todos</button>
                     <button onClick={() => setAbastSelecionados(new Set())} className="text-[10px] font-black text-gray-400 uppercase">Limpar</button>
                   </div>
                 </div>
                 <div className="p-6">
-                  {!caminhao || !dataInicio || !dataFim ? (
-                    <p className="text-center py-12 text-sm text-gray-400 italic">Selecione o motorista e o período.</p>
+                  {!caminhao ? (
+                    <p className="text-center py-12 text-sm text-gray-400 italic">Selecione o motorista para carregar os abastecimentos.</p>
+                  ) : !abastDataInicio || !abastDataFim ? (
+                    <p className="text-center py-12 text-sm text-gray-400 italic flex items-center justify-center gap-2"><Calendar size={16} /> Informe o período para buscar abastecimentos da placa {caminhao.placa}.</p>
                   ) : carregandoAbastecimentos ? (
                     <div className="flex items-center justify-center py-12 gap-3"><div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div></div>
+                  ) : abastecimentos.length === 0 ? (
+                    <div className="text-center py-12 space-y-2">
+                      <p className="text-sm text-gray-400 italic">Nenhum abastecimento encontrado para a placa {caminhao.placa}.</p>
+                      <p className="text-[10px] text-gray-300 uppercase font-bold">Dica: Verifique se o período de busca está correto.</p>
+                    </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {abastecimentos.map(a => {
@@ -281,7 +316,10 @@ export default function FechamentoViagemPage() {
                               <span className="text-sm font-black text-red-600">R$ {fmt((a.valor_combustivel || 0) + (a.valor_arla || 0))}</span>
                             </div>
                             <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1.5 mb-2"><MapPin size={10} /> {a.posto || 'POSTO NÃO IDENTIFICADO'}</p>
-                            <div className="flex gap-2"><span className="bg-white px-2 py-1 rounded border text-[10px] font-black text-gray-600 uppercase">Diesel: {a.litros_combustivel ? `${fmt(a.litros_combustivel)} L` : '—'}</span></div>
+                            <div className="flex gap-2">
+                              <span className="bg-white px-2 py-1 rounded border text-[10px] font-black text-gray-600 uppercase">Diesel: {a.litros_combustivel ? `${fmt(a.litros_combustivel)} L` : '—'}</span>
+                              {a.placa && <span className="bg-gray-100 px-2 py-1 rounded text-[9px] font-bold text-gray-400 uppercase">{a.placa}</span>}
+                            </div>
                           </label>
                         )
                       })}
