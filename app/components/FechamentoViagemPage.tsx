@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { X, Search, List, Truck, User, Calendar, Gauge } from 'lucide-react'
+import { X, Search, List, Truck, User, Calendar, Gauge, MapPin, Fuel, ArrowRight } from 'lucide-react'
 
 type Motorista = {
   id: string
@@ -239,41 +239,42 @@ export default function FechamentoViagemPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6 bg-gray-50 min-h-screen">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">FECHAMENTO DE VIAGEM</h1>
-          <p className="text-sm text-gray-500 font-medium">Gestão de viagens, contratos e abastecimentos</p>
-        </div>
+    <div className="p-6 max-w-6xl mx-auto space-y-6 bg-gray-50 min-h-screen">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">FECHAMENTO DE VIAGEM</h1>
+        <p className="text-sm text-gray-500 font-medium">Gestão de viagens, contratos e abastecimentos</p>
       </header>
 
+      {/* Barra de Resumo Fixa */}
       <div className="sticky top-4 z-40">
-        <div className="bg-gray-900 text-white rounded-2xl p-5 shadow-2xl border border-gray-800 grid grid-cols-2 md:grid-cols-5 gap-6">
+        <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-2xl border border-gray-800 grid grid-cols-2 md:grid-cols-5 gap-8">
           <div className="space-y-1">
             <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Distância</p>
-            <p className="text-xl font-bold">{resumo.km > 0 ? `${resumo.km.toLocaleString('pt-BR')} km` : '—'}</p>
+            <p className="text-2xl font-bold">{resumo.km > 0 ? `${resumo.km.toLocaleString('pt-BR')} km` : '—'}</p>
           </div>
           <div className="space-y-1">
             <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Combustível</p>
-            <p className="text-xl font-bold text-blue-400">{resumo.litros > 0 ? `${fmt(resumo.litros)} L` : '—'}</p>
+            <p className="text-2xl font-bold text-blue-400">{resumo.litros > 0 ? `${fmt(resumo.litros)} L` : '—'}</p>
           </div>
           <div className="space-y-1">
             <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Média KM/L</p>
-            <p className="text-xl font-bold text-green-400">{resumo.mediaKmL > 0 ? `${fmt(resumo.mediaKmL)}` : '—'}</p>
+            <p className="text-2xl font-bold text-green-400">{resumo.mediaKmL > 0 ? `${fmt(resumo.mediaKmL)}` : '—'}</p>
           </div>
           <div className="space-y-1">
             <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Média L/Abast</p>
-            <p className="text-xl font-bold text-cyan-400">{resumo.mediaLitros > 0 ? `${fmt(resumo.mediaLitros)}` : '—'}</p>
+            <p className="text-2xl font-bold text-cyan-400">{resumo.mediaLitros > 0 ? `${fmt(resumo.mediaLitros)}` : '—'}</p>
           </div>
           <div className="space-y-1">
             <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Custo Total</p>
-            <p className="text-xl font-bold text-red-400">{resumo.valor > 0 ? `R$ ${fmt(resumo.valor)}` : '—'}</p>
+            <p className="text-2xl font-bold text-red-400">{resumo.valor > 0 ? `R$ ${fmt(resumo.valor)}` : '—'}</p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Coluna da Esquerda: Dados e Abastecimentos (8 colunas) */}
+        <div className="lg:col-span-8 space-y-6">
+          {/* Identificação e Período */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
@@ -292,6 +293,7 @@ export default function FechamentoViagemPage() {
                 </label>
                 <div className={`w-full border-2 rounded-xl px-4 py-3 text-sm font-black flex items-center justify-between ${caminhao ? 'bg-red-50 border-red-100 text-red-700' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>
                   {caminhao ? caminhao.placa : 'Aguardando motorista...'}
+                  {caminhao && <div className="w-2 h-2 bg-red-500 rounded-full"></div>}
                 </div>
               </div>
             </div>
@@ -316,9 +318,12 @@ export default function FechamentoViagemPage() {
             </div>
           </div>
 
+          {/* Abastecimentos (Agora em formato de Cards) */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <h2 className="text-xs font-black text-gray-700 uppercase tracking-widest">Abastecimentos no Período</h2>
+              <h2 className="text-xs font-black text-gray-700 uppercase tracking-widest flex items-center gap-2">
+                <Fuel size={16} className="text-red-600" /> Abastecimentos no Período
+              </h2>
               <div className="flex gap-4">
                 <button onClick={() => setAbastSelecionados(new Set(abastecimentos.map(a => a.id)))} className="text-[10px] font-black text-red-600 hover:text-red-700 uppercase">Selecionar Todos</button>
                 <button onClick={() => setAbastSelecionados(new Set())} className="text-[10px] font-black text-gray-400 hover:text-gray-600 uppercase">Limpar</button>
@@ -326,25 +331,46 @@ export default function FechamentoViagemPage() {
             </div>
             <div className="p-6">
               {!caminhao || !dataInicio || !dataFim ? (
-                <p className="text-center py-10 text-sm text-gray-400 font-medium">Selecione o motorista e o período.</p>
+                <div className="text-center py-12 space-y-3">
+                  <Fuel size={40} className="mx-auto text-gray-200" />
+                  <p className="text-sm text-gray-400 font-medium italic">Selecione o motorista e o período para carregar os abastecimentos.</p>
+                </div>
               ) : carregandoAbastecimentos ? (
-                <p className="text-center py-10 text-sm text-gray-500 font-bold">Buscando dados...</p>
+                <div className="flex items-center justify-center py-12 gap-3">
+                  <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-sm text-gray-500 font-bold">Buscando dados...</span>
+                </div>
+              ) : abastecimentos.length === 0 ? (
+                <p className="text-center py-12 text-sm text-gray-400 font-medium">Nenhum abastecimento encontrado para este período.</p>
               ) : (
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {abastecimentos.map(a => {
                     const marcado = abastSelecionados.has(a.id)
                     return (
-                      <label key={a.id} className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-all ${marcado ? 'border-blue-100 bg-blue-50/50' : 'border-gray-50 bg-white opacity-50'}`}>
-                        <div className="flex items-center gap-4">
-                          <input type="checkbox" checked={marcado} onChange={() => toggleAbastecimento(a.id)} className="w-5 h-5 rounded-lg accent-red-600" />
-                          <div>
-                            <p className="text-sm font-black text-gray-800">{fmtData(a.data)}</p>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase">{a.posto || 'Posto não identificado'}</p>
+                      <label key={a.id} className={`relative flex flex-col p-4 rounded-2xl border-2 cursor-pointer transition-all ${marcado ? 'border-red-100 bg-red-50/30 ring-1 ring-red-100' : 'border-gray-100 bg-white opacity-60 hover:opacity-100'}`}>
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex items-center gap-3">
+                            <input type="checkbox" checked={marcado} onChange={() => toggleAbastecimento(a.id)} className="w-5 h-5 rounded-lg accent-red-600" />
+                            <span className="text-sm font-black text-gray-900">{fmtData(a.data)}</span>
                           </div>
+                          <span className="text-sm font-black text-red-600">R$ {fmt((a.valor_combustivel || 0) + (a.valor_arla || 0))}</span>
                         </div>
-                        <div className="text-right">
-                          <p className="text-sm font-black text-gray-900">{a.litros_combustivel ? `${fmt(a.litros_combustivel)} L` : '—'}</p>
-                          <p className="text-xs font-black text-red-600">R$ {fmt((a.valor_combustivel || 0) + (a.valor_arla || 0))}</p>
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1.5">
+                            <MapPin size={10} /> {a.posto || 'POSTO NÃO IDENTIFICADO'}
+                          </p>
+                          <div className="flex items-center gap-4">
+                            <div className="bg-white px-2 py-1 rounded-md border border-gray-100 shadow-sm">
+                              <p className="text-[9px] font-black text-gray-400 uppercase">Diesel</p>
+                              <p className="text-xs font-black text-gray-700">{a.litros_combustivel ? `${fmt(a.litros_combustivel)} L` : '—'}</p>
+                            </div>
+                            {a.litros_arla && (
+                              <div className="bg-white px-2 py-1 rounded-md border border-gray-100 shadow-sm">
+                                <p className="text-[9px] font-black text-gray-400 uppercase">Arla</p>
+                                <p className="text-xs font-black text-gray-700">{fmt(a.litros_arla)} L</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </label>
                     )
@@ -355,35 +381,67 @@ export default function FechamentoViagemPage() {
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full max-h-[800px]">
+        {/* Coluna da Direita: Contratos (4 colunas) */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full max-h-[900px]">
             <div className="p-5 border-b border-gray-100 bg-gray-50/50 space-y-4">
               <h2 className="text-xs font-black text-gray-700 uppercase tracking-widest">Contratos Disponíveis</h2>
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Buscar contrato..." value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all" />
+                <input type="text" placeholder="Buscar contrato..." value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-10 pr-4 py-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all" />
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {contratosFiltrados.map(c => (
-                <button key={c.id} onClick={() => adicionarContrato(c)} className="w-full p-4 text-left bg-white border border-gray-100 rounded-xl hover:border-red-200 hover:bg-red-50 transition-all shadow-sm">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-black text-gray-900 text-sm">#{c.contrato}</span>
-                    <span className="text-green-600 font-black text-xs">R$ {fmt(c.fat_bruto || 0)}</span>
-                  </div>
-                  <p className="text-[11px] font-bold text-gray-500 truncate mb-2">{c.cliente || 'CLIENTE NÃO INFORMADO'}</p>
-                  <p className="text-[10px] font-black text-gray-400 uppercase">{c.origem || '—'} → {c.destino || '—'}</p>
-                </button>
-              ))}
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+              {!motoristaId ? (
+                <div className="text-center py-12 space-y-2">
+                  <List size={32} className="mx-auto text-gray-200" />
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-tighter">Selecione um motorista</p>
+                </div>
+              ) : carregandoContratos ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              ) : contratosFiltrados.length === 0 ? (
+                <p className="text-center py-12 text-xs text-gray-400 font-bold uppercase tracking-tighter">Nenhum contrato livre</p>
+              ) : (
+                contratosFiltrados.map(c => (
+                  <button key={c.id} onClick={() => adicionarContrato(c)} className="w-full p-5 text-left bg-white border border-gray-100 rounded-2xl hover:border-red-200 hover:bg-red-50/50 transition-all shadow-sm group relative overflow-hidden">
+                    <div className="flex justify-between items-start mb-3">
+                      <span className="font-black text-gray-900 text-base">#{c.contrato}</span>
+                      <span className="text-green-600 font-black text-sm">R$ {fmt(c.fat_bruto || 0)}</span>
+                    </div>
+                    <p className="text-[11px] font-bold text-gray-500 truncate mb-4 uppercase tracking-tight">{c.cliente || 'CLIENTE NÃO INFORMADO'}</p>
+                    
+                    {/* Trajeto em Destaque */}
+                    <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 group-hover:bg-white transition-colors">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex-1">
+                          <p className="text-[9px] font-black text-gray-400 uppercase mb-0.5">Origem</p>
+                          <p className="text-[11px] font-black text-red-600 truncate">{c.origem || '—'}</p>
+                        </div>
+                        <ArrowRight size={14} className="text-gray-300 shrink-0" />
+                        <div className="flex-1 text-right">
+                          <p className="text-[9px] font-black text-gray-400 uppercase mb-0.5">Destino</p>
+                          <p className="text-[11px] font-black text-red-600 truncate">{c.destino || '—'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
+
             {selecionados.length > 0 && (
-              <div className="p-5 bg-red-600 text-white">
-                <h3 className="text-[10px] font-black uppercase tracking-widest mb-3 opacity-80">Selecionados ({selecionados.length})</h3>
+              <div className="p-5 bg-red-600 text-white shadow-inner">
+                <h3 className="text-[10px] font-black uppercase tracking-widest mb-4 opacity-90">Selecionados ({selecionados.length})</h3>
                 <div className="flex flex-wrap gap-2">
                   {selecionados.map(c => (
-                    <div key={c.id} className="flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg pl-3 pr-1 py-1.5">
-                      <span className="text-[10px] font-black">#{c.contrato}</span>
-                      <button onClick={() => removerContrato(c.id)}><X size={14} /></button>
+                    <div key={c.id} className="flex items-center gap-2 bg-white/20 backdrop-blur-md border border-white/30 rounded-xl pl-3 pr-2 py-2">
+                      <span className="text-xs font-black">#{c.contrato}</span>
+                      <button onClick={() => removerContrato(c.id)} className="hover:bg-white/20 rounded-lg p-0.5 transition-colors">
+                        <X size={14} />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -393,12 +451,13 @@ export default function FechamentoViagemPage() {
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-6 border-t border-gray-200">
+      {/* Rodapé de Ações */}
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-gray-200">
         <div className="flex-1">
-          {erro && <p className="text-red-600 text-sm font-black uppercase tracking-tighter">⚠️ {erro}</p>}
-          {sucesso && <p className="text-green-600 text-sm font-black uppercase tracking-tighter">✓ Fechamento realizado com sucesso!</p>}
+          {erro && <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 flex items-center gap-3 text-red-700 text-sm font-black uppercase tracking-tighter"><span>⚠️</span> {erro}</div>}
+          {sucesso && <div className="bg-green-50 border border-green-100 rounded-xl px-4 py-3 flex items-center gap-3 text-green-700 text-sm font-black uppercase tracking-tighter"><span>✓</span> Fechamento realizado com sucesso!</div>}
         </div>
-        <button onClick={salvar} disabled={!motoristaId || selecionados.length === 0 || salvando} className="w-full md:w-auto bg-red-600 text-white px-12 py-4 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 shadow-xl shadow-red-100 transition-all">
+        <button onClick={salvar} disabled={!motoristaId || selecionados.length === 0 || salvando} className="w-full md:w-auto bg-red-600 text-white px-16 py-5 rounded-2xl font-black text-base uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 shadow-2xl shadow-red-200 transition-all transform active:scale-95">
           {salvando ? 'Processando...' : 'Finalizar Fechamento'}
         </button>
       </div>
