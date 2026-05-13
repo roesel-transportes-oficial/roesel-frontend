@@ -44,7 +44,7 @@ export default function Home() {
         {aba === 'novo'           && <NovoContratoPage setAba={setAba} />}
         {aba === 'contratos'      && <ContratosPage />}
         {aba === 'viagens'        && <ViagemPage />}
-        {aba === 'fechamento'     && <FechamentoViagemPage />}
+        {aba === 'fechamento' && <FechamentoViagemPage setAba={setAba} />}
         {aba === 'motorista'      && <MotoristaPage />}
         {aba === 'ferias'         && <FeriasPage />}
         {aba === 'caminhao'       && <CaminhaoPage />}

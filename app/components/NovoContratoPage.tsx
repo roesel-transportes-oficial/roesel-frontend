@@ -7,18 +7,18 @@ const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 
 export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => void }) {
   const [motoristas, setMotoristas] = useState<any[]>([])
-  const [clientes, setClientes] = useState<any[]>([])
-  const [caminhoes, setCaminhoes] = useState<any[]>([])
-  const [carretas, setCarretas] = useState<any[]>([])
-  const [loading, setLoading] = useState(false)
-  const [loadingIA, setLoadingIA] = useState(false)
-  const [erro, setErro] = useState('')
+  const [clientes, setClientes]     = useState<any[]>([])
+  const [caminhoes, setCaminhoes]   = useState<any[]>([])
+  const [carretas, setCarretas]     = useState<any[]>([])
+  const [loading, setLoading]       = useState(false)
+  const [loadingIA, setLoadingIA]   = useState(false)
+  const [erro, setErro]             = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [placaLidaIA, setPlacaLidaIA] = useState('')
+  const [placaLidaIA, setPlacaLidaIA]           = useState('')
   const [placaCarretaLidaIA, setPlacaCarretaLidaIA] = useState('')
-  const [contratoLidoIA, setContratoLidoIA] = useState(false)
-  const [camposIAAtivos, setCamposIAAtivos] = useState(false)
+  const [contratoLidoIA, setContratoLidoIA]     = useState(false)
+  const [camposIAAtivos, setCamposIAAtivos]     = useState(false)
 
   const [form, setForm] = useState({
     motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
@@ -150,7 +150,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
     const found = lista.find(c => {
       const nomeCad = normalizar(c.nome)
-      const palavrasIA = nomeNorm.split(' ').filter(p => p.length > 2)
+      const palavrasIA  = nomeNorm.split(' ').filter(p => p.length > 2)
       const palavrasCad = nomeCad.split(' ').filter(p => p.length > 2)
       const matches = palavrasIA.filter(pIA =>
         palavrasCad.some(pCad => {
@@ -182,12 +182,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       const nomeBanco = normalizar(m.nome)
       if (nomeBanco === nomeNorm) return true
       if (nomeBanco.includes(nomeNorm) || nomeNorm.includes(nomeBanco)) return true
-      const palavrasIA = nomeNorm.split(' ').filter(Boolean)
+      const palavrasIA    = nomeNorm.split(' ').filter(Boolean)
       const palavrasBanco = nomeBanco.split(' ').filter(Boolean)
-      const primeiroIA = palavrasIA[0] || ''
-      const ultimoIA = palavrasIA[palavrasIA.length - 1] || ''
-      const primeiroBanco = palavrasBanco[0] || ''
-      const ultimoBanco = palavrasBanco[palavrasBanco.length - 1] || ''
+      const primeiroIA = palavrasIA[0] || ''; const ultimoIA = palavrasIA[palavrasIA.length - 1] || ''
+      const primeiroBanco = palavrasBanco[0] || ''; const ultimoBanco = palavrasBanco[palavrasBanco.length - 1] || ''
       if (primeiroIA.length > 3 && primeiroBanco === primeiroIA && ultimoBanco === ultimoIA) return true
       if (palavrasIA.length >= 2 && palavrasIA.length === palavrasBanco.length) {
         let difTotal = 0
@@ -205,13 +203,9 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     }) || null
   }
 
-  // ── MATCHING DE PLACAS MERCOSUL ──
-  // Formato Mercosul: AAA#A## (3 letras + 1 número + 1 letra + 2 números)
   function normalizaPlaca(p: string): string {
     const clean = p.replace(/[^A-Z0-9]/gi, '').toUpperCase()
     if (clean.length === 7) {
-      // Posições numéricas: 3, 5, 6 → converte O→0 e I→1
-      // Posições de letra: 0,1,2,4 → mantém como está
       return (
         clean[0] + clean[1] + clean[2] +
         clean[3].replace(/O/g, '0').replace(/I/g, '1') +
@@ -233,27 +227,17 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   function encontrarPorPlaca(lista: any[], placaIA: string): any | null {
     if (!placaIA) return null
     const placaNorm = normalizaPlaca(placaIA)
-
-    // 1. Match exato normalizado
     const exato = lista.find(c => normalizaPlaca(c.placa) === placaNorm)
     if (exato) return exato
-
-    // 2. Tolerância 1 char (mesmo tamanho)
     const umChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 1)
     if (umChar) return umChar
-
-    // 3. Últimos 4 chars batem
     if (placaNorm.length >= 4) {
       const sufixo = placaNorm.slice(-4)
       const porSufixo = lista.find(c => normalizaPlaca(c.placa).endsWith(sufixo))
       if (porSufixo) return porSufixo
     }
-
-    // 4. Tolerância 2 chars (mesmo tamanho)
     const doisChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 2)
     if (doisChar) return doisChar
-
-    // 5. Mercosul: IA leu 6 chars (esqueceu 1) — tenta inserir char faltante em cada posição
     if (placaNorm.length === 6) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
       for (let i = 0; i <= 6; i++) {
@@ -264,33 +248,21 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         }
       }
     }
-
-    // 6. Prefixo 3 chars + sufixo 2 chars batem (tamanhos diferentes)
     if (placaNorm.length >= 5) {
-      const prefixo = placaNorm.slice(0, 3)
-      const sufixo2 = placaNorm.slice(-2)
-      const porPrefixoSufixo = lista.find(c => {
-        const p = normalizaPlaca(c.placa)
-        return p.startsWith(prefixo) && p.endsWith(sufixo2)
-      })
-      if (porPrefixoSufixo) return porPrefixoSufixo
+      const prefixo = placaNorm.slice(0, 3); const sufixo2 = placaNorm.slice(-2)
+      const porPS = lista.find(c => { const p = normalizaPlaca(c.placa); return p.startsWith(prefixo) && p.endsWith(sufixo2) })
+      if (porPS) return porPS
     }
-
-    // 7. Só prefixo 3 chars + tamanhos próximos (último recurso)
     if (placaNorm.length >= 3) {
       const prefixo = placaNorm.slice(0, 3)
-      const porPrefixo = lista.find(c => {
-        const p = normalizaPlaca(c.placa)
-        return p.startsWith(prefixo) && Math.abs(p.length - placaNorm.length) <= 2
-      })
+      const porPrefixo = lista.find(c => { const p = normalizaPlaca(c.placa); return p.startsWith(prefixo) && Math.abs(p.length - placaNorm.length) <= 2 })
       if (porPrefixo) return porPrefixo
     }
-
     return null
   }
 
   function encontrarCaminhao(p: string) { return encontrarPorPlaca(caminhoes, p) }
-  function encontrarCarreta(p: string) { return encontrarPorPlaca(carretas, p) }
+  function encontrarCarreta(p: string)  { return encontrarPorPlaca(carretas, p) }
 
   async function lerComIA(e: any) {
     const file = e.target.files?.[0]
@@ -316,15 +288,15 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       })
       const parsed = await response.json()
 
-      const motoristasAtivos = motoristas.filter(m => m.ativo !== false)
+      const motoristasAtivos    = motoristas.filter(m => m.ativo !== false)
       const motoristaEncontrado = encontrarMotorista(motoristasAtivos, parsed.motorista || '')
-      const clienteEncontrado = encontrarClienteLista(
+      const clienteEncontrado   = encontrarClienteLista(
         clientesAtuais,
         parsed.cliente_nome_completo || parsed.cliente || '',
         parsed.cnpj || '', parsed.origem || ''
       )
       const caminhaoEncontrado = encontrarCaminhao(parsed.placa || '')
-      const carretaEncontrada = encontrarCarreta(parsed.placa_carreta || '')
+      const carretaEncontrada  = encontrarCarreta(parsed.placa_carreta || '')
 
       setPlacaLidaIA(parsed.placa || '')
       setPlacaCarretaLidaIA(parsed.placa_carreta || '')
@@ -334,13 +306,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       setForm(f => ({
         ...f,
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
-        motorista: motoristaEncontrado ? motoristaEncontrado.nome : '',
-        cliente: clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
-        // Prioriza CNPJ do contrato (IA leu), fallback para o do banco
-        cnpj: parsed.cnpj
-         ? formatCnpj(parsed.cnpj)
-        : clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : '',
-        placa: caminhaoEncontrado ? caminhaoEncontrado.placa : '',
+        motorista:    motoristaEncontrado ? motoristaEncontrado.nome : '',
+        cliente:      clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
+        cnpj:         parsed.cnpj ? formatCnpj(parsed.cnpj) : clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : '',
+        placa:        caminhaoEncontrado ? caminhaoEncontrado.placa : '',
         placa_carreta: carretaEncontrada ? carretaEncontrada.placa : '',
       }))
     } catch { setErro('Não foi possível ler o documento. Preencha manualmente.') }
@@ -351,18 +320,80 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     e.preventDefault(); setLoading(true); setErro('')
     try {
       const payload: any = { ...form }
-      payload.fat_bruto = parseFloat(payload.fat_bruto) || 0
-      payload.chapa = parseFloat(payload.chapa) || 0
+      payload.fat_bruto    = parseFloat(payload.fat_bruto) || 0
+      payload.chapa        = parseFloat(payload.chapa) || 0
       payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
       payload.placa_carreta = payload.placa_carreta || ''
       if (!payload.data) delete payload.data
       if (!payload.dt_pagamento) delete payload.dt_pagamento
+
+      // 1. Salva contrato
       const res = await fetch('/api/contratos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
       if (!res.ok) throw new Error(await res.text())
+
+      // 2. Busca o contrato recém criado pelo número
+      const contratoRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/contratos?contrato=eq.${encodeURIComponent(form.contrato)}&order=created_at.desc&limit=1`,
+        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      )
+      const contratoData = await contratoRes.json()
+      const contratoId = Array.isArray(contratoData) ? contratoData[0]?.id : null
+
+      if (contratoId) {
+        // 3. Busca caminhão pela placa
+        let caminhaoId: string | null = null
+        if (form.placa) {
+          const camRes = await fetch(
+            `${SUPABASE_URL}/rest/v1/caminhoes?placa=eq.${encodeURIComponent(form.placa)}&limit=1`,
+            { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+          )
+          const camData = await camRes.json()
+          if (Array.isArray(camData) && camData[0]) caminhaoId = camData[0].id
+        }
+
+        // 4. Cria viagem automaticamente
+        const viagemRes = await fetch(`${SUPABASE_URL}/rest/v1/viagens`, {
+          method: 'POST',
+          headers: {
+            apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json', Prefer: 'return=representation'
+          },
+          body: JSON.stringify({
+            motorista:      form.motorista,
+            caminhao_id:    caminhaoId,
+            caminhao_placa: form.placa || '',
+            empresa:        form.cliente,
+            origem:         form.origem,
+            destino:        form.destino,
+            valor_contrato: payload.fat_bruto,
+            status:         'EM ANDAMENTO',
+            obs:            `Gerado do contrato #${form.contrato}`
+          })
+        })
+        const viagemData = await viagemRes.json()
+        const viagemId = Array.isArray(viagemData) ? viagemData[0]?.id : null
+
+        // 5. Vincula viagem ↔ contrato
+        if (viagemId) {
+          await fetch(`${SUPABASE_URL}/rest/v1/viagem_contratos`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+              'Content-Type': 'application/json', Prefer: 'return=minimal'
+            },
+            body: JSON.stringify({
+              viagem_id:       viagemId,
+              contrato_id:     contratoId,
+              contrato_numero: form.contrato
+            })
+          })
+        }
+      }
+
       setAba('contratos')
     } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
   }
@@ -375,8 +406,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return ''
   }
 
-  const IC = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-  const ICwarn = "w-full border border-orange-300 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+  const IC      = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+  const ICwarn  = "w-full border border-orange-300 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
   const ICconfirm = "w-full border-2 border-orange-400 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
   const avisoIA = camposIAAtivos ? <span className="text-xs text-orange-500 font-medium ml-1">⚠️ Confira</span> : null
 
@@ -417,13 +448,9 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Nº Contrato * {contratoLidoIA && <span className="text-xs text-orange-500 font-medium">⚠️ Confira no documento</span>}
             </label>
-            <input
-              name="contrato"
-              value={form.contrato}
+            <input name="contrato" value={form.contrato}
               onChange={e => { handle(e); setContratoLidoIA(false) }}
-              required
-              className={contratoLidoIA ? ICconfirm : IC}
-            />
+              required className={contratoLidoIA ? ICconfirm : IC} />
             {contratoLidoIA && (
               <p className="text-xs mt-1 text-orange-500">OCR confunde dígitos similares (9↔2, 5↔1, 7↔2).</p>
             )}
