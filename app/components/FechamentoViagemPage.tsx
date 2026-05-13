@@ -7,22 +7,25 @@ import { X, Search, Truck, User, Calendar, MapPin, Fuel, ArrowRight, Download, C
 type Motorista = { id: string; nome: string; caminhao_id?: string }
 type Caminhao = { id: string; placa: string }
 type Contrato = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
-type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; valor_combustivel?: number | null; litros_arla?: number | null; valor_arla?: number | null }
+type Abastecimento = {
+  id: string; data: string; posto?: string | null
+  litros_combustivel?: number | null
+  valor_litro_combustivel?: number | null
+  litros_arla?: number | null
+  valor_litro_arla?: number | null
+  total?: number | null
+}
 type Fechamento = {
-  id: string
-  created_at: string
+  id: string; created_at: string
   motorista: { nome: string }
   caminhao: { placa: string }
-  data_inicio: string
-  data_fim: string
-  km_inicial: number
-  km_final: number
+  data_inicio: string; data_fim: string
+  km_inicial: number; km_final: number
   data_vencimento: string
 }
 
 export default function FechamentoViagemPage() {
   const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico'>('novo')
-
   const [motoristas, setMotoristas] = useState<Motorista[]>([])
   const [motoristaId, setMotoristaId] = useState('')
   const [caminhao, setCaminhao] = useState<Caminhao | null>(null)
@@ -31,17 +34,13 @@ export default function FechamentoViagemPage() {
   const [kmInicial, setKmInicial] = useState('')
   const [kmFinal, setKmFinal] = useState('')
   const [dataVencimento, setDataVencimento] = useState('')
-
   const [abastDataInicio, setAbastDataInicio] = useState('')
   const [abastDataFim, setAbastDataFim] = useState('')
-
   const [buscaContrato, setBuscaContrato] = useState('')
   const [contratosDisponiveis, setContratosDisponiveis] = useState<Contrato[]>([])
   const [selecionados, setSelecionados] = useState<Contrato[]>([])
-
   const [abastecimentos, setAbastecimentos] = useState<Abastecimento[]>([])
   const [abastSelecionados, setAbastSelecionados] = useState<Set<string>>(new Set())
-
   const [historico, setHistorico] = useState<Fechamento[]>([])
   const [buscaHistorico, setBuscaHistorico] = useState('')
   const [carregandoHistorico, setCarregandoHistorico] = useState(false)
@@ -75,7 +74,8 @@ export default function FechamentoViagemPage() {
     async function vincularCaminhao() {
       let query = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
       if (motoristaSel?.caminhao_id) {
-        query = supabase.from('caminhoes').select('id, placa').or(`id.eq.${motoristaSel.caminhao_id},motorista_atual.eq.${motoristaId}`)
+        query = supabase.from('caminhoes').select('id, placa')
+          .or(`id.eq.${motoristaSel.caminhao_id},motorista_atual.eq.${motoristaId}`)
       }
       const { data } = await query.maybeSingle()
       if (data) setCaminhao(data)
@@ -87,7 +87,7 @@ export default function FechamentoViagemPage() {
       .then(({ data }) => { if (data) setContratosDisponiveis(data) })
   }, [motoristaId, motoristas])
 
-  // ✅ CORRIGIDO: filtra por caminhao_id, não por placa
+  // Caminhão + período → abastecimentos por caminhao_id
   useEffect(() => {
     if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
       setAbastecimentos([]); setAbastSelecionados(new Set()); return
@@ -96,7 +96,7 @@ export default function FechamentoViagemPage() {
     setErro('')
 
     supabase.from('abastecimentos')
-      .select('id, data, posto, litros_combustivel, valor_combustivel, litros_arla, valor_arla')
+      .select('id, data, posto, litros_combustivel, valor_litro_combustivel, litros_arla, valor_litro_arla, total')
       .eq('caminhao_id', caminhao.id)
       .gte('data', abastDataInicio)
       .lte('data', abastDataFim)
@@ -147,12 +147,12 @@ export default function FechamentoViagemPage() {
   const resumo = useMemo(() => {
     const km = (Number(kmFinal) || 0) - (Number(kmInicial) || 0)
     const litros = abastAtivos.reduce((t, a) => t + Number(a.litros_combustivel || 0), 0)
-    const valor = abastAtivos.reduce((t, a) => t + Number(a.valor_combustivel || 0) + Number(a.valor_arla || 0), 0)
-    const frete = selecionados.reduce((t, c) => t + Number(c.fat_bruto || 0), 0)
+    const valor  = abastAtivos.reduce((t, a) => t + Number(a.total || 0), 0)
+    const frete  = selecionados.reduce((t, c) => t + Number(c.fat_bruto || 0), 0)
     return { km, litros, valor, frete, mediaKmL: km > 0 && litros > 0 ? km / litros : 0 }
   }, [abastAtivos, kmInicial, kmFinal, selecionados])
 
-  const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmt     = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const fmtData = (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
   async function salvar() {
@@ -175,8 +175,12 @@ export default function FechamentoViagemPage() {
     if (error || !fech) { setErro('Erro ao salvar: ' + error?.message); setSalvando(false); return }
 
     await Promise.all([
-      supabase.from('fechamento_contratos').insert(selecionados.map(c => ({ fechamento_id: fech.id, contrato_id: c.id }))),
-      abastAtivos.length > 0 && supabase.from('fechamento_abastecimentos').insert(abastAtivos.map(a => ({ fechamento_id: fech.id, abastecimento_id: a.id })))
+      supabase.from('fechamento_contratos').insert(
+        selecionados.map(c => ({ fechamento_id: fech.id, contrato_id: c.id }))
+      ),
+      abastAtivos.length > 0 && supabase.from('fechamento_abastecimentos').insert(
+        abastAtivos.map(a => ({ fechamento_id: fech.id, abastecimento_id: a.id }))
+      )
     ])
 
     setSucesso(true); setSalvando(false)
@@ -201,12 +205,9 @@ export default function FechamentoViagemPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen font-sans">
-
-      {/* ── Header ── */}
+    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          {/* ✅ TÍTULO CORRIGIDO */}
           <h1 className="text-2xl font-bold text-gray-900">Fechamento de Viagem</h1>
           <p className="text-sm text-gray-500">Gestão de viagens, contratos e abastecimentos</p>
         </div>
@@ -247,7 +248,8 @@ export default function FechamentoViagemPage() {
                     <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
                       <User size={14} className="text-red-600" /> Motorista
                     </label>
-                    <select value={motoristaId} onChange={e => { setMotoristaId(e.target.value); setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set()) }}
+                    <select value={motoristaId}
+                      onChange={e => { setMotoristaId(e.target.value); setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set()) }}
                       className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm font-bold focus:border-red-500 focus:bg-white outline-none transition-all">
                       <option value="">Selecione o motorista</option>
                       {motoristas.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
@@ -347,7 +349,6 @@ export default function FechamentoViagemPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {abastecimentos.map(a => {
                         const marcado = abastSelecionados.has(a.id)
-                        const valor = (a.valor_combustivel || 0) + (a.valor_arla || 0)
                         return (
                           <label key={a.id}
                             className={`flex flex-col p-4 rounded-2xl border-2 cursor-pointer transition-all
@@ -358,7 +359,7 @@ export default function FechamentoViagemPage() {
                                   className="w-5 h-5 rounded-lg accent-red-600" />
                                 <span className="text-sm font-black text-gray-900">{fmtData(a.data)}</span>
                               </div>
-                              <span className="text-sm font-black text-red-600">R$ {fmt(valor)}</span>
+                              <span className="text-sm font-black text-red-600">R$ {fmt(a.total || 0)}</span>
                             </div>
                             <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1.5 mb-2">
                               <MapPin size={10} /> {a.posto || 'POSTO NÃO IDENTIFICADO'}
