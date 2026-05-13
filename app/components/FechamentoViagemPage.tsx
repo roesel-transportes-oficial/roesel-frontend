@@ -46,6 +46,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [erro, setErro]           = useState('')
   const [abaAtiva, setAbaAtiva]   = useState<'novo' | 'historico'>('novo')
   const [sucesso, setSucesso]     = useState(false)
+  const [excluindoId, setExcluindoId] = useState<string | null>(null)
+  const [visualizando, setVisualizando] = useState<Fechamento | null>(null)
 
   useEffect(() => {
     supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
@@ -221,10 +223,15 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   }
 
   async function excluirFechamento(id: string) {
-    if (!confirm('Tem certeza que deseja excluir este fechamento?')) return
     const { error } = await supabase.from('fechamento_viagens').delete().eq('id', id)
-    if (error) alert('Erro ao excluir: ' + error.message)
-    else fetchHistorico()
+    if (error) {
+      setErro('Erro ao excluir: ' + error.message)
+    } else {
+      setSucesso(true)
+      setTimeout(() => setSucesso(false), 3000)
+      fetchHistorico()
+    }
+    setExcluindoId(null)
   }
 
   async function salvar() {
@@ -299,6 +306,79 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen relative">
+      {/* Modal de Confirmação de Exclusão */}
+      {excluindoId && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-gray-100 text-center space-y-6">
+            <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto">
+              <AlertCircle size={32}/>
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">Excluir Fechamento?</h3>
+              <p className="text-sm font-bold text-gray-500 mt-2">Esta ação não pode ser desfeita. Deseja continuar?</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setExcluindoId(null)} className="flex-1 py-4 bg-gray-100 text-gray-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all">Cancelar</button>
+              <button onClick={() => excluirFechamento(excluindoId)} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-200 transition-all">Sim, Excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Visualização Detalhada */}
+      {visualizando && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div>
+                <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Detalhes do Fechamento</h3>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Lançado em {new Date(visualizando.created_at).toLocaleDateString('pt-BR')}</p>
+              </div>
+              <button onClick={() => setVisualizando(null)} className="p-2 hover:bg-gray-200 rounded-xl transition-colors text-gray-400"><X size={20}/></button>
+            </div>
+            <div className="p-8 overflow-y-auto space-y-8">
+              <div className="grid grid-cols-2 gap-8">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Motorista</p>
+                  <p className="text-base font-black text-gray-900">{visualizando.motorista?.nome || '—'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Placa</p>
+                  <p className="text-base font-black text-red-600">{visualizando.caminhao?.placa || '—'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Período</p>
+                  <p className="text-sm font-bold text-gray-700">{fmtData(visualizando.data_inicio)} → {fmtData(visualizando.data_fim)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">KM Rodado</p>
+                  <p className="text-sm font-bold text-gray-700">{(visualizando.km_final - visualizando.km_inicial).toLocaleString('pt-BR')} km (Início: {visualizando.km_inicial} | Fim: {visualizando.km_final})</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Contratos / Destinos</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {visualizando.contratos?.map((c: any, i: number) => (
+                    <div key={i} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-center justify-between">
+                      <span className="text-xs font-black text-gray-700">Contrato #{i+1}</span>
+                      <div className="flex items-center gap-3 text-xs font-bold text-gray-500">
+                        <span>{c.contrato?.origem}</span>
+                        <ArrowRight size={12} className="text-gray-300"/>
+                        <span>{c.contrato?.destino}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end">
+              <button onClick={() => setVisualizando(null)} className="px-8 py-3 bg-gray-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Notificação de Sucesso */}
       {sucesso && (
         <div className="fixed top-6 right-6 z-[100] animate-in slide-in-from-right-full duration-500">
@@ -306,7 +386,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
             <CheckCircle2 size={20} className="text-green-100"/>
             <div>
               <p className="font-black text-sm uppercase tracking-widest">Sucesso!</p>
-              <p className="text-xs font-bold text-green-50 opacity-90">Fechamento realizado com sucesso.</p>
+              <p className="text-xs font-bold text-green-50 opacity-90">Operação realizada com sucesso.</p>
             </div>
             <button onClick={() => setSucesso(false)} className="ml-4 hover:bg-white/10 p-1 rounded-lg transition-colors">
               <X size={16}/>
@@ -637,7 +717,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                 ) : historicoFiltrado.length === 0 ? (
                   <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
                 ) : historicoFiltrado.map(h => (
-                  <tr key={h.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <tr key={h.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => setVisualizando(h)}>
                     <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
                     <td className="px-6 py-4">
                       <p className="text-sm font-black text-gray-900">{h.motorista?.nome || '—'}</p>
@@ -646,7 +726,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                     <td className="px-6 py-4">
                       <p className="text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</p>
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {h.contratos?.map((c, i) => (
+                        {h.contratos?.map((c: any, i: number) => (
                           <span key={i} className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">
                             {c.contrato?.origem} → {c.contrato?.destino}
                           </span>
@@ -655,8 +735,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                     </td>
                     <td className="px-6 py-4 text-xs font-bold text-gray-700">{(h.km_final - h.km_inicial).toLocaleString('pt-BR')} km</td>
                     <td className="px-6 py-4 text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <button onClick={() => excluirFechamento(h.id)} 
+                    <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => setExcluindoId(h.id)} 
                         className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
                         <X size={16}/>
                       </button>
