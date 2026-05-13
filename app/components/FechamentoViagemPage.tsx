@@ -81,26 +81,38 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         .limit(1)
         .maybeSingle()
 
+      // 2. KM inicial = km_final do último fechamento deste caminhão
+      const { data: ultimoFech } = await supabase
+        .from("fechamento_viagens")
+        .select("km_final")
+        .eq("caminhao_id", cam.id)
+        .order("data_fim", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      // Busca abastecimentos para KM inicial (fallback) e KM final
+      const { data: abasts } = await supabase
+        .from("abastecimentos")
+        .select("km, data")
+        .eq("caminhao_id", cam.id)
+        .not("km", "is", null)
+        .gt("km", 0)
+        .order("data", { ascending: true })
+
       if (ultimoFech?.km_final) {
         setKmInicial(String(ultimoFech.km_final))
-        setKmFinal('')
+      } else if (abasts && abasts.length > 0 && abasts[0].km) {
+        // Fallback: KM inicial do abastecimento mais antigo
+        setKmInicial(String(abasts[0].km))
       } else {
-        // 3. Fallback: usa abastecimentos (menor data = km inicial, maior data = km final)
-        const { data: abasts } = await supabase
-          .from('abastecimentos')
-          .select('km, data')
-          .eq('caminhao_id', cam.id)
-          .not('km', 'is', null)
-          .gt('km', 0)
-          .order('data', { ascending: true })
+        setKmInicial("")
+      }
 
-        if (abasts && abasts.length > 0) {
-          const kms = abasts.map(a => a.km).filter(k => k > 0)
-          if (kms.length > 0) {
-            setKmInicial(String(Math.min(...kms)))
-            if (kms.length > 1) setKmFinal(String(Math.max(...kms)))
-          }
-        }
+      if (abasts && abasts.length > 0 && abasts[abasts.length - 1].km) {
+        // KM final do abastecimento mais recente
+        setKmFinal(String(abasts[abasts.length - 1].km))
+      } else {
+        setKmFinal("")
       }
     }
     vincularCaminhaoEKm()
