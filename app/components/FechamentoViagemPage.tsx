@@ -180,24 +180,37 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   async function fetchHistorico() {
     setCarregandoHistorico(true)
     try {
+      // Tenta a consulta completa com relacionamentos
       const { data, error } = await supabase.from('fechamento_viagens')
         .select(`
-          id, 
-          created_at, 
-          data_inicio, 
-          data_fim, 
-          km_inicial, 
-          km_final, 
-          data_vencimento,
+          *,
           motorista:motorista_id(nome),
           caminhao:caminhao_id(placa)
         `)
         .order('created_at', { ascending: false })
       
-      if (error) throw error
-      if (data) setHistorico(data as any)
+      if (error) {
+        console.warn('Erro na consulta completa, tentando consulta simples:', error)
+        // Fallback: Consulta simples sem relacionamentos se a completa falhar
+        const { data: simpleData, error: simpleError } = await supabase.from('fechamento_viagens')
+          .select('*')
+          .order('created_at', { ascending: false })
+        
+        if (simpleError) throw simpleError
+        
+        // Mapeia os dados simples para o formato esperado pelo componente
+        const mapped = (simpleData || []).map(item => ({
+          ...item,
+          motorista: { nome: 'Motorista #' + item.motorista_id?.slice(0,4) },
+          caminhao: { placa: 'Placa #' + item.caminhao_id?.slice(0,4) }
+        }))
+        setHistorico(mapped as any)
+      } else {
+        setHistorico(data as any)
+      }
     } catch (err) {
-      console.error('Erro ao buscar histórico:', err)
+      console.error('Erro fatal ao buscar histórico:', err)
+      alert('Erro ao carregar histórico. Verifique o console.')
     } finally {
       setCarregandoHistorico(false)
     }
