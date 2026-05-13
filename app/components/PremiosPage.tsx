@@ -1,10 +1,6 @@
-
 'use client'
 import { useState, useEffect } from 'react'
-import { supabase } from '../services/supabase'
-import { Trophy, CheckCircle, XCircle, Fuel, FileText, AlertTriangle, ShieldAlert, Download, Clock, CheckCircle2, Search, Trash2 } from 'lucide-react'
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { Trophy, CheckCircle, XCircle, Fuel, FileText, AlertTriangle, ShieldAlert, Download, Clock, CheckCircle2 } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -16,9 +12,8 @@ interface MotoristaRanking {
   nome: string; faturamento: number; media_km_l: number
   tem_multa: boolean; tem_avaria: boolean; aprovado: boolean
 }
-
 interface Premio {
-  id: string; motorista: string; status: string; valor: number; obs: string; updated_at: string; fechamento_id?: string;
+  id: string; motorista: string; status: string; valor: number; obs: string; updated_at: string
 }
 
 export default function PremiosPage() {
@@ -26,120 +21,76 @@ export default function PremiosPage() {
   const [tab, setTab]       = useState<'folhas' | 'ranking'>('folhas')
   const [mes, setMes]       = useState(String(hoje.getMonth() + 1).padStart(2, '0'))
   const [ano, setAno]       = useState(String(hoje.getFullYear()))
-  const [ranking, setRanking] = useState<MotoristaRanking[]>([])
-  const [premios, setPremios] = useState<Premio[]>([])
-  const [loading, setLoading] = useState(false)
+  const [ranking, setRanking]   = useState<MotoristaRanking[]>([])
+  const [premios, setPremios]   = useState<Premio[]>([])
+  const [loading, setLoading]   = useState(false)
   const [loadingPremios, setLoadingPremios] = useState(false)
-  const [buscaMotorista, setBuscaMotorista] = useState('');
-  const [dataInicioFiltro, setDataInicioFiltro] = useState('');
-  const [dataFimFiltro, setDataFimFiltro] = useState('');
 
-  useEffect(() => { fetchPremios() }, [buscaMotorista, dataInicioFiltro, dataFimFiltro])
+  useEffect(() => { fetchPremios() }, [])
   useEffect(() => { if (tab === 'ranking') calcular() }, [tab, mes, ano])
 
   async function fetchPremios() {
     setLoadingPremios(true)
     try {
-      let query = supabase.from('premios').select('*').order('updated_at', { ascending: false });
-
-      if (buscaMotorista) {
-        query = query.ilike('motorista', `%${buscaMotorista}%`);
-      }
-      if (dataInicioFiltro) {
-        query = query.gte('updated_at', dataInicioFiltro + 'T00:00:00.000Z');
-      }
-      if (dataFimFiltro) {
-        query = query.lte('updated_at', dataFimFiltro + 'T23:59:59.999Z');
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      if (data) setPremios(data as Premio[]);
-    } catch (e) {
-      console.error('Erro ao carregar prêmios:', e);
-    }
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/premios?order=updated_at.desc`, {
+        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+      })
+      const data = await res.json()
+      if (Array.isArray(data)) setPremios(data)
+    } catch {}
     setLoadingPremios(false)
   }
 
   async function toggleStatus(premio: Premio) {
     const novoStatus = premio.status === 'pago' ? 'pendente' : 'pago'
-    await supabase.from('premios').update({ status: novoStatus }).eq('id', premio.id)
+    await fetch(`${SUPABASE_URL}/rest/v1/premios?id=eq.${premio.id}`, {
+      method: 'PATCH',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      body: JSON.stringify({ status: novoStatus })
+    })
     setPremios(prev => prev.map(p => p.id === premio.id ? { ...p, status: novoStatus } : p))
   }
 
-  async function excluirPremio(id: string) {
-    if (!confirm('Tem certeza que deseja excluir este prêmio?')) return;
-    setLoadingPremios(true);
-    try {
-      await supabase.from('premios').delete().eq('id', id);
-      setPremios(prev => prev.filter(p => p.id !== id));
-    } catch (e) {
-      console.error('Erro ao excluir prêmio:', e);
-      alert('Erro ao excluir prêmio.');
-    } finally {
-      setLoadingPremios(false);
-    }
+  function baixarFolha(p: Premio) {
+    const fmtV = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+    const data = new Date(p.updated_at).toLocaleDateString('pt-BR')
+    const linhas = p.obs.split(' | ')
+    const campos = Object.fromEntries(linhas.map(l => { const [k, ...v] = l.split(': '); return [k?.trim(), v.join(': ')?.trim()] }))
+    const csv = [
+      ['FOLHA DE PAGAMENTO - ROESEL TRANSPORTES'],
+      [''], ['Motorista', p.motorista], ['Data Geração', data], ['Status', p.status.toUpperCase()],
+      [''], ['DETALHES DA VIAGEM'],
+      ['Período',       campos['Período']      || '—'],
+      ['Vencimento',    campos['Vencimento']   || '—'],
+      ['Placa',         campos['Placa']        || '—'],
+      ['KM Rodado',     campos['KM Rodado']    || '—'],
+      ['Contratos',     campos['Contratos']    || '—'],
+      ['Abastecimento', campos['Abastecimento']|| '—'],
+      ['Média',         campos['Média']        || '—'],
+      [''], ['FINANCEIRO'], ['Comissão (10%)', `R$ ${fmtV(p.valor)}`],
+    ].map(r => r.join(';')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `folha_${p.motorista.replace(/ /g,'_')}_${data.replace(/\//g,'-')}.csv`
+    link.click()
   }
 
-  function baixarFolhaPDF(p: Premio) {
-    const doc = new jsPDF();
-    const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-    const dataGeracao = new Date(p.updated_at).toLocaleDateString('pt-BR');
-
-    const linhas = p.obs.split(' | ');
-    const campos = Object.fromEntries(
-      linhas.map(l => { const [k, ...v] = l.split(': '); return [k?.trim(), v.join(': ')?.trim()] })
-    );
-
-    doc.setFontSize(18);
-    doc.text('FOLHA DE PAGAMENTO - ROESEL TRANSPORTES', 14, 20);
-    doc.setFontSize(12);
-    doc.text(`Motorista: ${p.motorista}`, 14, 30);
-    doc.text(`Data Geração: ${dataGeracao}`, 14, 37);
-    doc.text(`Status: ${p.status.toUpperCase()}`, 14, 44);
-
-    doc.setFontSize(14);
-    doc.text('DETALHES DA VIAGEM', 14, 58);
-    doc.setFontSize(12);
-    doc.text(`Período: ${campos['Período'] || '—'}`, 14, 68);
-    doc.text(`Vencimento: ${campos['Vencimento'] || '—'}`, 14, 75);
-    doc.text(`Placa: ${campos['Placa'] || '—'}`, 14, 82);
-    doc.text(`KM Rodado: ${campos['KM Rodado'] || '—'}`, 14, 89);
-    doc.text(`Contratos: ${campos['Contratos'] || '—'}`, 14, 96);
-    doc.text(`Abastecimento: ${campos['Abastecimento'] || '—'}`, 14, 103);
-    doc.text(`Média: ${campos['Média'] || '—'}`, 14, 110);
-
-    doc.setFontSize(14);
-    doc.text('FINANCEIRO', 14, 124);
-    doc.setFontSize(12);
-    doc.text(`Comissão (10%): R$ ${fmt(p.valor)}`, 14, 134);
-
-    doc.save(`folha_${p.motorista.replace(/ /g, '_')}_${dataGeracao.replace(/\//g, '-')}.pdf`);
+  function baixarTodasFolhas() {
+    const fmtV = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+    const csv = [
+      ['Motorista','Data','Status','Comissão','Detalhes'],
+      ...premios.map(p => [p.motorista, new Date(p.updated_at).toLocaleDateString('pt-BR'), p.status.toUpperCase(), `R$ ${fmtV(p.valor)}`, p.obs])
+    ].map(r => r.join(';')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `todas_folhas_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.csv`
+    link.click()
   }
 
-  function baixarTodasFolhasPDF() {
-    const doc = new jsPDF();
-    const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-
-    const head = [['Motorista', 'Data Geração', 'Status', 'Comissão', 'Detalhes']];
-    const body = premios.map(p => [
-      p.motorista,
-      new Date(p.updated_at).toLocaleDateString('pt-BR'),
-      p.status.toUpperCase(),
-      `R$ ${fmt(p.valor)}`,
-      p.obs
-    ]);
-
-    (doc as any).autoTable({
-      head: head,
-      body: body,
-      startY: 20,
-      headStyles: { fillColor: [200, 200, 200], textColor: [0, 0, 0] },
-      styles: { fontSize: 10, cellPadding: 3 },
-      columnStyles: { 3: { halign: 'right' } },
-    });
-
-    doc.save(`todas_folhas_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.pdf`);
+  async function hdr() {
+    return { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
   }
 
   async function calcular() {
@@ -147,32 +98,82 @@ export default function PremiosPage() {
     try {
       const inicioMes = `${ano}-${mes}-01`
       const fimMes    = new Date(parseInt(ano), parseInt(mes), 0).toISOString().split('T')[0]
+      const h         = await hdr()
 
-      const [resM, resC, resA, resMu, resAv] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }),
-        fetch(`${SUPABASE_URL}/rest/v1/contratos?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }),
-        fetch(`${SUPABASE_URL}/rest/v1/abastecimentos?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }),
-        fetch(`${SUPABASE_URL}/rest/v1/multas?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }),
-        fetch(`${SUPABASE_URL}/rest/v1/avarias?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }),
+      // Busca dados em paralelo
+      const [resM, resC, resMu, resAv, resFech] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc`, { headers: h }),
+        fetch(`${SUPABASE_URL}/rest/v1/contratos?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        fetch(`${SUPABASE_URL}/rest/v1/multas?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        fetch(`${SUPABASE_URL}/rest/v1/avarias?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        // ✅ Fechamentos do mês para calcular km e litros reais
+        fetch(`${SUPABASE_URL}/rest/v1/fechamento_viagens?data_inicio=gte.${inicioMes}&data_inicio=lte.${fimMes}&select=id,motorista_id,km_inicial,km_final`, { headers: h }),
       ])
 
-      const [motoristas, contratos, abastecimentos, multas, avarias] = await Promise.all([
-        resM.json(), resC.json(), resA.json(), resMu.json(), resAv.json()
+      const [motoristas, contratos, multas, avarias, fechamentos] = await Promise.all([
+        resM.json(), resC.json(), resMu.json(), resAv.json(), resFech.json()
       ])
 
+      // ✅ Calcula média km/L por motorista_id via fechamentos
+      const mediaKmLPorId: Record<string, number> = {}
+
+      if (Array.isArray(fechamentos) && fechamentos.length > 0) {
+        const fechIds = fechamentos.map((f: any) => f.id)
+
+        // Abastecimentos vinculados aos fechamentos
+        const resFechAbast = await fetch(
+          `${SUPABASE_URL}/rest/v1/fechamento_abastecimentos?fechamento_id=in.(${fechIds.join(',')})&select=fechamento_id,abastecimento_id`,
+          { headers: h }
+        )
+        const fechAbastList = await resFechAbast.json()
+
+        if (Array.isArray(fechAbastList) && fechAbastList.length > 0) {
+          const abastIds = [...new Set(fechAbastList.map((fa: any) => fa.abastecimento_id))]
+
+          const resAbastDet = await fetch(
+            `${SUPABASE_URL}/rest/v1/abastecimentos?id=in.(${abastIds.join(',')})&select=id,litros_combustivel`,
+            { headers: h }
+          )
+          const abastDetalhes = await resAbastDet.json()
+
+          // id → litros
+          const litrosPorAbast: Record<string, number> = {}
+          if (Array.isArray(abastDetalhes)) {
+            abastDetalhes.forEach((a: any) => { litrosPorAbast[a.id] = a.litros_combustivel || 0 })
+          }
+
+          // fechamento_id → total litros
+          const litrosPorFech: Record<string, number> = {}
+          fechAbastList.forEach((fa: any) => {
+            litrosPorFech[fa.fechamento_id] = (litrosPorFech[fa.fechamento_id] || 0) + (litrosPorAbast[fa.abastecimento_id] || 0)
+          })
+
+          // Agrupa fechamentos por motorista_id
+          const fechPorMotorista: Record<string, any[]> = {}
+          fechamentos.forEach((f: any) => {
+            if (!fechPorMotorista[f.motorista_id]) fechPorMotorista[f.motorista_id] = []
+            fechPorMotorista[f.motorista_id].push(f)
+          })
+
+          // Calcula média por motorista
+          Object.entries(fechPorMotorista).forEach(([motId, fechs]) => {
+            const totalKm = fechs.reduce((s: number, f: any) => s + Math.max(0, (f.km_final || 0) - (f.km_inicial || 0)), 0)
+            const totalLitros = fechs.reduce((s: number, f: any) => s + (litrosPorFech[f.id] || 0), 0)
+            if (totalKm > 0 && totalLitros > 0) {
+              mediaKmLPorId[motId] = totalKm / totalLitros
+            }
+          })
+        }
+      }
+
+      // Monta ranking
       const result: MotoristaRanking[] = motoristas.map((m: any) => {
         const nome        = m.nome
         const faturamento = contratos.filter((c: any) => c.motorista === nome).reduce((s: number, c: any) => s + (c.fat_bruto || 0), 0)
-        const abastM      = abastecimentos.filter((a: any) => a.motorista === nome && a.km).sort((a: any, b: any) => new Date(a.data).getTime() - new Date(b.data).getTime())
-        let media_km_l    = 0
-        if (abastM.length >= 2) {
-          const kmPercorrido  = abastM[abastM.length - 1].km - abastM[0].km
-          const litrosTotais  = abastM.slice(1).reduce((s: number, a: any) => s + (a.litros_combustivel || 0), 0)
-          if (litrosTotais > 0) media_km_l = kmPercorrido / litrosTotais
-        }
-        const tem_multa  = multas.some((mu: any) => mu.motorista === nome)
-        const tem_avaria = avarias.some((av: any) => av.motorista === nome)
-        const aprovado   = faturamento >= META_FAT && media_km_l >= META_MEDIA && !tem_multa && !tem_avaria
+        const media_km_l  = mediaKmLPorId[m.id] || 0  // ✅ via fechamentos
+        const tem_multa   = multas.some((mu: any) => mu.motorista === nome)
+        const tem_avaria  = avarias.some((av: any) => av.motorista === nome)
+        const aprovado    = faturamento >= META_FAT && media_km_l >= META_MEDIA && !tem_multa && !tem_avaria
         return { nome, faturamento, media_km_l, tem_multa, tem_avaria, aprovado }
       })
 
@@ -190,12 +191,12 @@ export default function PremiosPage() {
   const meses = [
     { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
     { v: '04', l: 'Abril'   }, { v: '05', l: 'Maio'      }, { v: '06', l: 'Junho'  },
-    { v: '07', l: 'Julho'   }, { v: '08', l: 'Agosto'    }, { v: '09', l: 'Setembro' },
-    { v: '10', l: 'Outubro' }, { v: '11', l: 'Novembro'  }, { v: '12', l: 'Dezembro' },
+    { v: '07', l: 'Julho'   }, { v: '08', l: 'Agosto'    }, { v: '09', l: 'Setembro'},
+    { v: '10', l: 'Outubro' }, { v: '11', l: 'Novembro'  }, { v: '12', l: 'Dezembro'},
   ]
-  const anos      = ['2024', '2025', '2026', '2027']
+  const anos      = ['2024','2025','2026','2027']
   const fmt       = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-
+  const aprovados = ranking.filter(r => r.aprovado)
   const pendentes = premios.filter(p => p.status === 'pendente')
   const pagos     = premios.filter(p => p.status === 'pago')
 
@@ -203,10 +204,9 @@ export default function PremiosPage() {
     <div className="p-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Trophy size={28} className="text-yellow-500" />
+          <Trophy size={28} className="text-yellow-500"/>
           <h1 className="text-2xl font-bold text-gray-900">Prêmios</h1>
         </div>
-        {/* Tabs */}
         <div className="flex bg-gray-100 p-1 rounded-xl">
           <button onClick={() => setTab('folhas')}
             className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
@@ -223,47 +223,31 @@ export default function PremiosPage() {
 
       {tab === 'folhas' ? (
         <>
-          {/* Resumo */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
               <p className="text-xs text-gray-400 font-bold uppercase mb-1">Total Geradas</p>
               <p className="text-2xl font-black text-gray-900">{premios.length}</p>
             </div>
             <div className="bg-yellow-50 rounded-2xl border border-yellow-100 shadow-sm p-4 text-center">
-              <Clock size={18} className="mx-auto text-yellow-500 mb-1" />
+              <Clock size={18} className="mx-auto text-yellow-500 mb-1"/>
               <p className="text-xs text-yellow-600 font-bold uppercase mb-1">Pendentes</p>
               <p className="text-2xl font-black text-yellow-700">{pendentes.length}</p>
             </div>
             <div className="bg-green-50 rounded-2xl border border-green-100 shadow-sm p-4 text-center">
-              <CheckCircle2 size={18} className="mx-auto text-green-500 mb-1" />
+              <CheckCircle2 size={18} className="mx-auto text-green-500 mb-1"/>
               <p className="text-xs text-green-600 font-bold uppercase mb-1">Pagos</p>
               <p className="text-2xl font-black text-green-700">{pagos.length}</p>
             </div>
           </div>
 
-          {/* Cabeçalho com download geral e filtros */}
-          <div className="flex flex-col md:flex-row items-center justify-between mb-4 gap-3">
-            <h2 className="text-sm font-black text-gray-700 uppercase tracking-widest">
-              Folhas de Pagamento
-            </h2>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input type="text" placeholder="Buscar motorista..." value={buscaMotorista}
-                  onChange={e => setBuscaMotorista(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all" />
-              </div>
-              <input type="date" value={dataInicioFiltro} onChange={e => setDataInicioFiltro(e.target.value)}
-                className="py-2 px-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all" />
-              <input type="date" value={dataFimFiltro} onChange={e => setDataFimFiltro(e.target.value)}
-                className="py-2 px-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all" />
-              {premios.length > 0 && (
-                <button onClick={baixarTodasFolhasPDF}
-                  className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition">
-                  <Download size={14} /> Baixar Todas
-                </button>
-              )}
-            </div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-black text-gray-700 uppercase tracking-widest">Folhas de Pagamento</h2>
+            {premios.length > 0 && (
+              <button onClick={baixarTodasFolhas}
+                className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition">
+                <Download size={14}/> Baixar Todas
+              </button>
+            )}
           </div>
 
           {loadingPremios ? (
@@ -272,43 +256,57 @@ export default function PremiosPage() {
             </div>
           ) : premios.length === 0 ? (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
-              <Trophy size={32} className="mx-auto text-gray-200 mb-2" />
+              <Trophy size={32} className="mx-auto text-gray-200 mb-2"/>
               <p className="text-sm text-gray-400">Nenhuma folha gerada ainda.</p>
-              <p className="text-xs text-gray-300 mt-1">As folhas de pagamento aparecerão aqui após o fechamento de viagens.</p>
+              <p className="text-xs text-gray-300 mt-1">As folhas são criadas ao finalizar um Fechamento de Viagem.</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {premios.map(p => (
-                <div key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-black text-gray-900 uppercase">{p.motorista}</h3>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest
-                        ${p.status === 'pago' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                        {p.status}
-                      </span>
-                      <button onClick={() => excluirPremio(p.id)} className="text-gray-400 hover:text-red-600">
-                        <Trash2 size={16} />
-                      </button>
+                <div key={p.id}
+                  className={`bg-white rounded-2xl border shadow-sm overflow-hidden
+                    ${p.status === 'pago' ? 'border-green-100' : 'border-gray-100'}`}>
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-2">
+                          <p className="text-base font-black text-gray-900">{p.motorista}</p>
+                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full
+                            ${p.status === 'pago' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                            {p.status}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 mt-3">
+                          {p.obs.split(' | ').map((item, i) => {
+                            const [label, ...rest] = item.split(': ')
+                            const valor = rest.join(': ')
+                            if (!label || !valor) return null
+                            return (
+                              <div key={i}>
+                                <p className="text-[9px] font-black text-gray-400 uppercase">{label}</p>
+                                <p className="text-xs font-bold text-gray-700">{valor}</p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Comissão</p>
+                        <p className="text-2xl font-black text-green-600">R$ {fmt(p.valor)}</p>
+                        <p className="text-[10px] text-gray-400 mt-1">{new Date(p.updated_at).toLocaleDateString('pt-BR')}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-gray-600">
-                    {p.obs.split(' | ').map((item, i) => (
-                      <p key={i} className="truncate">{item}</p>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-                    <p className="text-xl font-black text-green-600">R$ {fmt(p.valor)}</p>
-                    <div className="flex gap-2">
+                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-50">
                       <button onClick={() => toggleStatus(p)}
-                        className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase transition-colors
-                          ${p.status === 'pago' ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
-                        {p.status === 'pago' ? <Clock size={12} /> : <CheckCircle2 size={12} />} 
-                        {p.status === 'pago' ? 'Marcar como Pendente' : 'Marcar como Pago'}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase transition-all
+                          ${p.status === 'pago'
+                            ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                        {p.status === 'pago' ? <><Clock size={13}/> Marcar Pendente</> : <><CheckCircle2 size={13}/> Marcar como Pago</>}
                       </button>
-                      <button onClick={() => baixarFolhaPDF(p)}
-                        className="flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold uppercase bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors">
-                        <Download size={12} /> Baixar Folha
+                      <button onClick={() => baixarFolha(p)}
+                        className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition">
+                        <Download size={13}/> Baixar Folha
                       </button>
                     </div>
                   </div>
@@ -318,59 +316,110 @@ export default function PremiosPage() {
           )}
         </>
       ) : (
-        /* ── Ranking ── */
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-black text-gray-700 uppercase tracking-widest">Ranking de Motoristas</h2>
-            <div className="flex gap-2">
-              <select value={mes} onChange={e => setMes(e.target.value)}
-                className="py-2 px-3 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all">
-                {meses.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
-              </select>
-              <select value={ano} onChange={e => setAno(e.target.value)}
-                className="py-2 px-3 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all">
-                {anos.map(a => <option key={a} value={a}>{a}</option>)}
-              </select>
-            </div>
+        /* ── RANKING ── */
+        <>
+          <div className="flex gap-3 mb-6 flex-wrap">
+            <select value={mes} onChange={e => setMes(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
+              {meses.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+            </select>
+            <select value={ano} onChange={e => setAno(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
+              {anos.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <button onClick={calcular} disabled={loading}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition disabled:opacity-50">
+              {loading ? 'Calculando...' : 'Atualizar'}
+            </button>
           </div>
 
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            {[
+              { icon: <FileText size={20} className="mx-auto text-blue-500 mb-1"/>, label: 'Faturamento mín.', value: 'R$ 127.000' },
+              { icon: <Fuel size={20} className="mx-auto text-green-500 mb-1"/>, label: 'Média mín.', value: '2,70 km/l' },
+              { icon: <AlertTriangle size={20} className="mx-auto text-yellow-500 mb-1"/>, label: 'Multas', value: 'Nenhuma' },
+              { icon: <ShieldAlert size={20} className="mx-auto text-red-500 mb-1"/>, label: 'Avarias', value: 'Nenhuma' },
+            ].map(c => (
+              <div key={c.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+                {c.icon}
+                <p className="text-xs text-gray-500">{c.label}</p>
+                <p className="text-sm font-bold text-gray-800">{c.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {aprovados.length > 0 && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <Trophy size={20} className="text-white"/>
+                <p className="text-white font-bold">{aprovados.length} motorista(s) elegível(is) ao prêmio!</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {aprovados.map(m => (
+                  <span key={m.nome} className="bg-white/30 text-white text-xs font-semibold px-3 py-1 rounded-full">
+                    🏆 {m.nome}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {loading ? (
-            <div className="p-10 text-center">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
               <p className="text-sm text-gray-400">Calculando ranking...</p>
             </div>
           ) : ranking.length === 0 ? (
-            <div className="p-10 text-center">
-              <Trophy size={32} className="mx-auto text-gray-200 mb-2" />
-              <p className="text-sm text-gray-400">Nenhum motorista no ranking para este período.</p>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
+              <Trophy size={32} className="mx-auto text-gray-200 mb-2"/>
+              <p className="text-sm text-gray-400">Nenhum dado encontrado para este período</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {ranking.map((r, i) => (
-                <div key={r.nome} className="bg-gray-50 rounded-2xl border border-gray-100 p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg font-black text-gray-400">#{i + 1}</span>
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">{r.nome}</p>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span>Faturamento: R$ {fmt(r.faturamento)}</span>
-                        <span>Média: {fmt(r.media_km_l)} km/L</span>
-                      </div>
-                    </div>
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 grid grid-cols-6 gap-2">
+                <p className="text-xs font-semibold text-gray-400 uppercase col-span-2">Motorista</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase text-center">Faturamento</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase text-center">Média km/l</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase text-center">Multa/Avaria</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase text-center">Status</p>
+              </div>
+              {ranking.map((m, i) => (
+                <div key={m.nome}
+                  className={`grid grid-cols-6 gap-2 items-center px-5 py-4 border-b border-gray-50 last:border-0
+                    ${m.aprovado ? 'bg-yellow-50' : ''}`}>
+                  <div className="col-span-2 flex items-center gap-3">
+                    <span className="text-lg font-bold text-gray-400">#{i+1}</span>
+                    <p className="text-sm font-bold text-gray-900">{m.nome}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {r.tem_multa && <AlertTriangle size={16} className="text-yellow-500" />}
-                    {r.tem_avaria && <ShieldAlert size={16} className="text-red-500" />}
-                    {r.aprovado ? (
-                      <CheckCircle size={20} className="text-green-500" />
-                    ) : (
-                      <XCircle size={20} className="text-red-500" />
-                    )}
+                  <div className="flex flex-col items-center">
+                    <p className="text-xs font-semibold text-gray-700">
+                      {m.faturamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                    {m.faturamento >= META_FAT ? <CheckCircle size={16} className="text-green-500 mt-1"/> : <XCircle size={16} className="text-red-400 mt-1"/>}
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <p className="text-xs font-semibold text-gray-700">
+                      {m.media_km_l > 0 ? `${m.media_km_l.toFixed(2)} km/l` : '— km/l'}
+                    </p>
+                    {m.media_km_l >= META_MEDIA ? <CheckCircle size={16} className="text-green-500 mt-1"/> : <XCircle size={16} className="text-red-400 mt-1"/>}
+                  </div>
+                  <div className="flex flex-col items-center">
+                    {!m.tem_multa && !m.tem_avaria
+                      ? <CheckCircle size={16} className="text-green-500"/>
+                      : <div className="flex gap-1">
+                          {m.tem_multa  && <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">Multa</span>}
+                          {m.tem_avaria && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Avaria</span>}
+                        </div>}
+                  </div>
+                  <div className="flex justify-center">
+                    {m.aprovado
+                      ? <span className="bg-yellow-400 text-white text-xs font-bold px-3 py-1 rounded-full">🏆 Elegível</span>
+                      : <span className="bg-gray-100 text-gray-500 text-xs px-3 py-1 rounded-full">Não elegível</span>}
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   )
