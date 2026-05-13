@@ -258,7 +258,7 @@ export default function AbastecimentoPage() {
   }
 
   function voltar() { setSel(null); setConfirmExcluir(false) }
-  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg('', 4000)) }
+  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
   async function salvar() {
     if (!sel) return

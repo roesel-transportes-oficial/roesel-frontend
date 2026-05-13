@@ -130,7 +130,7 @@ export default function PremiosPage() {
       p.obs
     ]);
 
-    doc.autoTable({
+    (doc as any).autoTable({
       head: head,
       body: body,
       startY: 20,
@@ -194,7 +194,6 @@ export default function PremiosPage() {
     { v: '10', l: 'Outubro' }, { v: '11', l: 'Novembro'  }, { v: '12', l: 'Dezembro' },
   ]
   const anos      = ['2024', '2025', '2026', '2027']
-  const aprovados = ranking.filter(r => r.aprovado)
   const fmt       = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
 
   const pendentes = premios.filter(p => p.status === 'pendente')
@@ -359,12 +358,12 @@ export default function PremiosPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {r.tem_multa && <AlertTriangle size={16} className="text-yellow-500" title="Com Multa" />}
-                    {r.tem_avaria && <ShieldAlert size={16} className="text-red-500" title="Com Avaria" />}
+                    {r.tem_multa && <AlertTriangle size={16} className="text-yellow-500" />}
+                    {r.tem_avaria && <ShieldAlert size={16} className="text-red-500" />}
                     {r.aprovado ? (
-                      <CheckCircle size={20} className="text-green-500" title="Aprovado" />
+                      <CheckCircle size={20} className="text-green-500" />
                     ) : (
-                      <XCircle size={20} className="text-red-500" title="Não Aprovado" />
+                      <XCircle size={20} className="text-red-500" />
                     )}
                   </div>
                 </div>
