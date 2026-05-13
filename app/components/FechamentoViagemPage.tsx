@@ -7,7 +7,7 @@ import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCar
 type Motorista     = { id: string; nome: string; caminhao_id?: string }
 type Caminhao      = { id: string; placa: string }
 type Contrato      = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
-type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null }
+type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null; km?: number | null }
 type Fechamento    = { id: string; created_at: string; motorista: { nome: string }; caminhao: { placa: string }; data_inicio: string; data_fim: string; km_inicial: number; km_final: number; data_vencimento: string }
 
 export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
@@ -61,7 +61,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     if (!mot) return
     setMotoristaNome(mot.nome)
 
-    async function vincularCaminhaoEKm() {
+    async function vincularCaminhao() {
       // 1. Busca caminhão
       let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
       if (mot?.caminhao_id) {
@@ -72,7 +72,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       if (!cam) return
       setCaminhao(cam)
 
-      // 2. KM inicial = km_final do último fechamento deste caminhão
+      // KM inicial = km_final do último fechamento deste caminhão (apenas inicialização)
       const { data: ultimoFech } = await supabase
         .from("fechamento_viagens")
         .select("km_final")
@@ -81,32 +81,11 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         .limit(1)
         .maybeSingle()
 
-      // Busca abastecimentos para KM inicial (fallback) e KM final
-      const { data: abasts } = await supabase
-        .from("abastecimentos")
-        .select("km, data")
-        .eq("caminhao_id", cam.id)
-        .not("km", "is", null)
-        .gt("km", 0)
-        .order("data", { ascending: true })
-
       if (ultimoFech?.km_final) {
         setKmInicial(String(ultimoFech.km_final))
-      } else if (abasts && abasts.length > 0 && abasts[0].km) {
-        // Fallback: KM inicial do abastecimento mais antigo
-        setKmInicial(String(abasts[0].km))
-      } else {
-        setKmInicial("")
-      }
-
-      if (abasts && abasts.length > 0 && abasts[abasts.length - 1].km) {
-        // KM final do abastecimento mais recente
-        setKmFinal(String(abasts[abasts.length - 1].km))
-      } else {
-        setKmFinal("")
       }
     }
-    vincularCaminhaoEKm()
+    vincularCaminhao()
 
     supabase.from('contratos').select('id, contrato, fat_bruto, cliente, origem, destino')
       .order('created_at', { ascending: false }).limit(100)
@@ -119,7 +98,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     }
     setCarregandoAbast(true); setErro('')
     supabase.from('abastecimentos')
-      .select('id, data, posto, litros_combustivel, litros_arla, total')
+      .select('id, data, posto, litros_combustivel, litros_arla, total, km')
       .eq('caminhao_id', caminhao.id)
       .gte('data', abastDataInicio).lte('data', abastDataFim)
       .order('data')
@@ -153,6 +132,34 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     () => abastecimentos.filter(a => abastSelecionados.has(a.id)),
     [abastecimentos, abastSelecionados]
   )
+
+  // ✅ Atualiza KM Inicial e Final dinamicamente com base nos abastecimentos selecionados
+  useEffect(() => {
+    if (abastAtivos.length > 0) {
+      const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
+      if (kms.length > 0) {
+        // KM Inicial: menor KM entre os selecionados
+        setKmInicial(String(Math.min(...kms)))
+        // KM Final: maior KM entre os selecionados
+        setKmFinal(String(Math.max(...kms)))
+      }
+    } else {
+      // Se nada selecionado, tenta voltar para o KM Inicial do último fechamento (se existir)
+      if (caminhao?.id) {
+        supabase.from('fechamento_viagens')
+          .select('km_final')
+          .eq('caminhao_id', caminhao.id)
+          .order('data_fim', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data?.km_final) setKmInicial(String(data.km_final))
+            else setKmInicial('')
+          })
+      }
+      setKmFinal('')
+    }
+  }, [abastAtivos, caminhao?.id])
 
   const resumo = useMemo(() => {
     const km      = (Number(kmFinal) || 0) - (Number(kmInicial) || 0)
@@ -219,7 +226,17 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     })
 
     setSalvando(false)
-    if (setAba) setAba('premios')
+    alert('✅ Fechamento realizado com sucesso!')
+    // Limpa os campos após salvar, mas permanece na página
+    setMotoristaId('')
+    setSelecionados([])
+    setAbastecimentos([])
+    setAbastSelecionados(new Set())
+    setKmInicial('')
+    setKmFinal('')
+    setDataInicio('')
+    setDataFim('')
+    setDataVencimento('')
   }
 
   return (
