@@ -2,13 +2,26 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { X, Search, Truck, User, Calendar, MapPin, Fuel, Download, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight } from 'lucide-react'
+import { X, Search, Truck, User, Calendar, MapPin, Fuel, Download, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight, Edit2, Plus } from 'lucide-react'
 
 type Motorista     = { id: string; nome: string; caminhao_id?: string }
 type Caminhao      = { id: string; placa: string }
 type Contrato      = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
 type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null }
-type Fechamento    = { id: string; created_at: string; motorista: { nome: string }; caminhao: { placa: string }; data_inicio: string; data_fim: string; km_inicial: number; km_final: number; data_vencimento: string }
+type Fechamento    = { 
+  id: string; 
+  created_at: string; 
+  motorista_id: string;
+  motorista: { nome: string }; 
+  caminhao_id: string;
+  caminhao: { placa: string }; 
+  data_inicio: string; 
+  data_fim: string; 
+  km_inicial: number; 
+  km_final: number; 
+  data_vencimento: string;
+  status_financeiro: string;
+}
 
 export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
   const [motoristas, setMotoristas]               = useState<Motorista[]>([])
@@ -34,28 +47,48 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [salvando, setSalvando]   = useState(false)
   const [erro, setErro]           = useState('')
   const [abaAtiva, setAbaAtiva]   = useState<'novo' | 'historico'>('novo')
+  const [editandoId, setEditandoId] = useState<string | null>(null)
 
+  // Carregar motoristas
   useEffect(() => {
     supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
       .then(({ data }) => data && setMotoristas(data))
   }, [])
 
+  // Carregar histórico
+  const carregarHistorico = async () => {
+    setCarregandoHistorico(true)
+    const { data, error } = await supabase.from('fechamento_viagens')
+      .select(`
+        id, created_at, data_inicio, data_fim, km_inicial, km_final, data_vencimento, motorista_id, caminhao_id, status_financeiro,
+        motorista:motoristas(nome), 
+        caminhao:caminhoes(placa)
+      `)
+      .order('created_at', { ascending: false })
+    
+    setCarregandoHistorico(false)
+    if (data) setHistorico(data as any)
+    if (error) console.error('Erro ao carregar histórico:', error)
+  }
+
   useEffect(() => {
     if (abaAtiva === 'historico') {
-      setCarregandoHistorico(true)
-      supabase.from('fechamento_viagens')
-        .select(`id, created_at, data_inicio, data_fim, km_inicial, km_final, data_vencimento,
-          motorista:motoristas(nome), caminhao:caminhoes(placa)`)
-        .order('created_at', { ascending: false })
-        .then(({ data }) => { setCarregandoHistorico(false); if (data) setHistorico(data as any) })
+      carregarHistorico()
     }
   }, [abaAtiva])
 
+  // Vincular caminhão e carregar contratos ao selecionar motorista
   useEffect(() => {
-    if (!motoristaId) { setCaminhao(null); setContratosDisponiveis([]); setMotoristaNome(''); return }
+    if (!motoristaId) { 
+      if (!editandoId) {
+        setCaminhao(null); 
+        setContratosDisponiveis([]); 
+        setMotoristaNome(''); 
+      }
+      return 
+    }
     const mot = motoristas.find(m => m.id === motoristaId)
-    if (!mot) return
-    setMotoristaNome(mot.nome)
+    if (mot) setMotoristaNome(mot.nome)
 
     async function vincularCaminhao() {
       let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
@@ -71,8 +104,9 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     supabase.from('contratos').select('id, contrato, fat_bruto, cliente, origem, destino')
       .order('created_at', { ascending: false }).limit(100)
       .then(({ data }) => { if (data) setContratosDisponiveis(data) })
-  }, [motoristaId, motoristas])
+  }, [motoristaId, motoristas, editandoId])
 
+  // Carregar abastecimentos do caminhão no período
   useEffect(() => {
     if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
       setAbastecimentos([]); setAbastSelecionados(new Set()); return
@@ -88,9 +122,63 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         if (error) { setErro('Erro: ' + error.message); return }
         const lista = data || []
         setAbastecimentos(lista)
-        setAbastSelecionados(new Set(lista.map(a => a.id)))
+        // Se não estiver editando, seleciona todos por padrão
+        if (!editandoId) {
+          setAbastSelecionados(new Set(lista.map(a => a.id)))
+        }
       })
-  }, [caminhao?.id, abastDataInicio, abastDataFim])
+  }, [caminhao?.id, abastDataInicio, abastDataFim, editandoId])
+
+  function limparFormulario() {
+    setEditandoId(null)
+    setMotoristaId('')
+    setMotoristaNome('')
+    setCaminhao(null)
+    setDataInicio('')
+    setDataFim('')
+    setKmInicial('')
+    setKmFinal('')
+    setDataVencimento('')
+    setSelecionados([])
+    setAbastecimentos([])
+    setAbastSelecionados(new Set())
+    setErro('')
+  }
+
+  async function prepararEdicao(f: Fechamento) {
+    setEditandoId(f.id)
+    setMotoristaId(f.motorista_id)
+    setDataInicio(f.data_inicio)
+    setDataFim(f.data_fim)
+    setKmInicial(f.km_inicial.toString())
+    setKmFinal(f.km_final.toString())
+    setDataVencimento(f.data_vencimento)
+    
+    // Carregar contratos já vinculados
+    const { data: cVinculados } = await supabase
+      .from('fechamento_contratos')
+      .select('contrato_id, contratos(*)')
+      .eq('fechamento_id', f.id)
+    
+    if (cVinculados) {
+      setSelecionados(cVinculados.map(cv => cv.contratos as any))
+    }
+
+    // Carregar abastecimentos já vinculados
+    const { data: aVinculados } = await supabase
+      .from('fechamento_abastecimentos')
+      .select('abastecimento_id')
+      .eq('fechamento_id', f.id)
+    
+    if (aVinculados) {
+      setAbastSelecionados(new Set(aVinculados.map(av => av.abastecimento_id)))
+      // Ajustar datas de busca para englobar os abastecimentos vinculados
+      setAbastDataInicio(f.data_inicio)
+      setAbastDataFim(f.data_fim)
+    }
+
+    setAbaAtiva('novo')
+  }
 
   function adicionarContrato(c: Contrato) { setSelecionados(prev => [...prev, c]); setBuscaContrato('') }
   function removerContrato(id: string) { setSelecionados(prev => prev.filter(c => c.id !== id)) }
@@ -130,7 +218,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     if (!buscaHistorico) return historico
     const b = buscaHistorico.toLowerCase()
     return historico.filter(h =>
-      h.motorista.nome.toLowerCase().includes(b) || h.caminhao.placa.toLowerCase().includes(b)
+      h.motorista?.nome?.toLowerCase().includes(b) || h.caminhao?.placa?.toLowerCase().includes(b)
     )
   }, [historico, buscaHistorico])
 
@@ -142,27 +230,54 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     if (selecionados.length === 0) { setErro('Adicione ao menos um contrato.'); return }
     setSalvando(true)
 
-    const { data: fech, error } = await supabase.from('fechamento_viagens').insert({
+    const dadosFechamento = {
       motorista_id: motoristaId,
       caminhao_id: caminhao?.id || null,
-      data_inicio: dataInicio, data_fim: dataFim,
-      km_inicial: Number(kmInicial), km_final: Number(kmFinal),
+      data_inicio: dataInicio, 
+      data_fim: dataFim,
+      km_inicial: Number(kmInicial), 
+      km_final: Number(kmFinal),
       data_vencimento: dataVencimento,
       status_financeiro: 'pendente'
-    }).select().single()
+    }
 
-    if (error || !fech) { setErro('Erro ao salvar: ' + error?.message); setSalvando(false); return }
+    let fechId = editandoId
+    let errorFech = null
+
+    if (editandoId) {
+      const { error } = await supabase.from('fechamento_viagens').update(dadosFechamento).eq('id', editandoId)
+      errorFech = error
+    } else {
+      const { data, error } = await supabase.from('fechamento_viagens').insert(dadosFechamento).select().single()
+      if (data) fechId = data.id
+      errorFech = error
+    }
+
+    if (errorFech || !fechId) { 
+      setErro('Erro ao salvar: ' + errorFech?.message); 
+      setSalvando(false); 
+      return 
+    }
+
+    // Se for edição, limpar vínculos antigos antes de inserir novos
+    if (editandoId) {
+      await Promise.all([
+        supabase.from('fechamento_contratos').delete().eq('fechamento_id', fechId),
+        supabase.from('fechamento_abastecimentos').delete().eq('fechamento_id', fechId)
+      ])
+    }
 
     await Promise.all([
       supabase.from('fechamento_contratos').insert(
-        selecionados.map(c => ({ fechamento_id: fech.id, contrato_id: c.id }))
+        selecionados.map(c => ({ fechamento_id: fechId, contrato_id: c.id }))
       ),
       abastAtivos.length > 0 && supabase.from('fechamento_abastecimentos').insert(
-        abastAtivos.map(a => ({ fechamento_id: fech.id, abastecimento_id: a.id }))
+        abastAtivos.map(a => ({ fechamento_id: fechId, abastecimento_id: a.id }))
       )
     ])
 
-    await supabase.from('premios').insert({
+    // Atualizar ou Criar Prêmio
+    const dadosPremio = {
       motorista: motoristaNome,
       status: 'pendente',
       valor: resumo.comissao,
@@ -176,10 +291,14 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         `Média: ${resumo.mediaKmL > 0 ? fmt(resumo.mediaKmL) + ' km/L' : '—'}`,
         `Comissão 10%: R$ ${fmt(resumo.comissao)}`,
       ].join(' | ')
-    })
+    }
+
+    await supabase.from('premios').insert(dadosPremio)
 
     setSalvando(false)
+    limparFormulario()
     if (setAba) setAba('premios')
+    else setAbaAtiva('historico')
   }
 
   return (
@@ -190,10 +309,10 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
           <p className="text-sm text-gray-500">Gestão de viagens, contratos e abastecimentos</p>
         </div>
         <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
-          <button onClick={() => setAbaAtiva('novo')}
+          <button onClick={() => { setAbaAtiva('novo'); if (!editandoId) limparFormulario(); }}
             className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
               ${abaAtiva === 'novo' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            Novo Fechamento
+            {editandoId ? 'Editando Fechamento' : 'Novo Fechamento'}
           </button>
           <button onClick={() => setAbaAtiva('historico')}
             className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
@@ -210,9 +329,12 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
             <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-2xl border border-gray-800 grid grid-cols-2 md:grid-cols-5 gap-6">
               <div><p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Distância</p><p className="text-2xl font-bold mt-1">{resumo.km > 0 ? `${resumo.km.toLocaleString('pt-BR')} km` : '—'}</p></div>
               <div><p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Combustível</p><p className="text-2xl font-bold text-blue-400 mt-1">{resumo.litros > 0 ? `${fmt(resumo.litros)} L` : '—'}</p></div>
-              <div><p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Média KM/L</p><p className="text-2xl font-bold text-green-400 mt-1">{resumo.mediaKmL > 0 ? fmt(resumo.mediaKmL) : '—'}</p></div>
-              <div><p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Total Frete</p><p className="text-2xl font-bold text-yellow-400 mt-1">{resumo.frete > 0 ? `R$ ${fmt(resumo.frete)}` : '—'}</p></div>
-              <div><p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Comissão (10%)</p><p className="text-2xl font-bold text-green-400 mt-1">{resumo.comissao > 0 ? `R$ ${fmt(resumo.comissao)}` : '—'}</p></div>
+              <div><p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Média</p><p className="text-2xl font-bold text-green-400 mt-1">{resumo.mediaKmL > 0 ? `${fmt(resumo.mediaKmL)} km/L` : '—'}</p></div>
+              <div><p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Frete Total</p><p className="text-2xl font-bold mt-1">R$ {fmt(resumo.frete)}</p></div>
+              <div className="bg-red-600/20 p-3 rounded-xl border border-red-600/30">
+                <p className="text-red-400 text-[10px] font-black uppercase tracking-widest">Comissão 10%</p>
+                <p className="text-2xl font-black text-red-500 mt-1">R$ {fmt(resumo.comissao)}</p>
+              </div>
             </div>
           </div>
 
@@ -221,6 +343,14 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
               {/* ── Motorista + Datas + KM ── */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
+                <div className="flex justify-between items-center">
+                   <h2 className="text-sm font-black text-gray-700 uppercase tracking-widest">Dados da Viagem</h2>
+                   {editandoId && (
+                     <button onClick={limparFormulario} className="text-xs font-bold text-red-600 flex items-center gap-1 hover:underline">
+                       <Plus size={14} /> Criar Novo em vez de editar
+                     </button>
+                   )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
@@ -398,80 +528,88 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                     </button>
                   ))}
                 </div>
-                {selecionados.length > 0 && (
-                  <div className="p-4 bg-red-600 text-white">
-                    <h3 className="text-[10px] font-black uppercase tracking-widest mb-3 opacity-90">
-                      Selecionados ({selecionados.length})
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {selecionados.map(c => (
-                        <div key={c.id} className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl pl-3 pr-2 py-1.5">
-                          <span className="text-xs font-black">#{c.contrato}</span>
-                          <button onClick={() => removerContrato(c.id)}><X size={12} /></button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-white/20 flex justify-between text-xs">
-                      <span className="text-white/70 font-bold uppercase">Frete Total</span>
-                      <span className="font-black">{resumo.frete > 0 ? `R$ ${fmt(resumo.frete)}` : '—'}</span>
-                    </div>
-                    <div className="flex justify-between text-xs mt-1">
-                      <span className="text-white/70 font-bold uppercase">Comissão 10%</span>
-                      <span className="font-black text-green-300">{resumo.comissao > 0 ? `R$ ${fmt(resumo.comissao)}` : '—'}</span>
-                    </div>
+                
+                {/* Selecionados */}
+                <div className="p-5 bg-gray-900 border-t border-gray-800">
+                  <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Selecionados ({selecionados.length})</h3>
+                  <div className="space-y-2 mb-6">
+                    {selecionados.map(s => (
+                      <div key={s.id} className="flex items-center justify-between bg-gray-800/50 p-2 rounded-lg border border-gray-700">
+                        <span className="text-xs font-bold text-white">#{s.contrato}</span>
+                        <button onClick={() => removerContrato(s.id)} className="text-gray-500 hover:text-red-500"><X size={14} /></button>
+                      </div>
+                    ))}
                   </div>
-                )}
+                  <button onClick={salvar} disabled={salvando}
+                    className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest transition-all shadow-lg flex items-center justify-center gap-3">
+                    {salvando ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Finalizar Fechamento'}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-
-          {/* ── Salvar ── */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-gray-200">
-            <div className="flex-1 text-sm font-bold">
-              {erro && <span className="text-red-600">⚠️ {erro}</span>}
-            </div>
-            <button onClick={salvar}
-              disabled={!motoristaId || selecionados.length === 0 || salvando}
-              className="w-full md:w-auto bg-red-600 text-white px-16 py-5 rounded-2xl font-black text-base uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 shadow-2xl shadow-red-200 transition-all active:scale-95">
-              {salvando ? 'Processando...' : 'Finalizar Fechamento'}
-            </button>
           </div>
         </>
       ) : (
         /* ── Histórico ── */
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-md">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Pesquisar..." value={buscaHistorico}
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Buscar no histórico..." value={buscaHistorico}
                 onChange={e => setBuscaHistorico(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-sm font-medium" />
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all" />
             </div>
+            <button onClick={carregarHistorico} className="text-xs font-bold text-red-600 hover:underline">Atualizar Lista</button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100">
-                  {['Data', 'Motorista / Placa', 'Período', 'KM Rodado', 'Vencimento'].map(h => (
-                    <th key={h} className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{h}</th>
-                  ))}
+                <tr className="bg-gray-50/50">
+                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">Data</th>
+                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">Motorista / Placa</th>
+                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">Período</th>
+                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">KM Rodado</th>
+                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">Status</th>
+                  <th className="p-4 text-[10px] font-black text-gray-400 uppercase tracking-widest border-b">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {carregandoHistorico ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+                  <tr><td colSpan={6} className="p-10 text-center"><div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" /></td></tr>
                 ) : historicoFiltrado.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
+                  <tr><td colSpan={6} className="p-10 text-center text-gray-400 italic">Nenhum fechamento encontrado.</td></tr>
                 ) : historicoFiltrado.map(h => (
                   <tr key={h.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-black text-gray-900">{h.motorista.nome}</p>
-                      <p className="text-[10px] font-bold text-red-600">{h.caminhao.placa}</p>
+                    <td className="p-4">
+                      <p className="text-xs font-black text-gray-900">{new Date(h.created_at).toLocaleDateString('pt-BR')}</p>
+                      <p className="text-[10px] text-gray-400">{new Date(h.created_at).toLocaleTimeString('pt-BR', { hour: '2-2-digit', minute: '2-2-digit' })}</p>
                     </td>
-                    <td className="px-6 py-4 text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</td>
-                    <td className="px-6 py-4 text-xs font-bold text-gray-700">{(h.km_final - h.km_inicial).toLocaleString('pt-BR')} km</td>
-                    <td className="px-6 py-4 text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</td>
+                    <td className="p-4">
+                      <p className="text-xs font-black text-gray-900 uppercase">{h.motorista?.nome || '—'}</p>
+                      <p className="text-[10px] font-bold text-red-600 uppercase">{h.caminhao?.placa || '—'}</p>
+                    </td>
+                    <td className="p-4">
+                      <p className="text-[10px] font-bold text-gray-600 uppercase">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</p>
+                    </td>
+                    <td className="p-4">
+                      <p className="text-xs font-black text-gray-900">{(h.km_final - h.km_inicial).toLocaleString('pt-BR')} km</p>
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest
+                        ${h.status_financeiro === 'pago' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                        {h.status_financeiro}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex gap-2">
+                        <button onClick={() => prepararEdicao(h)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                          <Edit2 size={16} />
+                        </button>
+                        <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all">
+                          <Download size={16} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
