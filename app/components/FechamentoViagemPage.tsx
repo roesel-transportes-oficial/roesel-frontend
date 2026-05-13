@@ -34,6 +34,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [salvando, setSalvando]   = useState(false)
   const [erro, setErro]           = useState('')
   const [abaAtiva, setAbaAtiva]   = useState<'novo' | 'historico'>('novo')
+  const [sucesso, setSucesso]     = useState(false)
 
   useEffect(() => {
     supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
@@ -236,7 +237,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     })
 
     setSalvando(false)
-    alert('✅ Fechamento realizado com sucesso!')
+    setSucesso(true)
+    setTimeout(() => setSucesso(false), 5000)
     
     // Atualiza o histórico imediatamente
     fetchHistorico()
@@ -254,7 +256,22 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen">
+    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen relative">
+      {/* Notificação de Sucesso */}
+      {sucesso && (
+        <div className="fixed top-6 right-6 z-[100] animate-in slide-in-from-right-full duration-500">
+          <div className="bg-green-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 border border-green-500">
+            <CheckCircle2 size={20} className="text-green-100"/>
+            <div>
+              <p className="font-black text-sm uppercase tracking-widest">Sucesso!</p>
+              <p className="text-xs font-bold text-green-50 opacity-90">Fechamento realizado com sucesso.</p>
+            </div>
+            <button onClick={() => setSucesso(false)} className="ml-4 hover:bg-white/10 p-1 rounded-lg transition-colors">
+              <X size={16}/>
+            </button>
+          </div>
+        </div>
+      )}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Fechamento de Viagem</h1>
