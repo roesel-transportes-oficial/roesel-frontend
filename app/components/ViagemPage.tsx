@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
-import { Search, Plus, ArrowLeft, Save, Trash2, MapPin, X } from 'lucide-react'
+import { Search, Plus, Save, Trash2, MapPin, X, Palmtree } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -12,7 +12,7 @@ interface Viagem {
   valor_contrato: number; origem: string; destino: string
   valor_adiantamento: number; valor_chapa: number
 }
-interface Motorista { id: string; nome: string; adiantamento: boolean }
+interface Motorista { id: string; nome: string; adiantamento: boolean; ferias?: boolean }
 interface Caminhao  { id: string; placa: string; modelo: string }
 interface Contrato  {
   id: string; contrato: string; cliente: string; origem: string; destino: string
@@ -143,7 +143,6 @@ export default function ViagemPage() {
     } catch {}
   }
 
-  // ✅ Só mostra contratos SEM viagem vinculada (sem duplicatas)
   async function fetchContratos() {
     try {
       const resVC = await fetch(
@@ -154,15 +153,12 @@ export default function ViagemPage() {
       const jaVinculados = new Set(
         (Array.isArray(vcData) ? vcData : []).map((v: any) => v.contrato_id)
       )
-
       const res = await fetch(
         `${SUPABASE_URL}/rest/v1/contratos?order=contrato.desc`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       )
       const data = await res.json()
-      if (Array.isArray(data)) {
-        setContratos(data.filter((c: any) => !jaVinculados.has(c.id)))
-      }
+      if (Array.isArray(data)) setContratos(data.filter((c: any) => !jaVinculados.has(c.id)))
     } catch {}
   }
 
@@ -172,22 +168,72 @@ export default function ViagemPage() {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         const ids = data.map((d: any) => d.contrato_id)
-        // Para edição mostra todos os contratos da viagem (mesmo os já vinculados)
         const resC = await fetch(
           `${SUPABASE_URL}/rest/v1/contratos?id=in.(${ids.join(',')})`,
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
         )
         const contratosDaViagem = await resC.json()
         if (Array.isArray(contratosDaViagem)) setEditContratos(contratosDaViagem)
+      } else {
+        setEditContratos([])
       }
     } catch {}
   }
 
+  // ✅ Busca caminhão do motorista respeitando férias/substituto
+  async function buscarCaminhaoPorMotorista(nomeMotorista: string): Promise<{ id: string; placa: string } | null> {
+    try {
+      // 1. Busca o motorista pelo nome para pegar o ID
+      const resM = await fetch(
+        `${SUPABASE_URL}/rest/v1/motoristas?nome=eq.${encodeURIComponent(nomeMotorista)}&limit=1`,
+        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      )
+      const motData = await resM.json()
+      if (!Array.isArray(motData) || !motData[0]) return null
+
+      const motId = motData[0].id
+      const emFerias = motData[0].ferias === true
+
+      // 2. Busca o caminhão onde motorista_atual = motId
+      const resC = await fetch(
+        `${SUPABASE_URL}/rest/v1/caminhoes?motorista_atual=eq.${motId}&limit=1`,
+        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      )
+      const camData = await resC.json()
+      if (Array.isArray(camData) && camData[0]) return { id: camData[0].id, placa: camData[0].placa }
+
+      // 3. Se está de férias e tem caminhao_temp_id, usa esse
+      if (emFerias && motData[0].caminhao_temp_id) {
+        const resCT = await fetch(
+          `${SUPABASE_URL}/rest/v1/caminhoes?id=eq.${motData[0].caminhao_temp_id}&limit=1`,
+          { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+        )
+        const camTData = await resCT.json()
+        if (Array.isArray(camTData) && camTData[0]) return { id: camTData[0].id, placa: camTData[0].placa }
+      }
+
+      return null
+    } catch { return null }
+  }
+
+  // ✅ Busca caminhão por placa (fallback para viagens migradas)
+  async function buscarCaminhaoPorPlaca(placa: string): Promise<{ id: string; placa: string } | null> {
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/caminhoes?placa=eq.${encodeURIComponent(placa)}&limit=1`,
+        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
+      )
+      const data = await res.json()
+      if (Array.isArray(data) && data[0]) return { id: data[0].id, placa: data[0].placa }
+      return null
+    } catch { return null }
+  }
+
   function calcularAdiantamento(nomeMotorista: string, valorContrato: number): string {
     const motorista = motoristas.find(m => m.nome === nomeMotorista)
-    if (!motorista || !motorista.adiantamento || !valorContrato) return '0'
+    if (!motorista?.adiantamento || !valorContrato) return '0'
     return (valorContrato * 0.05).toFixed(2)
   }
 
@@ -197,12 +243,12 @@ export default function ViagemPage() {
     const totalValor    = lista.reduce((s, c) => s + (c.fat_bruto || 0), 0)
     const totalVeiculos = lista.reduce((s, c) => s + (c.qtd_veiculos || 0), 0)
     return {
-      empresa:      primeiro.cliente || '',
+      empresa:       primeiro.cliente || '',
       valorContrato: totalValor > 0 ? String(totalValor) : '',
-      qtdVeiculos:  totalVeiculos > 0 ? String(totalVeiculos) : '',
-      origem:       primeiro.origem || '',
-      destino:      primeiro.destino || '',
-      adiantamento: calcularAdiantamento(nomeMotorista, totalValor),
+      qtdVeiculos:   totalVeiculos > 0 ? String(totalVeiculos) : '',
+      origem:        primeiro.origem || '',
+      destino:       primeiro.destino || '',
+      adiantamento:  calcularAdiantamento(nomeMotorista, totalValor),
     }
   }
 
@@ -216,11 +262,10 @@ export default function ViagemPage() {
       )
     : viagens
 
+  // ✅ Ao abrir viagem: resolve caminhão + calcula adiantamento automaticamente
   async function selecionar(v: Viagem) {
     setSel(v)
     setEditMotorista(v.motorista || '')
-    setEditCaminhaoId(v.caminhao_id || '')
-    setEditCaminhaoPlaca(v.caminhao_placa || '')
     setEditStatus(v.status || 'EM ANDAMENTO')
     setEditObs(v.obs || '')
     setEditQtdVeiculos(String(v.qtd_veiculos || ''))
@@ -228,10 +273,43 @@ export default function ViagemPage() {
     setEditValorContrato(String(v.valor_contrato || ''))
     setEditOrigem(v.origem || '')
     setEditDestino(v.destino || '')
-    setEditValorAdiantamento(String(v.valor_adiantamento || ''))
     setEditValorChapa(String(v.valor_chapa || ''))
     setConfirmExcluir(false)
+
+    // Resolve caminhão: tenta por ID, depois por placa, depois pelo motorista
+    let caminhaoResolvido: { id: string; placa: string } | null = null
+
+    if (v.caminhao_id) {
+      caminhaoResolvido = { id: v.caminhao_id, placa: v.caminhao_placa }
+    } else if (v.caminhao_placa) {
+      caminhaoResolvido = await buscarCaminhaoPorPlaca(v.caminhao_placa)
+    }
+    if (!caminhaoResolvido && v.motorista) {
+      caminhaoResolvido = await buscarCaminhaoPorMotorista(v.motorista)
+    }
+
+    setEditCaminhaoId(caminhaoResolvido?.id || '')
+    setEditCaminhaoPlaca(caminhaoResolvido?.placa || v.caminhao_placa || '')
+
+    // Calcula adiantamento se não estiver definido
+    const valorContrato = v.valor_contrato || 0
+    if (v.valor_adiantamento) {
+      setEditValorAdiantamento(String(v.valor_adiantamento))
+    } else if (valorContrato > 0) {
+      setEditValorAdiantamento(calcularAdiantamento(v.motorista || '', valorContrato))
+    } else {
+      setEditValorAdiantamento('')
+    }
+
     await fetchContratosViagem(v.id)
+  }
+
+  // ✅ Ao selecionar motorista no formulário: auto-preenche caminhão
+  async function onMotoristaChange(nome: string, setCaminhaoId: (id: string) => void, setCaminhaoPlaca: (p: string) => void) {
+    if (!nome) { setCaminhaoId(''); setCaminhaoPlaca(''); return }
+    const cam = await buscarCaminhaoPorMotorista(nome)
+    if (cam) { setCaminhaoId(cam.id); setCaminhaoPlaca(cam.placa) }
+    else { setCaminhaoId(''); setCaminhaoPlaca('') }
   }
 
   async function salvarContratosViagem(viagemId: string, lista: Contrato[]) {
@@ -251,7 +329,7 @@ export default function ViagemPage() {
   function buildPayload(p: any) {
     return {
       motorista:          p.motorista,
-      caminhao_id:        p.caminhaoId,
+      caminhao_id:        p.caminhaoId || null,
       caminhao_placa:     p.caminhaoPlaca,
       status:             p.status,
       obs:                p.obs,
@@ -319,11 +397,13 @@ export default function ViagemPage() {
     setCadQtdVeiculos(''); setCadEmpresa(''); setCadValorContrato('')
     setCadOrigem(''); setCadDestino(''); setCadValorAdiantamento(''); setCadValorChapa('')
     setMostraCad(false); showMsg('✅ Viagem registrada!')
-    fetchContratos() // recarrega lista sem os vinculados
+    fetchContratos()
   }
 
   const cadTemAdiantamento  = motoristas.find(m => m.nome === cadMotorista)?.adiantamento
   const editTemAdiantamento = motoristas.find(m => m.nome === editMotorista)?.adiantamento
+  const editEmFerias        = motoristas.find(m => m.nome === editMotorista)?.ferias
+  const cadEmFerias         = motoristas.find(m => m.nome === cadMotorista)?.ferias
 
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -333,21 +413,33 @@ export default function ViagemPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-lg">Nova Viagem</h3>
         <div className="space-y-3">
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={LC}>Motorista *</label>
-              <select value={cadMotorista} onChange={e => {
-                const nome = e.target.value; setCadMotorista(nome)
+              <select value={cadMotorista} onChange={async e => {
+                const nome = e.target.value
+                setCadMotorista(nome)
+                // Auto-preenche caminhão
+                await onMotoristaChange(nome, setCadCaminhaoId, setCadCaminhaoPlaca)
+                // Recalcula adiantamento
                 const totalValor = cadContratos.reduce((s, c) => s + (c.fat_bruto || 0), 0)
                 if (totalValor > 0) setCadValorAdiantamento(calcularAdiantamento(nome, totalValor))
               }} className={IC}>
                 <option value="">Selecione...</option>
-                {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome} {m.adiantamento ? '· 💰' : ''}</option>)}
+                {motoristas.map(m => (
+                  <option key={m.id} value={m.nome}>
+                    {m.nome} {m.adiantamento ? '· 💰' : ''}{m.ferias ? ' · 🌴' : ''}
+                  </option>
+                ))}
               </select>
               {cadMotorista && (
-                <p className="text-xs mt-1 font-medium">
-                  {cadTemAdiantamento ? <span className="text-green-600">✅ Com adiantamento (5% do frete)</span> : <span className="text-gray-400">❌ Sem adiantamento</span>}
-                </p>
+                <div className="flex flex-col gap-0.5 mt-1">
+                  {cadTemAdiantamento
+                    ? <span className="text-xs text-green-600 font-medium">✅ Com adiantamento (5% do frete)</span>
+                    : <span className="text-xs text-gray-400">❌ Sem adiantamento</span>}
+                  {cadEmFerias && <span className="text-xs text-orange-500 font-medium">🌴 Motorista em férias</span>}
+                </div>
               )}
             </div>
             <div>
@@ -359,6 +451,9 @@ export default function ViagemPage() {
                 <option value="">Selecione...</option>
                 {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
               </select>
+              {cadCaminhaoPlaca && (
+                <p className="text-xs text-green-600 mt-1">✅ {cadCaminhaoPlaca} vinculado automaticamente</p>
+              )}
             </div>
           </div>
 
@@ -395,7 +490,10 @@ export default function ViagemPage() {
             </div>
             <div>
               <label className={LC}>Valor do Contrato (R$)</label>
-              <input type="number" step="0.01" value={cadValorContrato} onChange={e => { setCadValorContrato(e.target.value); setCadValorAdiantamento(calcularAdiantamento(cadMotorista, parseFloat(e.target.value) || 0)) }} className={IC} />
+              <input type="number" step="0.01" value={cadValorContrato} onChange={e => {
+                setCadValorContrato(e.target.value)
+                setCadValorAdiantamento(calcularAdiantamento(cadMotorista, parseFloat(e.target.value) || 0))
+              }} className={IC} />
             </div>
           </div>
 
@@ -443,9 +541,12 @@ export default function ViagemPage() {
                   <MapPin size={24} />
                 </div>
                 <div>
-                  <h2 className="text-white font-bold text-xl">{sel.motorista}</h2>
+                  <h2 className="text-white font-bold text-xl flex items-center gap-2">
+                    {sel.motorista}
+                    {editEmFerias && <span className="text-xs bg-orange-400 px-2 py-0.5 rounded-full flex items-center gap-1"><Palmtree size={10} /> Férias</span>}
+                  </h2>
                   <p className="text-white/80 text-sm">
-                    {sel.caminhao_placa} · {sel.status}{sel.empresa && ` · ${sel.empresa}`}
+                    {editCaminhaoPlaca || sel.caminhao_placa} · {sel.status}{sel.empresa && ` · ${sel.empresa}`}
                   </p>
                 </div>
               </div>
@@ -455,18 +556,29 @@ export default function ViagemPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LC}>Motorista *</label>
-                  <select value={editMotorista} onChange={e => {
-                    const nome = e.target.value; setEditMotorista(nome)
+                  <select value={editMotorista} onChange={async e => {
+                    const nome = e.target.value
+                    setEditMotorista(nome)
+                    // Auto-preenche caminhão
+                    await onMotoristaChange(nome, setEditCaminhaoId, setEditCaminhaoPlaca)
+                    // Recalcula adiantamento
                     const totalValor = editContratos.reduce((s, c) => s + (c.fat_bruto || 0), 0)
                     if (totalValor > 0) setEditValorAdiantamento(calcularAdiantamento(nome, totalValor))
                   }} className={IC}>
                     <option value="">Selecione...</option>
-                    {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome} {m.adiantamento ? '· 💰' : ''}</option>)}
+                    {motoristas.map(m => (
+                      <option key={m.id} value={m.nome}>
+                        {m.nome} {m.adiantamento ? '· 💰' : ''}{m.ferias ? ' · 🌴' : ''}
+                      </option>
+                    ))}
                   </select>
                   {editMotorista && (
-                    <p className="text-xs mt-1 font-medium">
-                      {editTemAdiantamento ? <span className="text-green-600">✅ Com adiantamento</span> : <span className="text-gray-400">❌ Sem adiantamento</span>}
-                    </p>
+                    <div className="flex flex-col gap-0.5 mt-1">
+                      {editTemAdiantamento
+                        ? <span className="text-xs text-green-600 font-medium">✅ Com adiantamento (5% do frete)</span>
+                        : <span className="text-xs text-gray-400">❌ Sem adiantamento</span>}
+                      {editEmFerias && <span className="text-xs text-orange-500 font-medium">🌴 Motorista em férias</span>}
+                    </div>
                   )}
                 </div>
                 <div>
@@ -478,6 +590,9 @@ export default function ViagemPage() {
                     <option value="">Selecione...</option>
                     {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
                   </select>
+                  {editCaminhaoPlaca && (
+                    <p className="text-xs text-green-600 mt-1">✅ {editCaminhaoPlaca}</p>
+                  )}
                 </div>
               </div>
 
@@ -515,7 +630,10 @@ export default function ViagemPage() {
                 </div>
                 <div>
                   <label className={LC}>Valor do Contrato (R$)</label>
-                  <input type="number" step="0.01" value={editValorContrato} onChange={e => { setEditValorContrato(e.target.value); setEditValorAdiantamento(calcularAdiantamento(editMotorista, parseFloat(e.target.value) || 0)) }} className={IC} />
+                  <input type="number" step="0.01" value={editValorContrato} onChange={e => {
+                    setEditValorContrato(e.target.value)
+                    setEditValorAdiantamento(calcularAdiantamento(editMotorista, parseFloat(e.target.value) || 0))
+                  }} className={IC} />
                 </div>
               </div>
 
@@ -583,34 +701,39 @@ export default function ViagemPage() {
                 <MapPin size={32} className="mx-auto text-gray-200 mb-2" />
                 <p className="text-sm text-gray-400">Nenhuma viagem registrada</p>
               </div>
-            ) : filtrados.map(v => (
-              <button key={v.id} onClick={() => selecionar(v)}
-                className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition border-b border-gray-50 last:border-0 text-left">
-                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 text-red-600">
-                  <MapPin size={18} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-900">{v.motorista}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {v.caminhao_placa}
-                    {v.empresa && ` · ${v.empresa}`}
-                    {v.origem && ` · ${v.origem} → ${v.destino}`}
-                  </p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  {v.valor_contrato > 0 && (
-                    <p className="text-xs font-semibold text-gray-700 mb-1">
-                      {v.valor_contrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            ) : filtrados.map(v => {
+              const motFerias = motoristas.find(m => m.nome === v.motorista)?.ferias
+              return (
+                <button key={v.id} onClick={() => selecionar(v)}
+                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition border-b border-gray-50 last:border-0 text-left">
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 text-red-600">
+                    {motFerias ? <Palmtree size={18} /> : <MapPin size={18} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      {v.motorista}
+                      {motFerias && <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold">Férias</span>}
                     </p>
-                  )}
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    v.status === 'FINALIZADA' ? 'bg-green-100 text-green-700' :
-                    v.status === 'CANCELADA'  ? 'bg-red-100 text-red-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>{v.status}</span>
-                </div>
-              </button>
-            ))}
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {v.caminhao_placa}{v.empresa && ` · ${v.empresa}`}
+                      {v.origem && ` · ${v.origem} → ${v.destino}`}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    {v.valor_contrato > 0 && (
+                      <p className="text-xs font-semibold text-gray-700 mb-1">
+                        {v.valor_contrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </p>
+                    )}
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      v.status === 'FINALIZADA' ? 'bg-green-100 text-green-700' :
+                      v.status === 'CANCELADA'  ? 'bg-red-100 text-red-700' :
+                      'bg-blue-100 text-blue-700'
+                    }`}>{v.status}</span>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </>
       )}
