@@ -8,7 +8,18 @@ type Motorista     = { id: string; nome: string; caminhao_id?: string }
 type Caminhao      = { id: string; placa: string }
 type Contrato      = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
 type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null; km?: number | null }
-type Fechamento    = { id: string; created_at: string; motorista: { nome: string }; caminhao: { placa: string }; data_inicio: string; data_fim: string; km_inicial: number; km_final: number; data_vencimento: string }
+type Fechamento    = { 
+  id: string; 
+  created_at: string; 
+  motorista: { nome: string }; 
+  caminhao: { placa: string }; 
+  data_inicio: string; 
+  data_fim: string; 
+  km_inicial: number; 
+  km_final: number; 
+  data_vencimento: string;
+  contratos?: { contrato: { origem: string; destino: string } }[]
+}
 
 export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
   const [motoristas, setMotoristas]               = useState<Motorista[]>([])
@@ -180,40 +191,40 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   async function fetchHistorico() {
     setCarregandoHistorico(true)
     try {
-      // Tenta a consulta completa com relacionamentos
       const { data, error } = await supabase.from('fechamento_viagens')
         .select(`
           *,
           motorista:motorista_id(nome),
-          caminhao:caminhao_id(placa)
+          caminhao:caminhao_id(placa),
+          contratos:fechamento_contratos(contrato:contrato_id(origem, destino))
         `)
         .order('created_at', { ascending: false })
       
-      if (error) {
-        console.warn('Erro na consulta completa, tentando consulta simples:', error)
-        // Fallback: Consulta simples sem relacionamentos se a completa falhar
-        const { data: simpleData, error: simpleError } = await supabase.from('fechamento_viagens')
-          .select('*')
-          .order('created_at', { ascending: false })
-        
-        if (simpleError) throw simpleError
-        
-        // Mapeia os dados simples para o formato esperado pelo componente
-        const mapped = (simpleData || []).map(item => ({
-          ...item,
-          motorista: { nome: 'Motorista #' + item.motorista_id?.slice(0,4) },
-          caminhao: { placa: 'Placa #' + item.caminhao_id?.slice(0,4) }
+      if (error) throw error
+      setHistorico(data as any)
+    } catch (err) {
+      console.error('Erro ao buscar histórico:', err)
+      // Fallback simples se o join falhar
+      const { data: simple } = await supabase.from('fechamento_viagens')
+        .select('*').order('created_at', { ascending: false })
+      if (simple) {
+        const mapped = simple.map(s => ({
+          ...s,
+          motorista: { nome: motoristas.find(m => m.id === s.motorista_id)?.nome || 'Motorista' },
+          caminhao: { placa: 'Caminhão' }
         }))
         setHistorico(mapped as any)
-      } else {
-        setHistorico(data as any)
       }
-    } catch (err) {
-      console.error('Erro fatal ao buscar histórico:', err)
-      alert('Erro ao carregar histórico. Verifique o console.')
     } finally {
       setCarregandoHistorico(false)
     }
+  }
+
+  async function excluirFechamento(id: string) {
+    if (!confirm('Tem certeza que deseja excluir este fechamento?')) return
+    const { error } = await supabase.from('fechamento_viagens').delete().eq('id', id)
+    if (error) alert('Erro ao excluir: ' + error.message)
+    else fetchHistorico()
   }
 
   async function salvar() {
@@ -615,26 +626,41 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100">
-                  {['Data', 'Motorista / Placa', 'Período', 'KM Rodado', 'Vencimento'].map(h => (
+                  {['Data', 'Motorista / Placa', 'Período / Destinos', 'KM Rodado', 'Vencimento', ''].map(h => (
                     <th key={h} className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {carregandoHistorico ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+                  <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
                 ) : historicoFiltrado.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
+                  <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
                 ) : historicoFiltrado.map(h => (
-                  <tr key={h.id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr key={h.id} className="hover:bg-gray-50/50 transition-colors group">
                     <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
                     <td className="px-6 py-4">
-                      <p className="text-sm font-black text-gray-900">{h.motorista.nome}</p>
-                      <p className="text-[10px] font-bold text-red-600">{h.caminhao.placa}</p>
+                      <p className="text-sm font-black text-gray-900">{h.motorista?.nome || '—'}</p>
+                      <p className="text-[10px] font-bold text-red-600">{h.caminhao?.placa || '—'}</p>
                     </td>
-                    <td className="px-6 py-4 text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</td>
+                    <td className="px-6 py-4">
+                      <p className="text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {h.contratos?.map((c, i) => (
+                          <span key={i} className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">
+                            {c.contrato?.origem} → {c.contrato?.destino}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 text-xs font-bold text-gray-700">{(h.km_final - h.km_inicial).toLocaleString('pt-BR')} km</td>
                     <td className="px-6 py-4 text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</td>
+                    <td className="px-6 py-4 text-right">
+                      <button onClick={() => excluirFechamento(h.id)} 
+                        className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
+                        <X size={16}/>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
