@@ -74,15 +74,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
       // 2. KM inicial = km_final do último fechamento deste caminhão
       const { data: ultimoFech } = await supabase
-        .from('fechamento_viagens')
-        .select('km_final')
-        .eq('caminhao_id', cam.id)
-        .order('data_fim', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      // 2. KM inicial = km_final do último fechamento deste caminhão
-      const { data: ultimoFech } = await supabase
         .from("fechamento_viagens")
         .select("km_final")
         .eq("caminhao_id", cam.id)
