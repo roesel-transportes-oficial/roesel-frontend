@@ -203,13 +203,20 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     const { data: fech, error } = await supabase.from('fechamento_viagens').insert({
       motorista_id: motoristaId,
       caminhao_id: caminhao?.id || null,
-      data_inicio: dataInicio, data_fim: dataFim,
-      km_inicial: Number(kmInicial), km_final: Number(kmFinal),
+      data_inicio: dataInicio,
+      data_fim: dataFim,
+      km_inicial: Number(kmInicial),
+      km_final: Number(kmFinal),
       data_vencimento: dataVencimento,
       status_financeiro: 'pendente'
-    }).select().single()
+    }).select('id').single()
 
-    if (error || !fech) { setErro('Erro ao salvar: ' + error?.message); setSalvando(false); return }
+    if (error || !fech) {
+      console.error('Erro Supabase:', error)
+      setErro('Erro ao salvar no Supabase: ' + error?.message)
+      setSalvando(false)
+      return
+    }
 
     await Promise.all([
       supabase.from('fechamento_contratos').insert(
@@ -241,7 +248,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     setTimeout(() => setSucesso(false), 5000)
     
     // Atualiza o histórico imediatamente
-    fetchHistorico()
+    setTimeout(() => fetchHistorico(), 500)
 
     // Limpa os campos após salvar, mas permanece na página
     setMotoristaId('')
