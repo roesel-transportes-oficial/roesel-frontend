@@ -1,549 +1,543 @@
 'use client'
+import { useState, useEffect } from 'react'
+import { motoristasAPI, caminhoesAPI } from '../services/api'
+import { useAuth } from '../services/auth'
+import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, User, AlertTriangle, Clock } from 'lucide-react'
 
-import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../services/supabase'
-import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight } from 'lucide-react'
+interface Motorista {
+  id: string; nome: string; cpf: string; rg: string
+  tipo: string; ativo: boolean; adiantamento: boolean
+  dt_desligamento: string
+  vencimento_cnh: string; vencimento_permisso: string; vencimento_toxicologico: string
+  vencimento_periodico: string
+  caminhao_id: string; caminhao_temp_id: string; de_ferias: boolean
+  ferias_inicio: string; ferias_fim: string; substituto_id: string
+}
+interface Caminhao { id: string; placa: string; modelo: string; motorista_atual: string }
 
-type Motorista     = { id: string; nome: string; caminhao_id?: string }
-type Caminhao      = { id: string; placa: string }
-type Contrato      = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
-type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null }
-type Fechamento    = { id: string; created_at: string; motorista: { nome: string }; caminhao: { placa: string }; data_inicio: string; data_fim: string; km_inicial: number; km_final: number; data_vencimento: string }
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 
-export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
-  const [motoristas, setMotoristas]               = useState<Motorista[]>([])
-  const [motoristaId, setMotoristaId]             = useState('')
-  const [motoristaNome, setMotoristaNome]         = useState('')
-  const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
-  const [dataInicio, setDataInicio]               = useState('')
-  const [dataFim, setDataFim]                     = useState('')
-  const [kmInicial, setKmInicial]                 = useState('')
-  const [kmFinal, setKmFinal]                     = useState('')
-  const [dataVencimento, setDataVencimento]       = useState('')
-  const [abastDataInicio, setAbastDataInicio]     = useState('')
-  const [abastDataFim, setAbastDataFim]           = useState('')
-  const [buscaContrato, setBuscaContrato]         = useState('')
-  const [contratosDisponiveis, setContratosDisponiveis] = useState<Contrato[]>([])
-  const [selecionados, setSelecionados]           = useState<Contrato[]>([])
-  const [abastecimentos, setAbastecimentos]       = useState<Abastecimento[]>([])
-  const [abastSelecionados, setAbastSelecionados] = useState<Set<string>>(new Set())
-  const [carregandoAbast, setCarregandoAbast]     = useState(false)
-  const [historico, setHistorico]                 = useState<Fechamento[]>([])
-  const [buscaHistorico, setBuscaHistorico]       = useState('')
-  const [carregandoHistorico, setCarregandoHistorico] = useState(false)
-  const [salvando, setSalvando]   = useState(false)
-  const [erro, setErro]           = useState('')
-  const [abaAtiva, setAbaAtiva]   = useState<'novo' | 'historico'>('novo')
+function fmtCpf(v: string) {
+  const d = v.replace(/\D/g,'').slice(0,11)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `${d.slice(0,3)}.${d.slice(3)}`
+  if (d.length <= 9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`
+  return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`
+}
+
+function diasParaVencer(data: string) {
+  if (!data) return null
+  const hoje = new Date()
+  const venc = new Date(data + 'T00:00:00')
+  return Math.ceil((venc.getTime() - hoje.getTime()) / (1000*60*60*24))
+}
+
+function vencStatus(data: string) {
+  const dias = diasParaVencer(data)
+  if (dias === null) return null
+  if (dias < 0) return 'vencido'
+  if (dias <= 15) return 'critico'
+  if (dias <= 30) return 'alerta'
+  return 'ok'
+}
+
+function fmtData(d: string) {
+  if (!d) return '—'
+  const [y, m, dia] = d.split('-')
+  return `${dia}/${m}/${y}`
+}
+
+function AlertasVencimento({ motorista }: { motorista: Motorista }) {
+  const campos = [
+    { label: 'CNH', data: motorista.vencimento_cnh },
+    { label: 'Permisso', data: motorista.vencimento_permisso },
+    { label: 'Toxicológico', data: motorista.vencimento_toxicologico },
+    { label: 'Periódico', data: motorista.vencimento_periodico },
+  ]
+  const alertas = campos.filter(c => ['vencido','critico','alerta'].includes(vencStatus(c.data)||''))
+  if (alertas.length === 0) return null
+  return (
+    <div className="space-y-2 mb-4">
+      {alertas.map(c => {
+        const dias = diasParaVencer(c.data)
+        const s = vencStatus(c.data)
+        return (
+          <div key={c.label} className={`flex items-center gap-3 p-3 rounded-xl text-sm ${
+            s === 'vencido' ? 'bg-red-50 border border-red-200' :
+            s === 'critico' ? 'bg-orange-50 border border-orange-200' :
+            'bg-yellow-50 border border-yellow-200'}`}>
+            {s === 'vencido'
+              ? <AlertTriangle size={16} className="text-red-500 flex-shrink-0"/>
+              : <Clock size={16} className={s === 'critico' ? 'text-orange-500 flex-shrink-0' : 'text-yellow-500 flex-shrink-0'}/>}
+            <span className={s === 'vencido' ? 'text-red-700' : s === 'critico' ? 'text-orange-700' : 'text-yellow-700'}>
+              {s === 'vencido'
+                ? `⚠️ ${motorista.nome} — ${c.label} vencido há ${Math.abs(dias!)} dia(s)`
+                : s === 'critico'
+                ? `🔴 ${motorista.nome} — ${c.label} vence em ${dias} dia(s) — renovação urgente`
+                : `🟡 ${motorista.nome} — ${c.label} vence em ${dias} dia(s) — iniciar renovação`}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function MotoristaPage() {
+  const { perm } = useAuth()
+  const [motoristas, setMotoristas] = useState<Motorista[]>([])
+  const [caminhoes, setCaminhoes]   = useState<Caminhao[]>([])
+  const [busca, setBusca]           = useState('')
+  const [sel, setSel]               = useState<Motorista | null>(null)
+  const [mostraCad, setMostraCad]   = useState(false)
+  const [loading, setLoading]       = useState(false)
+  const [msg, setMsg]               = useState('')
+  const [confirmExcluir, setConfirmExcluir] = useState(false)
+
+  const [editNome, setEditNome]                   = useState('')
+  const [editCpf, setEditCpf]                     = useState('')
+  const [editRg, setEditRg]                       = useState('')
+  const [editTipo, setEditTipo]                   = useState('Com adiantamento')
+  const [editAtivo, setEditAtivo]                 = useState(true)
+  const [editAdiantamento, setEditAdiantamento]   = useState(true)
+  const [editDtDesligamento, setEditDtDesligamento] = useState('')
+  const [editCnh, setEditCnh]                     = useState('')
+  const [editPermisso, setEditPermisso]           = useState('')
+  const [editToxico, setEditToxico]               = useState('')
+  const [editPeriodico, setEditPeriodico]         = useState('')
+  const [editCaminhaoId, setEditCaminhaoId]       = useState('')
+  const [editDeFerias, setEditDeFerias]           = useState(false)
+  const [editFeriasInicio, setEditFeriasInicio]   = useState('')
+  const [editFeriasFim, setEditFeriasFim]         = useState('')
+  const [editSubstitutoId, setEditSubstitutoId]   = useState('')
+
+  const [cadNome, setCadNome]         = useState('')
+  const [cadCpf, setCadCpf]           = useState('')
+  const [cadRg, setCadRg]             = useState('')
+  const [cadTipo, setCadTipo]         = useState('Com adiantamento')
+  const [cadCnh, setCadCnh]           = useState('')
+  const [cadPermisso, setCadPermisso] = useState('')
+  const [cadToxico, setCadToxico]     = useState('')
+  const [cadPeriodico, setCadPeriodico] = useState('')
 
   useEffect(() => {
-    supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
-      .then(({ data }) => data && setMotoristas(data))
+    fetch_()
+    caminhoesAPI.listar().then(setCaminhoes).catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (abaAtiva === 'historico') {
-      setCarregandoHistorico(true)
-      supabase.from('fechamento_viagens')
-        .select(`id, created_at, data_inicio, data_fim, km_inicial, km_final, data_vencimento,
-          motorista:motoristas(nome), caminhao:caminhoes(placa)`)
-        .order('created_at', { ascending: false })
-        .then(({ data }) => { setCarregandoHistorico(false); if (data) setHistorico(data as any) })
-    }
-  }, [abaAtiva])
-
-  // ✅ Motorista → caminhão + KM inicial automático
-  useEffect(() => {
-    if (!motoristaId) {
-      setCaminhao(null); setContratosDisponiveis([]); setMotoristaNome('')
-      setKmInicial(''); setKmFinal(''); return
-    }
-    const mot = motoristas.find(m => m.id === motoristaId)
-    if (!mot) return
-    setMotoristaNome(mot.nome)
-
-    async function vincularCaminhaoEKm() {
-      // 1. Busca caminhão
-      let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
-      if (mot?.caminhao_id) {
-        q = supabase.from('caminhoes').select('id, placa')
-          .or(`id.eq.${mot.caminhao_id},motorista_atual.eq.${motoristaId}`)
-      }
-      const { data: cam } = await q.maybeSingle()
-      if (!cam) return
-      setCaminhao(cam)
-
-      // 2. KM inicial = km_final do último fechamento deste caminhão
-      const { data: ultimoFech } = await supabase
-        .from('fechamento_viagens')
-        .select('km_final')
-        .eq('caminhao_id', cam.id)
-        .order('data_fim', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (ultimoFech?.km_final) {
-        setKmInicial(String(ultimoFech.km_final))
-        setKmFinal('')
-      } else {
-        // 3. Fallback: usa abastecimentos (menor data = km inicial, maior data = km final)
-        const { data: abasts } = await supabase
-          .from('abastecimentos')
-          .select('km, data')
-          .eq('caminhao_id', cam.id)
-          .not('km', 'is', null)
-          .gt('km', 0)
-          .order('data', { ascending: true })
-
-        if (abasts && abasts.length > 0) {
-          const kms = abasts.map(a => a.km).filter(k => k > 0)
-          if (kms.length > 0) {
-            setKmInicial(String(Math.min(...kms)))
-            if (kms.length > 1) setKmFinal(String(Math.max(...kms)))
-          }
-        }
-      }
-    }
-    vincularCaminhaoEKm()
-
-    supabase.from('contratos').select('id, contrato, fat_bruto, cliente, origem, destino')
-      .order('created_at', { ascending: false }).limit(100)
-      .then(({ data }) => { if (data) setContratosDisponiveis(data) })
-  }, [motoristaId, motoristas])
-
-  useEffect(() => {
-    if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
-      setAbastecimentos([]); setAbastSelecionados(new Set()); return
-    }
-    setCarregandoAbast(true); setErro('')
-    supabase.from('abastecimentos')
-      .select('id, data, posto, litros_combustivel, litros_arla, total')
-      .eq('caminhao_id', caminhao.id)
-      .gte('data', abastDataInicio).lte('data', abastDataFim)
-      .order('data')
-      .then(({ data, error }) => {
-        setCarregandoAbast(false)
-        if (error) { setErro('Erro: ' + error.message); return }
-        const lista = data || []
-        setAbastecimentos(lista)
-        setAbastSelecionados(new Set(lista.map(a => a.id)))
-      })
-  }, [caminhao?.id, abastDataInicio, abastDataFim])
-
-  function adicionarContrato(c: Contrato) { setSelecionados(prev => [...prev, c]); setBuscaContrato('') }
-  function removerContrato(id: string) { setSelecionados(prev => prev.filter(c => c.id !== id)) }
-  function toggleAbast(id: string) {
-    setAbastSelecionados(prev => {
-      const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
-    })
+  async function fetch_() {
+    const data = await motoristasAPI.listar()
+    setMotoristas(data)
   }
 
-  const contratosFiltrados = useMemo(() => {
-    const jaSel = new Set(selecionados.map(s => s.id))
-    if (!buscaContrato.trim()) return contratosDisponiveis.filter(c => !jaSel.has(c.id))
-    const b = buscaContrato.toLowerCase()
-    return contratosDisponiveis.filter(c =>
-      !jaSel.has(c.id) && (c.contrato.includes(buscaContrato) || c.cliente?.toLowerCase().includes(b))
-    )
-  }, [contratosDisponiveis, selecionados, buscaContrato])
+  async function registrarHistorico(motorista: Motorista, substitutoNome: string, caminhaoPlaca: string) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/historico_ferias`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json', Prefer: 'return=minimal'
+        },
+        body: JSON.stringify({
+          motorista_id: motorista.id, motorista_nome: motorista.nome,
+          substituto_id: editSubstitutoId||null, substituto_nome: substitutoNome,
+          caminhao_placa: caminhaoPlaca,
+          ferias_inicio: editFeriasInicio||null, ferias_fim: editFeriasFim||null,
+        })
+      })
+    } catch {}
+  }
 
-  const abastAtivos = useMemo(
-    () => abastecimentos.filter(a => abastSelecionados.has(a.id)),
-    [abastecimentos, abastSelecionados]
+  const alertasGerais = motoristas.filter(m => m.ativo !== false).filter(m =>
+    ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_cnh)||'') ||
+    ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_permisso)||'') ||
+    ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_toxicologico)||'') ||
+    ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_periodico)||'')
   )
 
-  const resumo = useMemo(() => {
-    const km      = (Number(kmFinal) || 0) - (Number(kmInicial) || 0)
-    const litros  = abastAtivos.reduce((t, a) => t + Number(a.litros_combustivel || 0), 0)
-    const valor   = abastAtivos.reduce((t, a) => t + Number(a.total || 0), 0)
-    const frete   = selecionados.reduce((t, c) => t + Number(c.fat_bruto || 0), 0)
-    const comissao = frete * 0.10
-    return { km, litros, valor, frete, comissao, mediaKmL: km > 0 && litros > 0 ? km / litros : 0 }
-  }, [abastAtivos, kmInicial, kmFinal, selecionados])
+  const filtrados = busca.trim()
+    ? motoristas.filter(m => m.nome.toLowerCase().includes(busca.toLowerCase()))
+    : motoristas
 
-  const fmt     = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const fmtData = (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
-
-  const historicoFiltrado = useMemo(() => {
-    if (!buscaHistorico) return historico
-    const b = buscaHistorico.toLowerCase()
-    return historico.filter(h =>
-      h.motorista.nome.toLowerCase().includes(b) || h.caminhao.placa.toLowerCase().includes(b)
-    )
-  }, [historico, buscaHistorico])
-
-  async function salvar() {
-    setErro('')
-    if (!motoristaId || !dataInicio || !dataFim || !kmInicial || !kmFinal || !dataVencimento) {
-      setErro('Preencha todos os campos obrigatórios.'); return
-    }
-    if (selecionados.length === 0) { setErro('Adicione ao menos um contrato.'); return }
-    setSalvando(true)
-
-    const { data: fech, error } = await supabase.from('fechamento_viagens').insert({
-      motorista_id: motoristaId,
-      caminhao_id: caminhao?.id || null,
-      data_inicio: dataInicio, data_fim: dataFim,
-      km_inicial: Number(kmInicial), km_final: Number(kmFinal),
-      data_vencimento: dataVencimento,
-      status_financeiro: 'pendente'
-    }).select().single()
-
-    if (error || !fech) { setErro('Erro ao salvar: ' + error?.message); setSalvando(false); return }
-
-    await Promise.all([
-      supabase.from('fechamento_contratos').insert(
-        selecionados.map(c => ({ fechamento_id: fech.id, contrato_id: c.id }))
-      ),
-      abastAtivos.length > 0 && supabase.from('fechamento_abastecimentos').insert(
-        abastAtivos.map(a => ({ fechamento_id: fech.id, abastecimento_id: a.id }))
-      )
-    ])
-
-    await supabase.from('premios').insert({
-      motorista: motoristaNome,
-      status: 'pendente',
-      valor: resumo.comissao,
-      obs: [
-        `Período: ${fmtData(dataInicio)} → ${fmtData(dataFim)}`,
-        `Vencimento: ${fmtData(dataVencimento)}`,
-        `Placa: ${caminhao?.placa || '—'}`,
-        `KM Rodado: ${resumo.km.toLocaleString('pt-BR')} km`,
-        `Contratos: ${selecionados.length} (Frete R$ ${fmt(resumo.frete)})`,
-        `Abastecimento: R$ ${fmt(resumo.valor)} (${fmt(resumo.litros)} L)`,
-        `Média: ${resumo.mediaKmL > 0 ? fmt(resumo.mediaKmL) + ' km/L' : '—'}`,
-        `Comissão 10%: R$ ${fmt(resumo.comissao)}`,
-      ].join(' | ')
-    })
-
-    setSalvando(false)
-    if (setAba) setAba('premios')
+  function selecionar(m: Motorista) {
+    setSel(m)
+    setEditNome(m.nome); setEditCpf(m.cpf||''); setEditRg(m.rg||'')
+    setEditTipo(m.tipo||'Com adiantamento'); setEditAtivo(m.ativo !== false)
+    setEditAdiantamento(m.adiantamento !== false); setEditDtDesligamento(m.dt_desligamento||'')
+    setEditCnh(m.vencimento_cnh||''); setEditPermisso(m.vencimento_permisso||'')
+    setEditToxico(m.vencimento_toxicologico||''); setEditPeriodico(m.vencimento_periodico||'')
+    setEditCaminhaoId(m.caminhao_id||''); setEditDeFerias(m.de_ferias||false)
+    setEditFeriasInicio(m.ferias_inicio||''); setEditFeriasFim(m.ferias_fim||'')
+    setEditSubstitutoId(m.substituto_id||''); setConfirmExcluir(false)
   }
 
+  function voltar() { setSel(null); setBusca(''); setConfirmExcluir(false) }
+  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
+
+  async function salvar() {
+    if (!sel) return
+    setLoading(true)
+    const feriasFoiAtivado = editDeFerias && !sel.de_ferias
+
+    if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeFerias) {
+      if (sel.caminhao_id) {
+        const camAntigo = caminhoes.find(c => c.id === sel.caminhao_id)
+        if (camAntigo) await caminhoesAPI.atualizar(sel.caminhao_id, { ...camAntigo, motorista_atual: '' } as any)
+      }
+      const cam = caminhoes.find(c => c.id === editCaminhaoId)
+      if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: editNome.toUpperCase() } as any)
+    }
+
+    if (editDeFerias && editSubstitutoId && editCaminhaoId) {
+      const substituto = motoristas.find(m => m.id === editSubstitutoId)
+      if (substituto) {
+        await motoristasAPI.atualizar(editSubstitutoId, { nome: substituto.nome, caminhao_temp_id: editCaminhaoId } as any)
+        const cam = caminhoes.find(c => c.id === editCaminhaoId)
+        if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: substituto.nome } as any)
+        if (feriasFoiAtivado) await registrarHistorico(sel, substituto.nome, cam?.placa||'')
+      }
+    }
+
+    if (!editDeFerias && sel.de_ferias && sel.substituto_id && editCaminhaoId) {
+      const substituto = motoristas.find(m => m.id === sel.substituto_id)
+      if (substituto) {
+        await motoristasAPI.atualizar(sel.substituto_id, { nome: substituto.nome, caminhao_temp_id: null } as any)
+        const cam = caminhoes.find(c => c.id === editCaminhaoId)
+        if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: editNome.toUpperCase() } as any)
+      }
+    }
+
+    if (perm !== 'demo') await motoristasAPI.atualizar(sel.id, {
+      nome: editNome.toUpperCase(), cpf: editCpf, rg: editRg,
+      tipo: editTipo, ativo: editAtivo, adiantamento: editAdiantamento,
+      dt_desligamento: editDtDesligamento||null,
+      vencimento_cnh: editCnh||null, vencimento_permisso: editPermisso||null,
+      vencimento_toxicologico: editToxico||null, vencimento_periodico: editPeriodico||null,
+      caminhao_id: editCaminhaoId||null, de_ferias: editDeFerias,
+      ferias_inicio: editDeFerias ? editFeriasInicio||null : null,
+      ferias_fim: editDeFerias ? editFeriasFim||null : null,
+      substituto_id: editDeFerias ? editSubstitutoId||null : null,
+    })
+    await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
+  }
+
+  async function excluir() {
+    if (!sel) return
+    setLoading(true)
+    if (perm !== 'demo') await motoristasAPI.excluir(sel.id)
+    await fetch_(); setLoading(false); voltar(); showMsg('Motorista excluído.')
+  }
+
+  async function cadastrar() {
+    if (!cadNome.trim()) return
+    setLoading(true)
+    if (perm !== 'demo') await motoristasAPI.criar({
+      nome: cadNome.toUpperCase(), cpf: cadCpf, rg: cadRg,
+      tipo: cadTipo, ativo: true, adiantamento: true,
+      vencimento_cnh: cadCnh||null, vencimento_permisso: cadPermisso||null,
+      vencimento_toxicologico: cadToxico||null, vencimento_periodico: cadPeriodico||null,
+    })
+    await fetch_(); setLoading(false)
+    setCadNome(''); setCadCpf(''); setCadRg(''); setCadTipo('Com adiantamento')
+    setCadCnh(''); setCadPermisso(''); setCadToxico(''); setCadPeriodico('')
+    setMostraCad(false); showMsg('✅ Motorista cadastrado!')
+  }
+
+  const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
+  const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
+
+  function TagVenc({ data, label }: { data: string; label: string }) {
+    const s = vencStatus(data)
+    const dias = diasParaVencer(data)
+    if (!s) return (
+      <div className="bg-gray-50 rounded-xl p-3">
+        <p className="text-xs text-gray-400">{label}</p>
+        <p className="text-sm text-gray-300 mt-1">—</p>
+      </div>
+    )
+    return (
+      <div className={`rounded-xl p-3 ${s === 'vencido' ? 'bg-red-50' : s === 'critico' ? 'bg-orange-50' : s === 'alerta' ? 'bg-yellow-50' : 'bg-green-50'}`}>
+        <p className={`text-xs font-medium ${s === 'vencido' ? 'text-red-500' : s === 'critico' ? 'text-orange-500' : s === 'alerta' ? 'text-yellow-600' : 'text-green-600'}`}>{label}</p>
+        <p className={`text-sm font-semibold mt-1 ${s === 'vencido' ? 'text-red-700' : s === 'critico' ? 'text-orange-700' : s === 'alerta' ? 'text-yellow-700' : 'text-green-700'}`}>
+          {new Date(data + 'T00:00:00').toLocaleDateString('pt-BR')}
+        </p>
+        {s !== 'ok' && <p className="text-xs mt-0.5 opacity-70">{s === 'vencido' ? `${Math.abs(dias!)}d atrás` : `${dias}d restantes`}</p>}
+      </div>
+    )
+  }
+
+  function Toggle({ value, onChange, label }: { value: boolean; onChange: () => void; label: string }) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className={LC}>{label}</span>
+        <button onClick={onChange}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${value ? 'bg-red-600' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${value ? 'translate-x-6' : 'translate-x-1'}`}/>
+        </button>
+        <span className="text-xs text-gray-500">{value ? 'Sim' : 'Não'}</span>
+      </div>
+    )
+  }
+
+  function diasFerias(inicio: string, fim: string) {
+    if (!inicio || !fim) return null
+    return Math.ceil((new Date(fim+'T00:00:00').getTime() - new Date(inicio+'T00:00:00').getTime()) / (1000*60*60*24))
+  }
+
+  if (mostraCad) return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <button onClick={() => setMostraCad(false)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
+        <ArrowLeft size={16}/> Voltar
+      </button>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <h3 className="font-bold text-gray-800 mb-4 text-lg">Novo Motorista</h3>
+        <div className="space-y-3">
+          <div><label className={LC}>Nome completo *</label><input value={cadNome} onChange={e => setCadNome(e.target.value)} className={IC + " uppercase"}/></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LC}>Tipo</label>
+              <select value={cadTipo} onChange={e => setCadTipo(e.target.value)} className={IC}>
+                <option>Com adiantamento</option><option>Sem adiantamento</option>
+              </select>
+            </div>
+            <div><label className={LC}>RG</label><input value={cadRg} onChange={e => setCadRg(e.target.value)} className={IC}/></div>
+          </div>
+          <div><label className={LC}>CPF</label><input value={fmtCpf(cadCpf)} onChange={e => setCadCpf(e.target.value.replace(/\D/g,''))} placeholder="000.000.000-00" maxLength={14} className={IC}/></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className={LC}>Venc. CNH</label><input type="date" value={cadCnh} onChange={e => setCadCnh(e.target.value)} className={IC}/></div>
+            <div><label className={LC}>Venc. Permisso</label><input type="date" value={cadPermisso} onChange={e => setCadPermisso(e.target.value)} className={IC}/></div>
+            <div><label className={LC}>Venc. Toxicológico</label><input type="date" value={cadToxico} onChange={e => setCadToxico(e.target.value)} className={IC}/></div>
+            <div><label className={LC}>Venc. Periódico</label><input type="date" value={cadPeriodico} onChange={e => setCadPeriodico(e.target.value)} className={IC}/></div>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button onClick={cadastrar} disabled={loading}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">Salvar motorista</button>
+            <button onClick={() => setMostraCad(false)}
+              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-6 max-w-2xl mx-auto">
+      {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
+
+      {sel ? (
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fechamento de Viagem</h1>
-          <p className="text-sm text-gray-500">Gestão de viagens, contratos e abastecimentos</p>
-        </div>
-        <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
-          <button onClick={() => setAbaAtiva('novo')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
-              ${abaAtiva === 'novo' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            Novo Fechamento
+          <button onClick={voltar} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
+            <ArrowLeft size={16}/> Voltar
           </button>
-          <button onClick={() => setAbaAtiva('historico')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
-              ${abaAtiva === 'historico' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            Histórico
-          </button>
-        </div>
-      </header>
 
-      {abaAtiva === 'novo' ? (
-        <>
-          {/* ── Resumo sticky ── */}
-          <div className="sticky top-4 z-40">
-            <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-2xl border border-gray-800 grid grid-cols-2 md:grid-cols-5 gap-6">
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Distância</p>
-                <p className="text-2xl font-bold mt-1">{resumo.km > 0 ? `${resumo.km.toLocaleString('pt-BR')} km` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Combustível</p>
-                <p className="text-2xl font-bold text-blue-400 mt-1">{resumo.litros > 0 ? `${fmt(resumo.litros)} L` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Média KM/L</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{resumo.mediaKmL > 0 ? fmt(resumo.mediaKmL) : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Total Frete</p>
-                <p className="text-2xl font-bold text-yellow-400 mt-1">{resumo.frete > 0 ? `R$ ${fmt(resumo.frete)}` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Comissão (10%)</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{resumo.comissao > 0 ? `R$ ${fmt(resumo.comissao)}` : '—'}</p>
+          <AlertasVencimento motorista={{ ...sel, vencimento_cnh: editCnh, vencimento_permisso: editPermisso, vencimento_toxicologico: editToxico, vencimento_periodico: editPeriodico }}/>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className={`px-6 py-5 bg-gradient-to-r ${editAtivo ? (editDeFerias ? 'from-blue-500 to-blue-600' : 'from-red-600 to-red-700') : 'from-gray-500 to-gray-600'}`}>
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-xl">
+                  {sel.nome.charAt(0)}
+                </div>
+                <div>
+                  <h2 className="text-white font-bold text-lg">{sel.nome}</h2>
+                  <div className="flex gap-2 mt-1">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${editAtivo ? 'bg-green-400/30 text-green-100' : 'bg-red-400/30 text-red-100'}`}>
+                      {editAtivo ? 'Ativo' : 'Desligado'}
+                    </span>
+                    {editDeFerias && <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/30 text-blue-100">🏖️ De férias</span>}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-8 space-y-6">
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <TagVenc data={editCnh} label="Venc. CNH"/>
+                <TagVenc data={editPermisso} label="Permisso"/>
+                <TagVenc data={editToxico} label="Toxicológico"/>
+                <TagVenc data={editPeriodico} label="Periódico"/>
+              </div>
 
-              {/* ── Motorista + Datas + KM ── */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      <User size={14} className="text-red-600"/> Motorista
-                    </label>
-                    <select value={motoristaId}
-                      onChange={e => {
-                        setMotoristaId(e.target.value)
-                        setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set())
-                        setKmInicial(''); setKmFinal('')
-                      }}
-                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm font-bold focus:border-red-500 focus:bg-white outline-none transition-all">
-                      <option value="">Selecione o motorista</option>
-                      {motoristas.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      <Truck size={14} className="text-red-600"/> Placa do Caminhão
-                    </label>
-                    <div className="w-full bg-red-50 border-2 border-red-100 rounded-xl px-4 py-3 text-sm font-black text-red-700 flex items-center justify-between">
-                      {caminhao ? caminhao.placa : 'Aguardando...'}
-                      {caminhao && <CheckCircle2 size={16} className="text-red-500"/>}
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t border-gray-50">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Saída Viagem</label>
-                    <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Retorno Viagem</label>
-                    <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
-                      KM Inicial
-                      {kmInicial && <span className="text-green-500 text-[9px]">● auto</span>}
-                    </label>
-                    <input type="number" value={kmInicial} onChange={e => setKmInicial(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">KM Final</label>
-                    <input type="number" value={kmFinal} onChange={e => setKmFinal(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-red-600 uppercase flex items-center gap-1">
-                      <CreditCard size={10}/> Vencimento
-                    </label>
-                    <input type="date" value={dataVencimento} onChange={e => setDataVencimento(e.target.value)}
-                      className="w-full bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-600"/>
-                  </div>
-                </div>
-                {kmInicial && kmFinal && Number(kmFinal) > Number(kmInicial) && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
-                    <p className="text-xs text-blue-700">
-                      Distância: <strong>{(Number(kmFinal) - Number(kmInicial)).toLocaleString('pt-BR')} km</strong>
-                      {resumo.mediaKmL > 0 && <span className="ml-3">Média: <strong>{fmt(resumo.mediaKmL)} km/L</strong></span>}
-                    </p>
-                  </div>
+              <div><label className={LC}>Nome completo</label><input value={editNome} onChange={e => setEditNome(e.target.value)} className={IC + " uppercase"}/></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LC}>RG</label><input value={editRg} onChange={e => setEditRg(e.target.value)} className={IC}/></div>
+                <div><label className={LC}>CPF</label><input value={fmtCpf(editCpf)} onChange={e => setEditCpf(e.target.value.replace(/\D/g,''))} placeholder="000.000.000-00" maxLength={14} className={IC}/></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className={LC}>Venc. CNH</label><input type="date" value={editCnh} onChange={e => setEditCnh(e.target.value)} className={IC}/></div>
+                <div><label className={LC}>Venc. Permisso</label><input type="date" value={editPermisso} onChange={e => setEditPermisso(e.target.value)} className={IC}/></div>
+                <div><label className={LC}>Venc. Toxicológico</label><input type="date" value={editToxico} onChange={e => setEditToxico(e.target.value)} className={IC}/></div>
+                <div><label className={LC}>Venc. Periódico</label><input type="date" value={editPeriodico} onChange={e => setEditPeriodico(e.target.value)} className={IC}/></div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <label className={LC}>Caminhão vinculado</label>
+                <select value={editCaminhaoId} onChange={e => setEditCaminhaoId(e.target.value)} className={IC}>
+                  <option value="">Nenhum</option>
+                  {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
+                </select>
+                {editCaminhaoId && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    🚛 {caminhoes.find(c => c.id === editCaminhaoId)?.placa}
+                    {editDeFerias && editSubstitutoId && (
+                      <span className="text-blue-500"> · Temporariamente com {motoristas.find(m => m.id === editSubstitutoId)?.nome}</span>
+                    )}
+                  </p>
                 )}
               </div>
 
-              {/* ── Abastecimentos ── */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between bg-gray-50/50 gap-4">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-xs font-black text-gray-700 uppercase tracking-widest flex items-center gap-2">
-                      <Fuel size={16} className="text-red-600"/> Abastecimentos
-                    </h2>
-                    {caminhao && <span className="bg-red-600 text-white px-2 py-0.5 rounded text-[10px] font-black">{caminhao.placa}</span>}
-                  </div>
-                  <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
-                    <Filter size={14} className="text-gray-400 ml-2"/>
-                    <input type="date" value={abastDataInicio} onChange={e => setAbastDataInicio(e.target.value)}
-                      className="text-[10px] font-bold outline-none border-none p-1"/>
-                    <span className="text-gray-300">→</span>
-                    <input type="date" value={abastDataFim} onChange={e => setAbastDataFim(e.target.value)}
-                      className="text-[10px] font-bold outline-none border-none p-1"/>
-                  </div>
-                  <div className="flex gap-4">
-                    <button onClick={() => setAbastSelecionados(new Set(abastecimentos.map(a => a.id)))}
-                      className="text-[10px] font-black text-red-600 uppercase">Todos</button>
-                    <button onClick={() => setAbastSelecionados(new Set())}
-                      className="text-[10px] font-black text-gray-400 uppercase">Limpar</button>
-                  </div>
+              {sel.caminhao_temp_id && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-blue-700 mb-1">🔄 Caminhão temporário</p>
+                  <p className="text-sm text-blue-800 font-medium">🚛 {caminhoes.find(c => c.id === sel.caminhao_temp_id)?.placa || '...'}</p>
+                  <p className="text-xs text-blue-500 mt-0.5">Atribuído enquanto outro motorista está de férias</p>
                 </div>
-                <div className="p-6">
-                  {erro && (
-                    <div className="mb-4 bg-red-50 border border-red-100 p-4 rounded-xl flex items-center gap-3 text-red-700 text-xs font-bold">
-                      <AlertCircle size={16}/> {erro}
-                    </div>
-                  )}
-                  {!caminhao ? (
-                    <p className="text-center py-10 text-sm text-gray-400 italic">Selecione o motorista primeiro.</p>
-                  ) : !abastDataInicio || !abastDataFim ? (
-                    <p className="text-center py-10 text-sm text-gray-400 italic flex items-center justify-center gap-2">
-                      <Calendar size={16}/> Informe o período dos abastecimentos.
-                    </p>
-                  ) : carregandoAbast ? (
-                    <div className="flex items-center justify-center py-10 gap-3">
-                      <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin"/>
-                    </div>
-                  ) : abastecimentos.length === 0 ? (
-                    <div className="text-center py-10">
-                      <Fuel size={28} className="mx-auto text-gray-200 mb-2"/>
-                      <p className="text-sm text-gray-400">Nenhum abastecimento no período.</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {abastecimentos.map(a => {
-                        const marcado = abastSelecionados.has(a.id)
-                        return (
-                          <label key={a.id}
-                            className={`flex flex-col p-4 rounded-2xl border-2 cursor-pointer transition-all
-                              ${marcado ? 'border-red-100 bg-red-50/30' : 'border-gray-100 bg-white opacity-60'}`}>
-                            <div className="flex justify-between items-start mb-3">
-                              <div className="flex items-center gap-3">
-                                <input type="checkbox" checked={marcado} onChange={() => toggleAbast(a.id)} className="w-5 h-5 accent-red-600"/>
-                                <span className="text-sm font-black text-gray-900">{fmtData(a.data)}</span>
-                              </div>
-                              <span className="text-sm font-black text-red-600">R$ {fmt(a.total || 0)}</span>
-                            </div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1.5 mb-2">
-                              <MapPin size={10}/> {a.posto || 'POSTO NÃO IDENTIFICADO'}
-                            </p>
-                            <div className="flex gap-2 flex-wrap">
-                              <span className="bg-white px-2 py-1 rounded border text-[10px] font-black text-gray-600 uppercase">
-                                Diesel: {a.litros_combustivel ? `${fmt(a.litros_combustivel)} L` : '—'}
-                              </span>
-                              {(a.litros_arla || 0) > 0 && (
-                                <span className="bg-blue-50 px-2 py-1 rounded border border-blue-100 text-[10px] font-black text-blue-600 uppercase">
-                                  Arla: {fmt(a.litros_arla!)} L
-                                </span>
-                              )}
-                            </div>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+              )}
 
-            {/* ── Contratos ── */}
-            <div className="lg:col-span-4">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ maxHeight: '900px' }}>
-                <div className="p-5 border-b border-gray-100 bg-gray-50/50 space-y-4">
-                  <h2 className="text-xs font-black text-gray-700 uppercase tracking-widest">Contratos Disponíveis</h2>
-                  <div className="relative">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                    <input type="text" placeholder="Buscar contrato..." value={buscaContrato}
-                      onChange={e => setBuscaContrato(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 text-sm bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all"/>
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {!motoristaId ? (
-                    <p className="text-center py-10 text-sm text-gray-400 italic">Selecione o motorista.</p>
-                  ) : contratosFiltrados.length === 0 ? (
-                    <p className="text-center py-10 text-sm text-gray-400 italic">Nenhum contrato encontrado.</p>
-                  ) : contratosFiltrados.map(c => (
-                    <button key={c.id} onClick={() => adicionarContrato(c)}
-                      className="w-full p-4 text-left bg-white border border-gray-100 rounded-2xl hover:border-red-200 hover:bg-red-50/50 transition-all shadow-sm group">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="font-black text-gray-900">#{c.contrato}</span>
-                        <span className="text-green-600 font-black text-sm">R$ {fmt(c.fat_bruto || 0)}</span>
+              <div className="border-t border-gray-100 pt-4 space-y-3">
+                <Toggle value={editDeFerias} onChange={() => {
+                  setEditDeFerias(!editDeFerias)
+                  if (!editDeFerias && !editFeriasInicio)
+                    setEditFeriasInicio(new Date().toISOString().split('T')[0])
+                }} label="De férias"/>
+
+                {editDeFerias && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className={LC}>Início das férias</label><input type="date" value={editFeriasInicio} onChange={e => setEditFeriasInicio(e.target.value)} className={IC}/></div>
+                      <div><label className={LC}>Fim das férias</label><input type="date" value={editFeriasFim} onChange={e => setEditFeriasFim(e.target.value)} className={IC}/></div>
+                    </div>
+                    {editFeriasInicio && editFeriasFim && (
+                      <div className="bg-blue-50 rounded-xl p-3">
+                        <p className="text-sm text-blue-700 font-medium">🏖️ {diasFerias(editFeriasInicio, editFeriasFim)} dia(s) de férias</p>
                       </div>
-                      <p className="text-[11px] font-bold text-gray-500 truncate mb-2 uppercase">{c.cliente || '—'}</p>
-                      {(c.origem || c.destino) && (
-                        <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-100 flex items-center justify-between gap-2">
-                          <div className="flex-1">
-                            <p className="text-[9px] font-black text-gray-400 uppercase">Origem</p>
-                            <p className="text-[10px] font-black text-red-600 truncate">{c.origem || '—'}</p>
-                          </div>
-                          <ArrowRight size={12} className="text-gray-300 shrink-0"/>
-                          <div className="flex-1 text-right">
-                            <p className="text-[9px] font-black text-gray-400 uppercase">Destino</p>
-                            <p className="text-[10px] font-black text-red-600 truncate">{c.destino || '—'}</p>
-                          </div>
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-                {selecionados.length > 0 && (
-                  <div className="p-4 bg-red-600 text-white">
-                    <h3 className="text-[10px] font-black uppercase tracking-widest mb-3 opacity-90">
-                      Selecionados ({selecionados.length})
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {selecionados.map(c => (
-                        <div key={c.id} className="flex items-center gap-2 bg-white/20 border border-white/30 rounded-xl pl-3 pr-2 py-1.5">
-                          <span className="text-xs font-black">#{c.contrato}</span>
-                          <button onClick={() => removerContrato(c.id)}><X size={12}/></button>
-                        </div>
-                      ))}
+                    )}
+                    <div>
+                      <label className={LC}>Motorista substituto</label>
+                      <select value={editSubstitutoId} onChange={e => setEditSubstitutoId(e.target.value)} className={IC}>
+                        <option value="">Selecione...</option>
+                        {motoristas.filter(m => m.id !== sel.id && m.ativo).map(m => (
+                          <option key={m.id} value={m.id}>{m.nome}</option>
+                        ))}
+                      </select>
                     </div>
-                    <div className="mt-3 pt-3 border-t border-white/20 flex justify-between text-xs">
-                      <span className="text-white/70 font-bold uppercase">Frete Total</span>
-                      <span className="font-black">{resumo.frete > 0 ? `R$ ${fmt(resumo.frete)}` : '—'}</span>
-                    </div>
-                    <div className="flex justify-between text-xs mt-1">
-                      <span className="text-white/70 font-bold uppercase">Comissão 10%</span>
-                      <span className="font-black text-green-300">{resumo.comissao > 0 ? `R$ ${fmt(resumo.comissao)}` : '—'}</span>
-                    </div>
-                  </div>
+                    {editSubstitutoId && editCaminhaoId && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                        <p className="text-xs text-blue-700">
+                          🔄 O caminhão <strong>{caminhoes.find(c => c.id === editCaminhaoId)?.placa}</strong> será vinculado temporariamente a <strong>{motoristas.find(m => m.id === editSubstitutoId)?.nome}</strong>
+                        </p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
+
+              <div className="border-t border-gray-100 pt-4 space-y-3">
+                <Toggle value={editAdiantamento} onChange={() => setEditAdiantamento(!editAdiantamento)} label="Adiantamento"/>
+                <Toggle value={editAtivo} onChange={() => {
+                  setEditAtivo(!editAtivo)
+                  if (editAtivo) setEditDtDesligamento(new Date().toISOString().split('T')[0])
+                  else setEditDtDesligamento('')
+                }} label="Ativo na empresa"/>
+                {!editAtivo && (
+                  <div><label className={LC}>Data de desligamento</label><input type="date" value={editDtDesligamento} onChange={e => setEditDtDesligamento(e.target.value)} className={IC}/></div>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={salvar} disabled={loading}
+                  className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
+                  <Save size={15}/> Salvar alterações
+                </button>
+                <button onClick={() => setConfirmExcluir(true)}
+                  className="flex items-center gap-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl px-4 py-2.5 text-sm transition">
+                  <Trash2 size={15}/>
+                </button>
+              </div>
+
+              {confirmExcluir && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <p className="text-sm text-red-700 font-medium mb-3">⚠️ Excluir {sel.nome}?</p>
+                  <div className="flex gap-2">
+                    <button onClick={excluir} className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium">Confirmar</button>
+                    <button onClick={() => setConfirmExcluir(false)} className="flex-1 border border-gray-300 rounded-lg py-2 text-sm">Cancelar</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-5">
+            <h1 className="text-2xl font-bold text-gray-900">Motoristas</h1>
+            {perm !== 'view' && (
+              <button onClick={() => setMostraCad(true)}
+                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition shadow-sm">
+                <Plus size={16}/> Cadastrar
+              </button>
+            )}
+          </div>
 
-          {/* ── Salvar ── */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-gray-200">
-            <div className="flex-1 text-sm font-bold">
-              {erro && <span className="text-red-600">⚠️ {erro}</span>}
+          {alertasGerais.length > 0 && (
+            <div className="mb-4 bg-amber-50 border border-amber-200 rounded-2xl p-4">
+              <p className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-3">⚠️ Alertas de vencimento</p>
+              <div className="space-y-2">
+                {alertasGerais.map(m => <AlertasVencimento key={m.id} motorista={m}/>)}
+              </div>
             </div>
-            <button onClick={salvar}
-              disabled={!motoristaId || selecionados.length === 0 || salvando}
-              className="w-full md:w-auto bg-red-600 text-white px-16 py-5 rounded-2xl font-black text-base uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 shadow-2xl shadow-red-200 transition-all active:scale-95">
-              {salvando ? 'Processando...' : 'Finalizar Fechamento'}
-            </button>
+          )}
+
+          <div className="relative mb-4">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"/>
+            <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar motorista..."
+              className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white shadow-sm"/>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Motoristas</p>
+              <p className="text-xs text-gray-400">{filtrados.length} cadastrado(s)</p>
+            </div>
+            {filtrados.length === 0 ? (
+              <div className="p-10 text-center">
+                <User size={32} className="mx-auto text-gray-200 mb-2"/>
+                <p className="text-sm text-gray-400">Nenhum motorista encontrado</p>
+              </div>
+            ) : filtrados.map(m => {
+              const temAlerta =
+                ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_cnh)||'') ||
+                ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_permisso)||'') ||
+                ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_toxicologico)||'') ||
+                ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_periodico)||'')
+              const caminhao     = caminhoes.find(c => c.id === m.caminhao_id)
+              const caminhaoTemp = caminhoes.find(c => c.id === m.caminhao_temp_id)
+              return (
+                <button key={m.id} onClick={() => selecionar(m)}
+                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition border-b border-gray-50 last:border-0 text-left">
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 font-bold text-sm flex-shrink-0">
+                    {m.nome.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{m.nome}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {m.tipo} · CPF ***.***.***-**
+                      {caminhao && ` · 🚛 ${caminhao.placa}`}
+                      {caminhaoTemp && ` · 🚛 ${caminhaoTemp.placa} (temp)`}
+                      {m.de_ferias && ` · 🏖️ Férias`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {temAlerta && <AlertTriangle size={14} className="text-amber-500"/>}
+                    <div className={`w-2 h-2 rounded-full ${m.ativo !== false ? (m.de_ferias ? 'bg-blue-400' : 'bg-green-400') : 'bg-gray-300'}`}/>
+                    <ChevronRight size={16} className="text-gray-300"/>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </>
-      ) : (
-        /* ── Histórico ── */
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"/>
-              <input type="text" placeholder="Pesquisar..." value={buscaHistorico}
-                onChange={e => setBuscaHistorico(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-sm font-medium"/>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100">
-                  {['Data', 'Motorista / Placa', 'Período', 'KM Rodado', 'Vencimento'].map(h => (
-                    <th key={h} className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {carregandoHistorico ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-                ) : historicoFiltrado.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
-                ) : historicoFiltrado.map(h => (
-                  <tr key={h.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-black text-gray-900">{h.motorista.nome}</p>
-                      <p className="text-[10px] font-bold text-red-600">{h.caminhao.placa}</p>
-                    </td>
-                    <td className="px-6 py-4 text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</td>
-                    <td className="px-6 py-4 text-xs font-bold text-gray-700">{(h.km_final - h.km_inicial).toLocaleString('pt-BR')} km</td>
-                    <td className="px-6 py-4 text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
       )}
     </div>
   )
