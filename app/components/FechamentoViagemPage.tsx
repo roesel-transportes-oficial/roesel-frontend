@@ -181,6 +181,16 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     )
   }, [historico, buscaHistorico])
 
+  async function fetchHistorico() {
+    setCarregandoHistorico(true)
+    const { data } = await supabase.from('fechamento_viagens')
+      .select(`id, created_at, data_inicio, data_fim, km_inicial, km_final, data_vencimento,
+        motorista:motoristas(nome), caminhao:caminhoes(placa)`)
+      .order('created_at', { ascending: false })
+    setCarregandoHistorico(false)
+    if (data) setHistorico(data as any)
+  }
+
   async function salvar() {
     setErro('')
     if (!motoristaId || !dataInicio || !dataFim || !kmInicial || !kmFinal || !dataVencimento) {
@@ -227,6 +237,10 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
     setSalvando(false)
     alert('✅ Fechamento realizado com sucesso!')
+    
+    // Atualiza o histórico imediatamente
+    fetchHistorico()
+
     // Limpa os campos após salvar, mas permanece na página
     setMotoristaId('')
     setSelecionados([])
@@ -352,11 +366,26 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                   </div>
                 </div>
                 {kmInicial && kmFinal && Number(kmFinal) > Number(kmInicial) && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 space-y-2">
                     <p className="text-xs text-blue-700">
                       Distância: <strong>{(Number(kmFinal) - Number(kmInicial)).toLocaleString('pt-BR')} km</strong>
                       {resumo.mediaKmL > 0 && <span className="ml-3">Média: <strong>{fmt(resumo.mediaKmL)} km/L</strong></span>}
                     </p>
+                    {selecionados.length > 0 && (
+                      <div className="pt-2 border-t border-blue-100">
+                        <p className="text-[10px] font-black text-blue-400 uppercase mb-1">Rotas dos Contratos Selecionados</p>
+                        <div className="space-y-1">
+                          {selecionados.map(c => (
+                            <div key={c.id} className="flex items-center gap-2 text-[11px] font-bold text-blue-800">
+                              <span className="opacity-50">#{c.contrato}:</span>
+                              <span>{c.origem || '—'}</span>
+                              <ArrowRight size={10} className="opacity-30"/>
+                              <span>{c.destino || '—'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
