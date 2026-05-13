@@ -315,7 +315,7 @@ export default function AbastecimentoPage() {
     </>
   )
 
-  const FormFields = ({ modo }: { modo: 'cad' | 'edit' }) => {
+  function renderFormFields(modo: 'cad' | 'edit') {
     const data      = modo === 'cad' ? cadData      : editData
     const km        = modo === 'cad' ? cadKm        : editKm
     const posto     = modo === 'cad' ? cadPosto     : editPosto
@@ -435,7 +435,7 @@ export default function AbastecimentoPage() {
           </button>
         </div>
         <div className="space-y-3">
-          <FormFields modo="cad"/>
+          {renderFormFields('cad')}
           <button onClick={cadastrar} disabled={loading || !cadCaminhaoId}
             className="w-full flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-3 rounded-xl text-sm font-bold uppercase hover:bg-red-700 transition disabled:opacity-60 mt-2">
             {loading ? <><Loader2 size={16} className="animate-spin"/> Salvando...</> : <><Save size={16}/> Salvar Abastecimento</>}
@@ -452,7 +452,7 @@ export default function AbastecimentoPage() {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h3 className="font-bold text-gray-800 mb-4 text-lg">Editar Abastecimento</h3>
         <div className="space-y-3">
-          <FormFields modo="edit"/>
+          {renderFormFields('edit')}
           <div className="flex gap-3 mt-4">
             <button onClick={salvar} disabled={loading || !editCaminhaoId}
               className="w-full flex items-center justify-center gap-2 bg-red-600 text-white px-4 py-3 rounded-xl text-sm font-bold uppercase hover:bg-red-700 transition disabled:opacity-60">
@@ -563,3 +563,4 @@ export default function AbastecimentoPage() {
     </div>
   )
 }
+ 
