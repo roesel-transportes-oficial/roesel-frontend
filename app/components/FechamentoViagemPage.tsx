@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
@@ -7,7 +8,7 @@ import { X, Search, Truck, User, Calendar, MapPin, Fuel, Download, CheckCircle2,
 type Motorista     = { id: string; nome: string; caminhao_id?: string }
 type Caminhao      = { id: string; placa: string }
 type Contrato      = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
-type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null }
+type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null; km?: number | null }
 type Fechamento    = { 
   id: string; 
   created_at: string; 
@@ -106,25 +107,54 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       .then(({ data }) => { if (data) setContratosDisponiveis(data) })
   }, [motoristaId, motoristas, editandoId])
 
-  // Carregar abastecimentos do caminhão no período
+  // Carregar abastecimentos do caminhão no período e preencher KM
   useEffect(() => {
     if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
-      setAbastecimentos([]); setAbastSelecionados(new Set()); return
+      setAbastecimentos([]); setAbastSelecionados(new Set()); setKmInicial(''); setKmFinal(''); return
     }
     setCarregandoAbast(true); setErro('')
     supabase.from('abastecimentos')
-      .select('id, data, posto, litros_combustivel, litros_arla, total')
+      .select('id, data, posto, litros_combustivel, litros_arla, total, km') // Adicionado 'km'
       .eq('caminhao_id', caminhao.id)
       .gte('data', abastDataInicio).lte('data', abastDataFim)
       .order('data')
-      .then(({ data, error }) => {
+      .then(async ({ data, error }) => { // Tornar async para buscar o último KM final
         setCarregandoAbast(false)
         if (error) { setErro('Erro: ' + error.message); return }
         const lista = data || []
         setAbastecimentos(lista)
-        // Se não estiver editando, seleciona todos por padrão
+        
         if (!editandoId) {
           setAbastSelecionados(new Set(lista.map(a => a.id)))
+
+          // Lógica para KM Inicial
+          let ultimoKmFinal = '';
+          const { data: ultimoFechamento } = await supabase
+            .from('fechamento_viagens')
+            .select('km_final')
+            .eq('caminhao_id', caminhao.id)
+            .order('data_fim', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (ultimoFechamento) {
+            ultimoKmFinal = ultimoFechamento.km_final.toString();
+          } else if (lista.length > 0) {
+            // Se não houver fechamento anterior, pega o menor KM dos abastecimentos
+            const minKmAbastecimento = Math.min(...lista.map(a => a.km || Infinity));
+            if (minKmAbastecimento !== Infinity) {
+              ultimoKmFinal = minKmAbastecimento.toString();
+            }
+          }
+          setKmInicial(ultimoKmFinal);
+
+          // Lógica para KM Final
+          if (lista.length > 0) {
+            const maxKmAbastecimento = Math.max(...lista.map(a => a.km || -Infinity));
+            if (maxKmAbastecimento !== -Infinity) {
+              setKmFinal(maxKmAbastecimento.toString());
+            }
+          }
         }
       })
   }, [caminhao?.id, abastDataInicio, abastDataFim, editandoId])
@@ -293,7 +323,19 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       ].join(' | ')
     }
 
-    await supabase.from('premios').insert(dadosPremio)
+    // Se for edição, procurar por um prêmio existente para o fechamento e atualizar
+    // Ou criar um novo se não existir (para o caso de fechamentos antigos sem prêmio)
+    const { data: premioExistente } = await supabase
+      .from('premios')
+      .select('id')
+      .eq('fechamento_id', fechId) // Assumindo que 'premios' tem uma coluna 'fechamento_id'
+      .single();
+
+    if (premioExistente) {
+      await supabase.from('premios').update(dadosPremio).eq('id', premioExistente.id);
+    } else {
+      await supabase.from('premios').insert({ ...dadosPremio, fechamento_id: fechId });
+    }
 
     setSalvando(false)
     limparFormulario()
