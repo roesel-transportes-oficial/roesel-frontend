@@ -155,32 +155,40 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     [abastecimentos, abastSelecionados]
   )
 
-  // ✅ Atualiza KM Inicial e Final dinamicamente com base nos abastecimentos selecionados
+  // ✅ Atualiza KM Inicial e Final dinamicamente
   useEffect(() => {
-    if (abastAtivos.length > 0) {
-      const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
-      if (kms.length > 0) {
-        // KM Inicial: menor KM entre os selecionados
-        setKmInicial(String(Math.min(...kms)))
-        // KM Final: maior KM entre os selecionados
-        setKmFinal(String(Math.max(...kms)))
+    async function atualizarKms() {
+      if (!caminhao?.id) return
+
+      // 1. Busca o KM Final do último fechamento (Prioridade Máxima para o KM Inicial)
+      const { data: ultimoFech } = await supabase
+        .from('fechamento_viagens')
+        .select('km_final')
+        .eq('caminhao_id', caminhao.id)
+        .order('data_fim', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (ultimoFech?.km_final) {
+        // Se existe fechamento anterior, o KM Inicial é OBRIGATORIAMENTE o KM Final dele
+        setKmInicial(String(ultimoFech.km_final))
+      } else if (abastAtivos.length > 0) {
+        // Se NÃO existe fechamento anterior, usa o menor KM dos abastecimentos como fallback para o Início
+        const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
+        if (kms.length > 0) setKmInicial(String(Math.min(...kms)))
+      } else {
+        setKmInicial('')
       }
-    } else {
-      // Se nada selecionado, tenta voltar para o KM Inicial do último fechamento (se existir)
-      if (caminhao?.id) {
-        supabase.from('fechamento_viagens')
-          .select('km_final')
-          .eq('caminhao_id', caminhao.id)
-          .order('data_fim', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-          .then(({ data }) => {
-            if (data?.km_final) setKmInicial(String(data.km_final))
-            else setKmInicial('')
-          })
+
+      // 2. KM Final: Sempre o maior KM entre os abastecimentos selecionados
+      if (abastAtivos.length > 0) {
+        const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
+        if (kms.length > 0) setKmFinal(String(Math.max(...kms)))
+      } else {
+        setKmFinal('')
       }
-      setKmFinal('')
     }
+    atualizarKms()
   }, [abastAtivos, caminhao?.id])
 
   const resumo = useMemo(() => {
