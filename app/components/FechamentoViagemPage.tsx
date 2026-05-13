@@ -96,9 +96,22 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     }
     vincularCaminhao()
 
-    supabase.from('contratos').select('id, contrato, fat_bruto, cliente, origem, destino')
-      .order('created_at', { ascending: false }).limit(100)
-      .then(({ data }) => { if (data) setContratosDisponiveis(data) })
+    async function fetchContratos() {
+      // 1. Busca todos os contratos
+      const { data: todos } = await supabase.from('contratos')
+        .select('id, contrato, fat_bruto, cliente, origem, destino')
+        .order('created_at', { ascending: false }).limit(200)
+      
+      if (!todos) return
+
+      // 2. Busca IDs de contratos que já estão em algum fechamento
+      const { data: jaUsados } = await supabase.from('fechamento_contratos').select('contrato_id')
+      const idsUsados = new Set(jaUsados?.map(u => u.contrato_id) || [])
+
+      // 3. Filtra apenas os que não foram usados
+      setContratosDisponiveis(todos.filter(c => !idsUsados.has(c.id)))
+    }
+    fetchContratos()
   }, [motoristaId, motoristas])
 
   useEffect(() => {
