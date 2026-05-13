@@ -11,8 +11,6 @@ type Abastecimento = { id: string; data: string; posto?: string | null; litros_c
 type Fechamento    = { id: string; created_at: string; motorista: { nome: string }; caminhao: { placa: string }; data_inicio: string; data_fim: string; km_inicial: number; km_final: number; data_vencimento: string }
 
 export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
-  const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico'>('novo')
-
   const [motoristas, setMotoristas]               = useState<Motorista[]>([])
   const [motoristaId, setMotoristaId]             = useState('')
   const [motoristaNome, setMotoristaNome]         = useState('')
@@ -22,24 +20,20 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [kmInicial, setKmInicial]                 = useState('')
   const [kmFinal, setKmFinal]                     = useState('')
   const [dataVencimento, setDataVencimento]       = useState('')
-
   const [abastDataInicio, setAbastDataInicio]     = useState('')
   const [abastDataFim, setAbastDataFim]           = useState('')
-
   const [buscaContrato, setBuscaContrato]         = useState('')
   const [contratosDisponiveis, setContratosDisponiveis] = useState<Contrato[]>([])
   const [selecionados, setSelecionados]           = useState<Contrato[]>([])
-
   const [abastecimentos, setAbastecimentos]       = useState<Abastecimento[]>([])
   const [abastSelecionados, setAbastSelecionados] = useState<Set<string>>(new Set())
   const [carregandoAbast, setCarregandoAbast]     = useState(false)
-
   const [historico, setHistorico]                 = useState<Fechamento[]>([])
   const [buscaHistorico, setBuscaHistorico]       = useState('')
   const [carregandoHistorico, setCarregandoHistorico] = useState(false)
-
-  const [salvando, setSalvando] = useState(false)
-  const [erro, setErro]         = useState('')
+  const [salvando, setSalvando]   = useState(false)
+  const [erro, setErro]           = useState('')
+  const [abaAtiva, setAbaAtiva]   = useState<'novo' | 'historico'>('novo')
 
   useEffect(() => {
     supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
@@ -57,7 +51,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     }
   }, [abaAtiva])
 
-  // Motorista → caminhão + contratos disponíveis
   useEffect(() => {
     if (!motoristaId) { setCaminhao(null); setContratosDisponiveis([]); setMotoristaNome(''); return }
     const mot = motoristas.find(m => m.id === motoristaId)
@@ -80,7 +73,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       .then(({ data }) => { if (data) setContratosDisponiveis(data) })
   }, [motoristaId, motoristas])
 
-  // Abastecimentos por caminhao_id + período
   useEffect(() => {
     if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
       setAbastecimentos([]); setAbastSelecionados(new Set()); return
@@ -113,8 +105,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     if (!buscaContrato.trim()) return contratosDisponiveis.filter(c => !jaSel.has(c.id))
     const b = buscaContrato.toLowerCase()
     return contratosDisponiveis.filter(c =>
-      !jaSel.has(c.id) &&
-      (c.contrato.includes(buscaContrato) || c.cliente?.toLowerCase().includes(b))
+      !jaSel.has(c.id) && (c.contrato.includes(buscaContrato) || c.cliente?.toLowerCase().includes(b))
     )
   }, [contratosDisponiveis, selecionados, buscaContrato])
 
@@ -148,12 +139,9 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     if (!motoristaId || !dataInicio || !dataFim || !kmInicial || !kmFinal || !dataVencimento) {
       setErro('Preencha todos os campos obrigatórios.'); return
     }
-    if (selecionados.length === 0) {
-      setErro('Adicione ao menos um contrato.'); return
-    }
+    if (selecionados.length === 0) { setErro('Adicione ao menos um contrato.'); return }
     setSalvando(true)
 
-    // 1. Salva fechamento
     const { data: fech, error } = await supabase.from('fechamento_viagens').insert({
       motorista_id: motoristaId,
       caminhao_id: caminhao?.id || null,
@@ -165,7 +153,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
     if (error || !fech) { setErro('Erro ao salvar: ' + error?.message); setSalvando(false); return }
 
-    // 2. Vincula contratos e abastecimentos
     await Promise.all([
       supabase.from('fechamento_contratos').insert(
         selecionados.map(c => ({ fechamento_id: fech.id, contrato_id: c.id }))
@@ -175,7 +162,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       )
     ])
 
-    // 3. Cria prêmio automaticamente
     await supabase.from('premios').insert({
       motorista: motoristaNome,
       status: 'pendente',
@@ -193,8 +179,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     })
 
     setSalvando(false)
-
-    // 4. Navega para Prêmios
     if (setAba) setAba('premios')
   }
 
@@ -329,7 +313,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                   ) : carregandoAbast ? (
                     <div className="flex items-center justify-center py-10 gap-3">
                       <div className="w-5 h-5 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-xs font-bold text-gray-400 uppercase">Buscando...</span>
                     </div>
                   ) : abastecimentos.length === 0 ? (
                     <div className="text-center py-10">
