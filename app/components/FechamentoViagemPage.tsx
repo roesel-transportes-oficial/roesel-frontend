@@ -43,12 +43,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
   useEffect(() => {
     if (abaAtiva === 'historico') {
-      setCarregandoHistorico(true)
-      supabase.from('fechamento_viagens')
-        .select(`id, created_at, data_inicio, data_fim, km_inicial, km_final, data_vencimento,
-          motorista:motoristas(nome), caminhao:caminhoes(placa)`)
-        .order('created_at', { ascending: false })
-        .then(({ data }) => { setCarregandoHistorico(false); if (data) setHistorico(data as any) })
+      fetchHistorico()
     }
   }, [abaAtiva])
 
@@ -184,12 +179,28 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
   async function fetchHistorico() {
     setCarregandoHistorico(true)
-    const { data } = await supabase.from('fechamento_viagens')
-      .select(`id, created_at, data_inicio, data_fim, km_inicial, km_final, data_vencimento,
-        motorista:motoristas(nome), caminhao:caminhoes(placa)`)
-      .order('created_at', { ascending: false })
-    setCarregandoHistorico(false)
-    if (data) setHistorico(data as any)
+    try {
+      const { data, error } = await supabase.from('fechamento_viagens')
+        .select(`
+          id, 
+          created_at, 
+          data_inicio, 
+          data_fim, 
+          km_inicial, 
+          km_final, 
+          data_vencimento,
+          motorista:motorista_id(nome),
+          caminhao:caminhao_id(placa)
+        `)
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      if (data) setHistorico(data as any)
+    } catch (err) {
+      console.error('Erro ao buscar histórico:', err)
+    } finally {
+      setCarregandoHistorico(false)
+    }
   }
 
   async function salvar() {
