@@ -582,7 +582,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                   <tr key={h.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="p-4">
                       <p className="text-xs font-black text-gray-900">{new Date(h.created_at).toLocaleDateString('pt-BR')}</p>
-                      <p className="text-[10px] text-gray-400">{new Date(h.created_at).toLocaleTimeString('pt-BR', { hour: '2-2-digit', minute: '2-2-digit' })}</p>
+                      <p className="text-[10px] text-gray-400">{new Date(h.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                     </td>
                     <td className="p-4">
                       <p className="text-xs font-black text-gray-900 uppercase">{h.motorista?.nome || '—'}</p>
