@@ -193,37 +193,43 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   async function fetchHistorico() {
     setCarregandoHistorico(true)
     try {
-      const { data, error } = await supabase.from('fechamento_viagens')
-        .select(`
-          *,
-          motorista:motorista_id(nome),
-          caminhao:caminhao_id(placa),
-          contratos:fechamento_contratos(contrato:contrato_id(origem, destino))
-        `)
+      // 1. Busca todos os fechamentos
+      const { data: fechamentos, error: errorFech } = await supabase
+        .from('fechamento_viagens')
+        .select('*')
         .order('created_at', { ascending: false })
       
-      if (error) throw error
-      
-      // Garante que a placa venha corretamente do relacionamento ou fallback
-      const formatado = (data || []).map(h => ({
-        ...h,
-        motorista: h.motorista || { nome: motoristas.find(m => m.id === h.motorista_id)?.nome || 'Motorista' },
-        caminhao: h.caminhao || { placa: 'Placa' }
-      }))
+      if (errorFech) throw errorFech
+
+      // 2. Busca todos os motoristas e caminhões para mapeamento manual (mais seguro)
+      const [{ data: mots }, { data: cams }] = await Promise.all([
+        supabase.from('motoristas').select('id, nome'),
+        supabase.from('caminhoes').select('id, placa')
+      ])
+
+      // 3. Busca os contratos vinculados
+      const { data: relContratos } = await supabase
+        .from('fechamento_contratos')
+        .select('fechamento_id, contrato:contrato_id(contrato, origem, destino)')
+
+      // 4. Monta o objeto final manualmente para garantir que nada falhe
+      const formatado = (fechamentos || []).map(f => {
+        const mot = mots?.find(m => m.id === f.motorista_id)
+        const cam = cams?.find(c => c.id === f.caminhao_id)
+        const conts = relContratos?.filter(rc => rc.fechamento_id === f.id) || []
+
+        return {
+          ...f,
+          motorista: { nome: mot?.nome || 'Motorista não encontrado' },
+          caminhao: { placa: cam?.placa || 'Placa não encontrada' },
+          contratos: conts
+        }
+      })
       
       setHistorico(formatado as any)
     } catch (err) {
-      console.error('Erro ao buscar histórico:', err)
-      const { data: simple } = await supabase.from('fechamento_viagens')
-        .select('*').order('created_at', { ascending: false })
-      if (simple) {
-        const mapped = simple.map(s => ({
-          ...s,
-          motorista: { nome: motoristas.find(m => m.id === s.motorista_id)?.nome || 'Motorista' },
-          caminhao: { placa: 'Caminhão' }
-        }))
-        setHistorico(mapped as any)
-      }
+      console.error('Erro fatal ao buscar histórico:', err)
+      setErro('Erro ao carregar histórico. Verifique sua conexão.')
     } finally {
       setCarregandoHistorico(false)
     }
@@ -389,10 +395,13 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                 <div className="grid grid-cols-1 gap-2">
                   {visualizando.contratos?.map((c: any, i: number) => (
                     <div key={i} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-center justify-between">
-                      <span className="text-xs font-black text-gray-700">Contrato #{i+1}</span>
-                      <div className="flex items-center gap-3 text-xs font-bold text-gray-500">
+                      <div className="flex flex-col">
+                        <span className="text-xs font-black text-gray-900">{c.contrato?.contrato || 'Contrato'}</span>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase">Contrato #{i+1}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs font-bold text-gray-600 bg-white px-4 py-2 rounded-lg border border-gray-100 shadow-sm">
                         <span>{c.contrato?.origem}</span>
-                        <ArrowRight size={12} className="text-gray-300"/>
+                        <ArrowRight size={12} className="text-red-400"/>
                         <span>{c.contrato?.destino}</span>
                       </div>
                     </div>
@@ -756,7 +765,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                       <div className="mt-1 flex flex-wrap gap-1">
                         {h.contratos?.map((c: any, i: number) => (
                           <span key={i} className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">
-                            {c.contrato?.origem} → {c.contrato?.destino}
+                            {c.contrato?.contrato}: {c.contrato?.origem} → {c.contrato?.destino}
                           </span>
                         ))}
                       </div>
