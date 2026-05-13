@@ -203,10 +203,17 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         .order('created_at', { ascending: false })
       
       if (error) throw error
-      setHistorico(data as any)
+      
+      // Garante que a placa venha corretamente do relacionamento ou fallback
+      const formatado = (data || []).map(h => ({
+        ...h,
+        motorista: h.motorista || { nome: motoristas.find(m => m.id === h.motorista_id)?.nome || 'Motorista' },
+        caminhao: h.caminhao || { placa: 'Placa' }
+      }))
+      
+      setHistorico(formatado as any)
     } catch (err) {
       console.error('Erro ao buscar histórico:', err)
-      // Fallback simples se o join falhar
       const { data: simple } = await supabase.from('fechamento_viagens')
         .select('*').order('created_at', { ascending: false })
       if (simple) {
@@ -219,6 +226,18 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       }
     } finally {
       setCarregandoHistorico(false)
+    }
+  }
+
+  async function atualizarVencimento(id: string, novaData: string) {
+    const { error } = await supabase.from('fechamento_viagens').update({ data_vencimento: novaData }).eq('id', id)
+    if (error) {
+      setErro('Erro ao atualizar data: ' + error.message)
+    } else {
+      setSucesso(true)
+      setTimeout(() => setSucesso(false), 3000)
+      fetchHistorico()
+      setVisualizando(prev => prev ? { ...prev, data_vencimento: novaData } : null)
     }
   }
 
@@ -354,6 +373,15 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">KM Rodado</p>
                   <p className="text-sm font-bold text-gray-700">{(visualizando.km_final - visualizando.km_inicial).toLocaleString('pt-BR')} km (Início: {visualizando.km_inicial} | Fim: {visualizando.km_final})</p>
                 </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-red-600">Data de Pagamento (Vencimento)</p>
+                  <input 
+                    type="date" 
+                    value={visualizando.data_vencimento} 
+                    onChange={(e) => atualizarVencimento(visualizando.id, e.target.value)}
+                    className="w-full bg-red-50 border border-red-100 rounded-xl px-4 py-2 text-sm font-bold text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -373,7 +401,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
               </div>
             </div>
             <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end">
-              <button onClick={() => setVisualizando(null)} className="px-8 py-3 bg-gray-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all">Fechar</button>
+              <button onClick={() => setVisualizando(null)} className="px-8 py-3 bg-gray-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all">Concluir</button>
             </div>
           </div>
         </div>
@@ -706,16 +734,16 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100">
-                  {['Data', 'Motorista / Placa', 'Período / Destinos', 'KM Rodado', 'Vencimento', ''].map(h => (
+                  {['Data Lançamento', 'Motorista / Placa', 'Período / Destinos', 'Vencimento', ''].map(h => (
                     <th key={h} className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {carregandoHistorico ? (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
                 ) : historicoFiltrado.length === 0 ? (
-                  <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
+                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
                 ) : historicoFiltrado.map(h => (
                   <tr key={h.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => setVisualizando(h)}>
                     <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
@@ -733,7 +761,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                         ))}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-xs font-bold text-gray-700">{(h.km_final - h.km_inicial).toLocaleString('pt-BR')} km</td>
                     <td className="px-6 py-4 text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</td>
                     <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
                       <button onClick={() => setExcluindoId(h.id)} 
