@@ -72,7 +72,7 @@ export default function ContratosPage() {
     const clienteEncontrado = clientes.find(c => c.id === id)
     if (clienteEncontrado) {
       setEditCliente(clienteEncontrado.nome)
-      setEditCnpj(clienteEncontrado.cnpj || '')
+      setEditCnpj(fmtCNPJ(clienteEncontrado.cnpj || ''))
     } else {
       setEditCliente('')
       setEditCnpj('')
@@ -103,7 +103,7 @@ export default function ContratosPage() {
     setSel(c)
     setEditData(c.data || '')
     setEditCliente(c.cliente || '')
-    setEditCnpj(c.cnpj || '')
+    setEditCnpj(fmtCNPJ(c.cnpj || ''))
     setEditMotorista(c.motorista || '')
     setEditPlaca(c.placa || '')
     setEditPlacaCarreta(c.placa_carreta || '')
@@ -130,7 +130,7 @@ export default function ContratosPage() {
       data: editData,
       cliente: editCliente,
       cliente_nome_completo: editCliente,
-      cnpj: editCnpj,
+      cnpj: editCnpj.replace(/\D/g, ''), // Salva apenas números
       motorista: editMotorista,
       cpf_motorista: sel.cpf_motorista || '',
       placa: editPlaca,
@@ -169,8 +169,12 @@ export default function ContratosPage() {
   function fmtCNPJ(v: string) {
     if (!v) return ''
     const n = v.replace(/\D/g, '')
-    if (n.length !== 14) return v
-    return n.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+    return n
+      .replace(/^(\d{2})(\d)/, "$1.$2")
+      .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/\.(\d{3})(\d)/, ".$1/$2")
+      .replace(/(\d{4})(\d)/, "$1-$2")
+      .substring(0, 18)
   }
 
   return (
@@ -224,7 +228,7 @@ export default function ContratosPage() {
                 <div className="space-y-1">
                   <label className={LabelClass}><Building2 size={12}/> Cliente</label>
                   <select 
-                    value={clientes.find(c => c.nome === editCliente && c.cnpj === editCnpj)?.id || ""} 
+                    value={clientes.find(c => c.nome === editCliente && c.cnpj.replace(/\D/g, '') === editCnpj.replace(/\D/g, ''))?.id || ""} 
                     onChange={e => handleSelectCliente(e.target.value)} 
                     className={InputClass}
                   >
@@ -239,7 +243,12 @@ export default function ContratosPage() {
 
                 <div className="space-y-1">
                   <label className={LabelClass}>CNPJ do Cliente</label>
-                  <input value={editCnpj} onChange={e => setEditCnpj(e.target.value)} className={InputClass} placeholder="00.000.000/0000-00" />
+                  <input 
+                    value={editCnpj} 
+                    onChange={e => setEditCnpj(fmtCNPJ(e.target.value))} 
+                    className={InputClass} 
+                    placeholder="00.000.000/0000-00" 
+                  />
                 </div>
 
                 <div className="space-y-1">
