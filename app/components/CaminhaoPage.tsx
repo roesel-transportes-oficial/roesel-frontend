@@ -214,26 +214,86 @@ export default function CaminhaoPage() {
   }
 
   async function salvarManutencao() {
-    if (!manCamId || !manTipo) return; setLoading(true)
-    try {
-      const cam = caminhoes.find(c => c.id === manCamId)
-      const sub = caminhoes.find(c => c.id === manSubstitutoId)
+  if (!manCamId || !manTipo) {
+    showMsg('❌ Selecione o veículo e o tipo'); return
+  }
+  setLoading(true)
+  try {
+    const cam = caminhoes.find(c => c.id === manCamId)
+    const sub = caminhoes.find(c => c.id === manSubstitutoId)
 
-      // ✅ Todos os campos incluindo substituto e motorista
-      const dadosHistorico: any = {
-        caminhao_id: manCamId,
-        caminhao_placa: cam?.placa || '',
-        tipo: manTipo,
-        descricao: manDesc,
-        data_entrada: manEntrada,
-        data_saida: manSaida || null,
-        valor: parseFloat(manValor) || null,
-        status: manStatus,
-        obs: manObs,
-        caminhao_substituto_id: manSubstitutoId || null,
-        caminhao_substituto_placa: sub?.placa || null,
-        motorista_nome: cam?.motorista_atual || null,
+    const dadosHistorico = {
+      caminhao_id:               manCamId,
+      caminhao_placa:            cam?.placa || '',
+      tipo:                      manTipo,
+      descricao:                 manDesc,
+      data_entrada:              manEntrada,
+      data_saida:                manSaida || null,
+      valor:                     parseFloat(manValor) || null,
+      status:                    manStatus,
+      obs:                       manObs,
+      caminhao_substituto_id:    manSubstitutoId || null,
+      caminhao_substituto_placa: sub?.placa || null,
+      motorista_nome:            cam?.motorista_atual || null,
+    }
+
+    let saveError: any = null
+
+    if (editandoMan) {
+      const { error } = await supabase
+        .from('manutencoes')
+        .update(dadosHistorico)
+        .eq('id', editandoMan.id)
+      saveError = error
+    } else {
+      const { error } = await supabase
+        .from('manutencoes')
+        .insert(dadosHistorico)
+      saveError = error
+    }
+
+    if (saveError) {
+      console.error('Erro Supabase:', saveError)
+      showMsg('❌ ' + (saveError.message || 'Erro ao salvar'))
+      setLoading(false); return
+    }
+
+    // Atualiza status do caminhão
+    if (manStatus === 'EM ANDAMENTO') {
+      await supabase.from('caminhoes')
+        .update({ status: 'manutencao', motivo_parado: manTipo, dt_parado: manEntrada })
+        .eq('id', manCamId)
+
+      if (manSubstitutoId && cam?.motorista_atual) {
+        await supabase.from('caminhoes').update({ motorista_atual: cam.motorista_atual }).eq('id', manSubstitutoId)
+        await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manCamId)
       }
+    } else if (manStatus === 'CONCLUÍDO') {
+      await supabase.from('caminhoes')
+        .update({ status: 'rodando', motivo_parado: '', dt_parado: null })
+        .eq('id', manCamId)
+
+      if (manSubstitutoId) {
+        const motoristaOriginal = editandoMan?.motorista_nome || cam?.motorista_atual
+        if (motoristaOriginal) {
+          await supabase.from('caminhoes').update({ motorista_atual: motoristaOriginal }).eq('id', manCamId)
+          await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manSubstitutoId)
+        }
+      }
+    }
+
+    showMsg(editandoMan ? '✅ Atualizado!' : '✅ Registrado!')
+    setMostraNovaMan(false)
+    setEditandoMan(null)
+    await fetchHistoricoMan()
+    await fetch_()
+  } catch (e: any) {
+    console.error('Erro inesperado:', e)
+    showMsg('❌ Erro: ' + (e.message || 'Erro desconhecido'))
+  } finally {
+    setLoading(false)
+  }
+}
 
       if (editandoMan) {
         const { error } = await supabase.from('manutencoes').update(dadosHistorico).eq('id', editandoMan.id)
