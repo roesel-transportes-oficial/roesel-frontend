@@ -2,33 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { 
-  X, Search, Truck, User, Calendar, MapPin, Fuel, 
-  CheckCircle2, CreditCard, Filter, AlertCircle, 
-  ArrowRight, Download, Plus, Trash2, ChevronRight
-} from 'lucide-react'
+import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight, Download } from 'lucide-react'
 
-// ─── TYPES ───
-type Motorista = { id: string; nome: string; caminhao_id?: string }
-type Caminhao = { id: string; placa: string }
-type Contrato = { 
-  id: string; 
-  contrato: string; 
-  fat_bruto: number | null; 
-  cliente?: string | null; 
-  origem?: string | null; 
-  destino?: string | null 
-}
-type Abastecimento = { 
-  id: string; 
-  data: string; 
-  posto?: string | null; 
-  litros_combustivel?: number | null; 
-  litros_arla?: number | null; 
-  total?: number | null; 
-  km?: number | null 
-}
-type Fechamento = { 
+type Motorista     = { id: string; nome: string; caminhao_id?: string }
+type Caminhao      = { id: string; placa: string }
+type Contrato      = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
+type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null; km?: number | null }
+type Fechamento    = { 
   id: string; 
   created_at: string; 
   motorista_id: string;
@@ -47,66 +27,60 @@ type Fechamento = {
   contratos?: { contrato: { contrato: string; origem: string; destino: string } }[]
 }
 
-export default function FechamentoViagemPage() {
-  // ─── STATES ───
-  const [motoristas, setMotoristas] = useState<Motorista[]>([])
-  const [motoristaId, setMotoristaId] = useState('')
-  const [motoristaNome, setMotoristaNome] = useState('')
-  const [caminhao, setCaminhao] = useState<Caminhao | null>(null)
-  const [isSubstituto, setIsSubstituto] = useState(false)
-  
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim, setDataFim] = useState('')
-  const [kmInicial, setKmInicial] = useState('')
-  const [kmFinal, setKmFinal] = useState('')
-  const [dataVencimento, setDataVencimento] = useState('')
-  
-  const [abastDataInicio, setAbastDataInicio] = useState('')
-  const [abastDataFim, setAbastDataFim] = useState('')
-  
-  const [buscaContrato, setBuscaContrato] = useState('')
+export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
+  const [motoristas, setMotoristas]               = useState<Motorista[]>([])
+  const [motoristaId, setMotoristaId]             = useState('')
+  const [motoristaNome, setMotoristaNome]         = useState('')
+  const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
+  const [isSubstituto, setIsSubstituto]           = useState(false)
+  const [dataInicio, setDataInicio]               = useState('')
+  const [dataFim, setDataFim]                     = useState('')
+  const [kmInicial, setKmInicial]                 = useState('')
+  const [kmFinal, setKmFinal]                     = useState('')
+  const [dataVencimento, setDataVencimento]       = useState('')
+  const [abastDataInicio, setAbastDataInicio]     = useState('')
+  const [abastDataFim, setAbastDataFim]           = useState('')
+  const [buscaContrato, setBuscaContrato]         = useState('')
   const [contratosDisponiveis, setContratosDisponiveis] = useState<Contrato[]>([])
-  const [selecionados, setSelecionados] = useState<Contrato[]>([])
-  
-  const [abastecimentos, setAbastecimentos] = useState<Abastecimento[]>([])
+  const [selecionados, setSelecionados]           = useState<Contrato[]>([])
+  const [abastecimentos, setAbastecimentos]       = useState<Abastecimento[]>([])
   const [abastSelecionados, setAbastSelecionados] = useState<Set<string>>(new Set())
-  const [carregandoAbast, setCarregandoAbast] = useState(false)
-  
-  const [historico, setHistorico] = useState<Fechamento[]>([])
-  const [buscaHistorico, setBuscaHistorico] = useState('')
+  const [carregandoAbast, setCarregandoAbast]     = useState(false)
+  const [historico, setHistorico]                 = useState<Fechamento[]>([])
+  const [buscaHistorico, setBuscaHistorico]       = useState('')
   const [carregandoHistorico, setCarregandoHistorico] = useState(false)
-  
-  const [salvando, setSalvando] = useState(false)
-  const [erro, setErro] = useState('')
-  const [abaAtiva, setAbaAtiva] = useState<'novo' | 'historico'>('novo')
-  const [sucesso, setSucesso] = useState(false)
+  const [salvando, setSalvando]   = useState(false)
+  const [erro, setErro]           = useState('')
+  const [abaAtiva, setAbaAtiva]   = useState<'novo' | 'historico'>('novo')
+  const [sucesso, setSucesso]     = useState(false)
+  const [excluindoId, setExcluindoId] = useState<string | null>(null)
   const [visualizando, setVisualizando] = useState<Fechamento | null>(null)
 
-  // ─── EFFECTS ───
   useEffect(() => {
     supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
       .then(({ data }) => data && setMotoristas(data))
   }, [])
 
   useEffect(() => {
-    if (abaAtiva === 'historico') fetchHistorico()
+    if (abaAtiva === 'historico') {
+      fetchHistorico()
+    }
   }, [abaAtiva])
 
-  // Lógica de Vínculo de Caminhão + Substituto + KM Inicial
+  // ✅ Motorista → caminhão + Substituto + KM inicial automático
   useEffect(() => {
     if (!motoristaId) {
       setCaminhao(null); setContratosDisponiveis([]); setMotoristaNome('')
       setKmInicial(''); setKmFinal(''); setIsSubstituto(false); return
     }
-    
     const mot = motoristas.find(m => m.id === motoristaId)
     if (!mot) return
     setMotoristaNome(mot.nome)
 
     async function vincularCaminhao() {
       if (!mot) return
-      
-      // 1. Verifica substituto na data de início
+
+      // 1. Verifica se há substituto na data de início
       if (dataInicio) {
         const { data: manutencao } = await supabase
           .from('manutencoes')
@@ -124,7 +98,7 @@ export default function FechamentoViagemPage() {
         }
       }
 
-      // 2. Caminhão Principal
+      // 2. Busca caminhão principal
       setIsSubstituto(false)
       let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
       if (mot?.caminhao_id) {
@@ -147,24 +121,26 @@ export default function FechamentoViagemPage() {
         .limit(1)
         .maybeSingle()
 
-      if (ultimoFech?.km_final) setKmInicial(String(ultimoFech.km_final))
+      if (ultimoFech?.km_final) {
+        setKmInicial(String(ultimoFech.km_final))
+      }
     }
 
     vincularCaminhao()
 
-    // Buscar Contratos
-    supabase.from('contratos')
-      .select('id, contrato, fat_bruto, cliente, origem, destino')
-      .order('created_at', { ascending: false }).limit(200)
-      .then(async ({ data: todos }) => {
-        if (!todos) return
-        const { data: jaUsados } = await supabase.from('fechamento_contratos').select('contrato_id')
-        const idsUsados = new Set(jaUsados?.map(u => u.contrato_id) || [])
-        setContratosDisponiveis(todos.filter(c => !idsUsados.has(c.id)))
-      })
+    async function fetchContratos() {
+      const { data: todos } = await supabase.from('contratos')
+        .select('id, contrato, fat_bruto, cliente, origem, destino')
+        .order('created_at', { ascending: false }).limit(200)
+      
+      if (!todos) return
+      const { data: jaUsados } = await supabase.from('fechamento_contratos').select('contrato_id')
+      const idsUsados = new Set(jaUsados?.map(u => u.contrato_id) || [])
+      setContratosDisponiveis(todos.filter(c => !idsUsados.has(c.id)))
+    }
+    fetchContratos()
   }, [motoristaId, motoristas, dataInicio])
 
-  // Buscar Abastecimentos
   useEffect(() => {
     if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
       setAbastecimentos([]); setAbastSelecionados(new Set()); return
@@ -184,7 +160,6 @@ export default function FechamentoViagemPage() {
       })
   }, [caminhao?.id, abastDataInicio, abastDataFim])
 
-  // ─── FUNCTIONS ───
   function adicionarContrato(c: Contrato) { setSelecionados(prev => [...prev, c]); setBuscaContrato('') }
   function removerContrato(id: string) { setSelecionados(prev => prev.filter(c => c.id !== id)) }
   function toggleAbast(id: string) {
@@ -207,17 +182,55 @@ export default function FechamentoViagemPage() {
     [abastecimentos, abastSelecionados]
   )
 
+  useEffect(() => {
+    async function atualizarKms() {
+      if (!caminhao?.id) return
+      const { data: ultimoFech } = await supabase
+        .from('fechamento_viagens')
+        .select('km_final')
+        .eq('caminhao_id', caminhao.id)
+        .order('data_fim', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (ultimoFech?.km_final) {
+        setKmInicial(String(ultimoFech.km_final))
+      } else if (abastAtivos.length > 0) {
+        const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
+        if (kms.length > 0) setKmInicial(String(Math.min(...kms)))
+      } else {
+        setKmInicial('')
+      }
+
+      if (abastAtivos.length > 0) {
+        const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
+        if (kms.length > 0) setKmFinal(String(Math.max(...kms)))
+      } else {
+        setKmFinal('')
+      }
+    }
+    atualizarKms()
+  }, [abastAtivos, caminhao?.id])
+
   const resumo = useMemo(() => {
-    const km = (Number(kmFinal) || 0) - (Number(kmInicial) || 0)
-    const litros = abastAtivos.reduce((t, a) => t + Number(a.litros_combustivel || 0), 0)
-    const valor = abastAtivos.reduce((t, a) => t + Number(a.total || 0), 0)
-    const frete = selecionados.reduce((t, c) => t + Number(c.fat_bruto || 0), 0)
+    const km      = (Number(kmFinal) || 0) - (Number(kmInicial) || 0)
+    const litros  = abastAtivos.reduce((t, a) => t + Number(a.litros_combustivel || 0), 0)
+    const valor   = abastAtivos.reduce((t, a) => t + Number(a.total || 0), 0)
+    const frete   = selecionados.reduce((t, c) => t + Number(c.fat_bruto || 0), 0)
     const comissao = frete * 0.10
     return { km, litros, valor, frete, comissao, mediaKmL: km > 0 && litros > 0 ? km / litros : 0 }
   }, [abastAtivos, kmInicial, kmFinal, selecionados])
 
-  const fmt = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const fmt     = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const fmtData = (d: string) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+
+  const historicoFiltrado = useMemo(() => {
+    if (!buscaHistorico) return historico
+    const b = buscaHistorico.toLowerCase()
+    return historico.filter(h =>
+      h.motorista.nome.toLowerCase().includes(b) || h.caminhao.placa.toLowerCase().includes(b)
+    )
+  }, [historico, buscaHistorico])
 
   async function fetchHistorico() {
     setCarregandoHistorico(true)
@@ -250,14 +263,6 @@ export default function FechamentoViagemPage() {
     } catch (e: any) { setErro(e.message) }
     finally { setCarregandoHistorico(false) }
   }
-
-  const historicoFiltrado = useMemo(() => {
-    if (!buscaHistorico) return historico
-    const b = buscaHistorico.toLowerCase()
-    return historico.filter(h =>
-      h.motorista.nome.toLowerCase().includes(b) || h.caminhao.placa.toLowerCase().includes(b)
-    )
-  }, [historico, buscaHistorico])
 
   async function salvar() {
     if (!motoristaId || !caminhao || selecionados.length === 0) return
@@ -355,8 +360,6 @@ export default function FechamentoViagemPage() {
         <>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-8 space-y-6">
-
-              {/* ── Motorista + Datas + KM ── */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
@@ -444,7 +447,6 @@ export default function FechamentoViagemPage() {
                 )}
               </div>
 
-              {/* ── Abastecimentos ── */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between bg-gray-50/50 gap-4">
                   <div className="flex items-center gap-3">
@@ -526,7 +528,6 @@ export default function FechamentoViagemPage() {
               </div>
             </div>
 
-            {/* ── Contratos ── */}
             <div className="lg:col-span-4">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ maxHeight: '900px' }}>
                 <div className="p-5 border-b border-gray-100 bg-gray-50/50 space-y-4">
@@ -594,7 +595,6 @@ export default function FechamentoViagemPage() {
             </div>
           </div>
 
-          {/* ── Salvar ── */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-gray-200">
             <div className="flex-1 text-sm font-bold">
               {erro && <span className="text-red-600">⚠️ {erro}</span>}
@@ -607,7 +607,6 @@ export default function FechamentoViagemPage() {
           </div>
         </>
       ) : (
-        /* ── Histórico ── */
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-md">
