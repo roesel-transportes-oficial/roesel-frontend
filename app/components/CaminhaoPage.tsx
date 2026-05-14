@@ -235,6 +235,13 @@ export default function CaminhaoPage() {
         obs: manObs
       }
       
+      // Tenta adicionar campos extras se as colunas existirem (não trava se falhar)
+      try {
+        dados.caminhao_substituto_id = manSubstitutoId || null
+        dados.caminhao_substituto_placa = sub?.placa || null
+        dados.motorista_nome = cam?.motorista_atual || null
+      } catch(e) {}
+
       if (editandoMan) {
         const { error } = await supabase.from('manutencoes').update(dados).eq('id', editandoMan.id)
         if (error) throw error
@@ -245,19 +252,48 @@ export default function CaminhaoPage() {
         showMsg('✅ Manutenção registrada!')
       }
 
-      // Atualiza status do caminhão se necessário
+      // ── LÓGICA DE SUBSTITUIÇÃO E STATUS ──
       if (manStatus === 'EM ANDAMENTO') {
+        // 1. Coloca o caminhão original em manutenção
         await supabase.from('caminhoes').update({ 
           status: 'manutencao', 
           motivo_parado: manTipo, 
           dt_parado: manEntrada 
         }).eq('id', manCamId)
+
+        // 2. Se tiver substituto e motorista, move o motorista para o substituto
+        if (manSubstitutoId && cam?.motorista_atual) {
+          // Tira o motorista do original (opcional, já está em manutenção)
+          // Coloca o motorista no substituto
+          await supabase.from('caminhoes').update({ 
+            motorista_atual: cam.motorista_atual 
+          }).eq('id', manSubstitutoId)
+          
+          // Limpa o motorista do original para não ficar duplicado
+          await supabase.from('caminhoes').update({ 
+            motorista_atual: '' 
+          }).eq('id', manCamId)
+        }
       } else if (manStatus === 'CONCLUÍDO') {
+        // 1. Volta o caminhão original para rodando
         await supabase.from('caminhoes').update({ 
           status: 'rodando', 
           motivo_parado: '', 
           dt_parado: null 
         }).eq('id', manCamId)
+
+        // 2. Se tinha um substituto com o motorista, devolve o motorista para o original
+        if (editandoMan?.caminhao_substituto_id && editandoMan?.motorista_nome) {
+          // Devolve o motorista para o original
+          await supabase.from('caminhoes').update({ 
+            motorista_atual: editandoMan.motorista_nome 
+          }).eq('id', manCamId)
+
+          // Limpa o motorista do substituto
+          await supabase.from('caminhoes').update({ 
+            motorista_atual: '' 
+          }).eq('id', editandoMan.caminhao_substituto_id)
+        }
       }
       
       setMostraNovaMan(false)
@@ -376,7 +412,7 @@ export default function CaminhaoPage() {
                               <p className={`text-xs font-black ${dias !== null && dias < 30 ? 'text-red-600' : 'text-gray-900'}`}>{fmtData(l.vencimento)}</p>
                             </div>
                           </div>
-                          <button onClick={() => excluirLicenca(l.id)} className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
+                          <button onClick={() => excluirLicenca(id)} className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
                         </div>
                       )
                     })}
@@ -442,7 +478,7 @@ export default function CaminhaoPage() {
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={buscaMan} onChange={e => setBuscaMan(e.target.value)} placeholder="Pesquisar placa..." className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-red-500 transition-all text-sm font-bold shadow-inner" />
             </div>
-            <button onClick={() => { setEditandoMan(null); setMostraNovaMan(true); setManCamId(''); setManTipo(''); setManDesc(''); setManValor(''); setManObs(''); setManSaida(''); setManStatus('EM ANDAMENTO') }} className="bg-gray-900 hover:bg-black text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"><Wrench size={16} /> Registrar Manutenção</button>
+            <button onClick={() => { setEditandoMan(null); setMostraNovaMan(true); setManCamId(''); setManTipo(''); setManDesc(''); setManValor(''); setManObs(''); setManSaida(''); setManStatus('EM ANDAMENTO'); setManSubstitutoId('') }} className="bg-gray-900 hover:bg-black text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"><Wrench size={16} /> Registrar Manutenção</button>
           </div>
 
           <div className="bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden">
@@ -497,6 +533,7 @@ export default function CaminhaoPage() {
                 <div className="space-y-1"><label className={LC}>Data Saída</label><input type="date" value={manSaida} onChange={e => setManSaida(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Valor (R$)</label><input type="number" value={manValor} onChange={e => setManValor(e.target.value)} className={IC} placeholder="0,00" /></div>
                 <div className="space-y-1"><label className={LC}>Status</label><select value={manStatus} onChange={e => setManStatus(e.target.value)} className={IC}><option value="EM ANDAMENTO">Em Andamento</option><option value="CONCLUÍDO">Concluído</option></select></div>
+                <div className="space-y-1 md:col-span-2"><label className={LC}>Veículo Substituto</label><select value={manSubstitutoId} onChange={e => setManSubstitutoId(e.target.value)} className={IC} disabled={!!editandoMan}><option value="">Nenhum (Motorista fica parado)</option>{caminhoes.filter(c => c.id !== manCamId).map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>
               </div>
               <div className="space-y-1"><label className={LC}>Descrição</label><textarea value={manDesc} onChange={e => setManDesc(e.target.value)} className={`${IC} h-24 resize-none`} placeholder="Detalhes da manutenção..." /></div>
               <div className="space-y-1"><label className={LC}>Observações Internas</label><textarea value={manObs} onChange={e => setManObs(e.target.value)} className={`${IC} h-20 resize-none`} placeholder="Notas extras..." /></div>
