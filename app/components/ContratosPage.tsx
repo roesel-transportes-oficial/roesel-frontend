@@ -215,7 +215,11 @@ export default function ContratosPage() {
                   <label className={LabelClass}><Building2 size={12}/> Cliente</label>
                   <select value={editCliente} onChange={e => handleSelectCliente(e.target.value)} className={InputClass}>
                     <option value="">Selecione o cliente...</option>
-                    {clientes.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.nome}>
+                        {c.nome} {c.cnpj ? ` - ${c.cnpj}` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -299,7 +303,7 @@ export default function ContratosPage() {
 
                 <div className="space-y-1">
                   <label className={LabelClass}>Observações Internas</label>
-                  <textarea value={editObs} onChange={e => setEditObs(e.target.value)} rows={3} className={InputClass} placeholder="Notas sobre o contrato..." />
+                  <textarea value={editObs} onChange={e => setEditObs(e.target.value)} className={`${InputClass} min-h-[100px] font-normal`} placeholder="Notas sobre o contrato..." />
                 </div>
               </div>
             </div>
