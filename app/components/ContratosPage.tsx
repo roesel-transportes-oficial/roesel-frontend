@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { contratosAPI, motoristasAPI } from '../services/api'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
-import { Search, Save, Trash2, ChevronRight, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck } from 'lucide-react'
+import { Search, Save, Trash2, ChevronRight, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle } from 'lucide-react'
 
 interface Contrato {
   id: string; contrato: string; data: string; cliente: string
@@ -56,7 +56,6 @@ export default function ContratosPage() {
   useEffect(() => {
     fetch_()
     motoristasAPI.listar().then(setMotoristas)
-    // Carregar clientes para o preenchimento automático
     supabase.from('clientes').select('id, nome, cnpj').order('nome').then(({ data }) => data && setClientes(data))
   }, [filtroMes, filtroAno])
 
@@ -65,7 +64,6 @@ export default function ContratosPage() {
     setContratos(data)
   }
 
-  // Lógica de preenchimento automático do cliente
   function handleSelectCliente(nome: string) {
     setEditCliente(nome)
     const clienteEncontrado = clientes.find(c => c.nome === nome)
@@ -74,7 +72,6 @@ export default function ContratosPage() {
     }
   }
 
-  // Lógica de preenchimento automático do motorista (Placa)
   function handleSelectMotorista(nome: string) {
     setEditMotorista(nome)
     const mot = motoristas.find(m => m.nome === nome)
@@ -410,7 +407,7 @@ export default function ContratosPage() {
                       <td className="px-8 py-5">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-black text-red-600 uppercase">{c.origem || '—'}</span>
-                          <ArrowLeft size={10} className="text-gray-300 rotate-180" />
+                          <ArrowLeft size={10} className="rotate-180 text-gray-300" />
                           <span className="text-[10px] font-black text-red-600 uppercase">{c.destino || '—'}</span>
                         </div>
                         <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Placa: {c.placa}</p>
@@ -434,13 +431,5 @@ export default function ContratosPage() {
         </>
       )}
     </div>
-  )
-}
-
-function AlertCircle(props: any) {
-  return (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-    </svg>
   )
 }
