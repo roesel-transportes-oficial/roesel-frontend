@@ -68,11 +68,14 @@ export default function ContratosPage() {
     setContratos(data)
   }
 
-  function handleSelectCliente(nome: string) {
-    setEditCliente(nome)
-    const clienteEncontrado = clientes.find(c => c.nome === nome)
+  function handleSelectCliente(id: string) {
+    const clienteEncontrado = clientes.find(c => c.id === id)
     if (clienteEncontrado) {
+      setEditCliente(clienteEncontrado.nome)
       setEditCnpj(clienteEncontrado.cnpj || '')
+    } else {
+      setEditCliente('')
+      setEditCnpj('')
     }
   }
 
@@ -220,10 +223,14 @@ export default function ContratosPage() {
 
                 <div className="space-y-1">
                   <label className={LabelClass}><Building2 size={12}/> Cliente</label>
-                  <select value={editCliente} onChange={e => handleSelectCliente(e.target.value)} className={InputClass}>
+                  <select 
+                    value={clientes.find(c => c.nome === editCliente && c.cnpj === editCnpj)?.id || ""} 
+                    onChange={e => handleSelectCliente(e.target.value)} 
+                    className={InputClass}
+                  >
                     <option value="">Selecione o cliente...</option>
                     {clientes.map(c => (
-                      <option key={c.id} value={c.nome}>
+                      <option key={c.id} value={c.id}>
                         {c.nome} {c.cnpj ? ` - ${fmtCNPJ(c.cnpj)}` : ''}
                       </option>
                     ))}
