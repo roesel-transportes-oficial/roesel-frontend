@@ -412,7 +412,7 @@ export default function CaminhaoPage() {
                               <p className={`text-xs font-black ${dias !== null && dias < 30 ? 'text-red-600' : 'text-gray-900'}`}>{fmtData(l.vencimento)}</p>
                             </div>
                           </div>
-                          <button onClick={() => excluirLicenca(id)} className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
+                          <button onClick={() => excluirLicenca(l.id)} className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
                         </div>
                       )
                     })}
