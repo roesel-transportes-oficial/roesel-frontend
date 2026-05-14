@@ -72,6 +72,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     setMotoristaNome(mot.nome)
 
     async function vincularCaminhao() {
+      if (!mot) return
       // 1. Verifica se há caminhão substituto em manutenção para este motorista na data de início
       if (dataInicio) {
         const { data: manutencao } = await supabase
