@@ -16,6 +16,7 @@ interface Contrato {
 
 interface Motorista { id: string; nome: string; cpf?: string; caminhao_id?: string }
 interface Cliente { id: string; nome: string; cnpj: string }
+interface Carreta { id: string; placa: string }
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
@@ -27,6 +28,7 @@ export default function ContratosPage() {
   const [contratos, setContratos] = useState<Contrato[]>([])
   const [motoristas, setMotoristas] = useState<Motorista[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
+  const [carretas, setCarretas] = useState<Carreta[]>([])
   const [sel, setSel] = useState<Contrato | null>(null)
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
@@ -57,6 +59,8 @@ export default function ContratosPage() {
     fetch_()
     motoristasAPI.listar().then(setMotoristas)
     supabase.from('clientes').select('id, nome, cnpj').order('nome').then(({ data }) => data && setClientes(data))
+    // Carregar carretas para a seleção
+    supabase.from('carretas').select('id, placa').order('placa').then(({ data }) => data && setCarretas(data))
   }, [filtroMes, filtroAno])
 
   async function fetch_() {
@@ -234,8 +238,11 @@ export default function ContratosPage() {
                     <input value={editPlaca} onChange={e => setEditPlaca(e.target.value.toUpperCase())} className={InputClass} />
                   </div>
                   <div className="space-y-1">
-                    <label className={LabelClass}>Placa Carreta</label>
-                    <input value={editPlacaCarreta} onChange={e => setEditPlacaCarreta(e.target.value.toUpperCase())} className={InputClass} />
+                    <label className={LabelClass}><Truck size={12}/> Placa Carreta</label>
+                    <select value={editPlacaCarreta} onChange={e => setEditPlacaCarreta(e.target.value)} className={InputClass}>
+                      <option value="">Selecione a carreta...</option>
+                      {carretas.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
+                    </select>
                   </div>
                 </div>
               </div>
