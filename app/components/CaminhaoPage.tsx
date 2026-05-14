@@ -224,7 +224,7 @@ export default function CaminhaoPage() {
       const cam = caminhoes.find(c => c.id === manCamId)
       const sub = caminhoes.find(c => c.id === manSubstitutoId)
       
-      // 1. Prepara os dados para o histórico (tenta incluir substituto se colunas existirem)
+      // 1. Prepara os dados para o histórico (APENAS COLUNAS QUE EXISTEM COM CERTEZA)
       const dadosHistorico: any = {
         caminhao_id: manCamId, 
         caminhao_placa: cam?.placa || '', 
@@ -236,13 +236,6 @@ export default function CaminhaoPage() {
         status: manStatus, 
         obs: manObs
       }
-
-      // Tenta incluir campos de substituto no histórico (não trava se falhar)
-      try {
-        dadosHistorico.caminhao_substituto_id = manSubstitutoId || null
-        dadosHistorico.caminhao_substituto_placa = sub?.placa || null
-        dadosHistorico.motorista_nome = cam?.motorista_atual || null
-      } catch(e) {}
 
       // 2. Salva no histórico de manutenções
       if (editandoMan) {
@@ -278,12 +271,10 @@ export default function CaminhaoPage() {
         }).eq('id', manCamId)
 
         // Se tinha substituto, devolve o motorista
-        const subId = editandoMan?.caminhao_substituto_id || manSubstitutoId
-        const motNome = editandoMan?.motorista_nome || cam?.motorista_atual
-        
-        if (subId && motNome) {
-          await supabase.from('caminhoes').update({ motorista_atual: motNome }).eq('id', manCamId)
-          await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', subId)
+        // Como não salvamos no histórico, usamos o valor atual do modal
+        if (manSubstitutoId && cam?.motorista_atual) {
+          await supabase.from('caminhoes').update({ motorista_atual: cam.motorista_atual }).eq('id', manCamId)
+          await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manSubstitutoId)
         }
       }
       
@@ -294,7 +285,9 @@ export default function CaminhaoPage() {
       fetchHistoricoMan()
       fetch_()
     } catch (e: any) {
-      alert('Erro ao salvar: ' + e.message)
+      // Removemos o alert feio e usamos a mensagem discreta
+      showMsg('❌ Erro ao salvar')
+      console.error(e)
     } finally {
       setLoading(false)
     }
@@ -307,7 +300,7 @@ export default function CaminhaoPage() {
 
   return (
     <div className="p-6 max-w-full bg-gray-50 min-h-screen font-sans">
-      {msg && <div className="fixed top-6 right-6 z-50 p-4 bg-green-600 text-white rounded-2xl shadow-2xl font-black text-xs uppercase tracking-widest animate-bounce"> {msg} </div>}
+      {msg && <div className="fixed top-6 right-6 z-50 p-4 bg-gray-900 text-white rounded-2xl shadow-2xl font-black text-xs uppercase tracking-widest animate-in fade-in slide-in-from-top-4 duration-300"> {msg} </div>}
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
@@ -525,7 +518,8 @@ export default function CaminhaoPage() {
                 <div className="space-y-1"><label className={LC}>Data Saída</label><input type="date" value={manSaida} onChange={e => setManSaida(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Valor (R$)</label><input type="number" value={manValor} onChange={e => setManValor(e.target.value)} className={IC} placeholder="0,00" /></div>
                 <div className="space-y-1"><label className={LC}>Status</label><select value={manStatus} onChange={e => setManStatus(e.target.value)} className={IC}><option value="EM ANDAMENTO">Em Andamento</option><option value="CONCLUÍDO">Concluído</option></select></div>
-   <div className="space-y-1 md:col-span-2"><label className={LC}>Veículo Substituto</label><select value={manSubstitutoId} onChange={e => setManSubstitutoId(e.target.value)} className={IC}><option value="">Nenhum (Motorista fica parado)</option>{caminhoes.filter(c => c.id !== manCamId).map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>   </div>
+                <div className="space-y-1 md:col-span-2"><label className={LC}>Veículo Substituto</label><select value={manSubstitutoId} onChange={e => setManSubstitutoId(e.target.value)} className={IC}><option value="">Nenhum (Motorista fica parado)</option>{caminhoes.filter(c => c.id !== manCamId).map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>
+              </div>
               <div className="space-y-1"><label className={LC}>Descrição</label><textarea value={manDesc} onChange={e => setManDesc(e.target.value)} className={`${IC} h-24 resize-none`} placeholder="Detalhes da manutenção..." /></div>
               <div className="space-y-1"><label className={LC}>Observações Internas</label><textarea value={manObs} onChange={e => setManObs(e.target.value)} className={`${IC} h-20 resize-none`} placeholder="Notas extras..." /></div>
               <button onClick={salvarManutencao} disabled={loading} className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-red-100 transition-all active:scale-95 disabled:opacity-50">{loading ? 'Salvando...' : editandoMan ? 'Salvar Alterações' : 'Confirmar Registro'}</button>
