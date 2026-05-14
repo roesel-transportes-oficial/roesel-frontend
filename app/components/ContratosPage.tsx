@@ -163,6 +163,13 @@ export default function ContratosPage() {
     return `${dia}/${m}/${y}`
   }
 
+  function fmtCNPJ(v: string) {
+    if (!v) return ''
+    const n = v.replace(/\D/g, '')
+    if (n.length !== 14) return v
+    return n.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")
+  }
+
   return (
     <div className="p-6 max-w-full bg-gray-50 min-h-screen">
       {msg && <div className="fixed top-6 right-6 z-50 p-4 bg-green-600 text-white rounded-2xl shadow-2xl font-black text-xs uppercase tracking-widest animate-bounce"> {msg} </div>}
@@ -217,7 +224,7 @@ export default function ContratosPage() {
                     <option value="">Selecione o cliente...</option>
                     {clientes.map(c => (
                       <option key={c.id} value={c.nome}>
-                        {c.nome} {c.cnpj ? ` - ${c.cnpj}` : ''}
+                        {c.nome} {c.cnpj ? ` - ${fmtCNPJ(c.cnpj)}` : ''}
                       </option>
                     ))}
                   </select>
