@@ -126,34 +126,53 @@ export default function ContratosPage() {
   async function salvar() {
     if (!sel) return
     setLoading(true)
-    if (perm !== 'demo') await contratosAPI.atualizar(sel.id, {
-      data: editData,
-      cliente: editCliente,
-      cliente_nome_completo: editCliente,
-      cnpj: editCnpj.replace(/\D/g, ''), // Salva apenas números
-      motorista: editMotorista,
-      cpf_motorista: sel.cpf_motorista || '',
-      placa: editPlaca,
-      placa_carreta: editPlacaCarreta,
-      frota: editFrota,
-      origem: editOrigem,
-      destino: editDestino,
-      fat_bruto: parseFloat(editFatBruto) || 0,
-      qtd_veiculos: parseInt(editQtdVeiculos) || 0,
-      chapa: parseInt(editChapa) || 0,
-      status: editStatus,
-      obs: editObs,
-      adiantamento_pago: editAdiantamentoPago,
-      dt_pagamento: editDtPagamento || null,
-    })
-    await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
+    try {
+      if (perm !== 'demo') {
+        await contratosAPI.atualizar(sel.id, {
+          data: editData,
+          cliente: editCliente,
+          cliente_nome_completo: editCliente,
+          cnpj: editCnpj.replace(/\D/g, ''), // Salva apenas números
+          motorista: editMotorista,
+          cpf_motorista: sel.cpf_motorista || '',
+          placa: editPlaca,
+          placa_carreta: editPlacaCarreta,
+          frota: editFrota,
+          origem: editOrigem,
+          destino: editDestino,
+          fat_bruto: parseFloat(editFatBruto) || 0,
+          qtd_veiculos: parseInt(editQtdVeiculos) || 0,
+          chapa: parseInt(editChapa) || 0,
+          status: editStatus,
+          obs: editObs,
+          adiantamento_pago: editAdiantamentoPago,
+          dt_pagamento: editDtPagamento || null,
+        })
+      }
+      await fetch_()
+      showMsg('✅ Atualizado!')
+      voltar()
+    } catch (error) {
+      console.error(error)
+      showMsg('❌ Erro ao salvar')
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function excluir() {
     if (!sel) return
     setLoading(true)
-    if (perm !== 'demo') await contratosAPI.excluir(sel.id)
-    await fetch_(); setLoading(false); voltar(); showMsg('Contrato excluído.')
+    try {
+      if (perm !== 'demo') await contratosAPI.excluir(sel.id)
+      await fetch_()
+      showMsg('Contrato excluído.')
+      voltar()
+    } catch (error) {
+      showMsg('❌ Erro ao excluir')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const totalFat = filtrados.reduce((s, c) => s + (c.fat_bruto || 0), 0)
@@ -228,7 +247,7 @@ export default function ContratosPage() {
                 <div className="space-y-1">
                   <label className={LabelClass}><Building2 size={12}/> Cliente</label>
                   <select 
-                    value={clientes.find(c => c.nome === editCliente && c.cnpj.replace(/\D/g, '') === editCnpj.replace(/\D/g, ''))?.id || ""} 
+                    value={clientes.find(c => c.nome === editCliente && (c.cnpj || '').replace(/\D/g, '') === editCnpj.replace(/\D/g, ''))?.id || ""} 
                     onChange={e => handleSelectCliente(e.target.value)} 
                     className={InputClass}
                   >
