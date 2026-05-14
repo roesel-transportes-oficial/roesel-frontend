@@ -254,8 +254,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         const conts = relContratos?.filter(rc => rc.fechamento_id === f.id) || []
         
         // ✅ RECÁLCULO INTELIGENTE: Se os totais estiverem zerados, soma na hora
-        const totalFreteRecalculado = f.total_frete || conts.reduce((t, c) => t + Number(c.contrato?.fat_bruto || 0), 0)
-        const comissaoRecalculada = f.comissao_motorista || (totalFreteRecalculated * 0.10)
+        const totalFreteRecalculado = f.total_frete || conts.reduce((t, c: any) => t + Number(c.contrato?.fat_bruto || 0), 0)
+        const comissaoRecalculada = f.comissao_motorista || (totalFreteRecalculado * 0.10)
 
         return {
           ...f,
