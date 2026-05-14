@@ -141,7 +141,6 @@ export default function CaminhaoPage() {
 
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
 
-  // ── CAMINHÕES ──
   const filtrados = useMemo(() => {
     if (!busca.trim()) return caminhoes
     const b = busca.toLowerCase()
@@ -201,7 +200,6 @@ export default function CaminhaoPage() {
     if (sel) fetchLicencas(sel.id)
   }
 
-  // ── CARRETAS ──
   const filtradasCarretas = useMemo(() => {
     if (!buscaCarreta.trim()) return carretas
     return carretas.filter(c => c.placa?.toLowerCase().includes(buscaCarreta.toLowerCase()))
@@ -227,7 +225,6 @@ export default function CaminhaoPage() {
     setLoading(false); setMostraCadCarreta(false); showMsg('✅ Carreta cadastrada!')
   }
 
-  // ── MANUTENÇÃO ──
   function abrirNovaMan() {
     setEditandoMan(null)
     setManCamId(''); setManTipo(''); setManDesc('')
@@ -271,28 +268,20 @@ export default function CaminhaoPage() {
       }
 
       let saveError: any = null
-
       if (editandoMan) {
-        const { error } = await supabase
-          .from('manutencoes')
-          .update(dadosHistorico)
-          .eq('id', editandoMan.id)
+        const { error } = await supabase.from('manutencoes').update(dadosHistorico).eq('id', editandoMan.id)
         saveError = error
       } else {
-        const { error } = await supabase
-          .from('manutencoes')
-          .insert(dadosHistorico)
+        const { error } = await supabase.from('manutencoes').insert(dadosHistorico)
         saveError = error
       }
 
       if (saveError) {
         console.error('Supabase error:', saveError)
         showMsg('❌ ' + (saveError.message || 'Erro ao salvar'))
-        setLoading(false)
-        return
+        setLoading(false); return
       }
 
-      // Atualiza status do caminhão
       if (manStatus === 'EM ANDAMENTO') {
         await supabase.from('caminhoes')
           .update({ status: 'manutencao', motivo_parado: manTipo, dt_parado: manEntrada })
@@ -315,12 +304,10 @@ export default function CaminhaoPage() {
       }
 
       showMsg(editandoMan ? '✅ Atualizado!' : '✅ Registrado!')
-      setMostraNovaMan(false)
-      setEditandoMan(null)
-      await fetchHistoricoMan()
-      await fetch_()
+      setMostraNovaMan(false); setEditandoMan(null)
+      await fetchHistoricoMan(); await fetch_()
     } catch (e: any) {
-      console.error('Erro inesperado:', e)
+      console.error('Erro:', e)
       showMsg('❌ Erro: ' + (e.message || 'Erro desconhecido'))
     } finally {
       setLoading(false)
@@ -329,10 +316,8 @@ export default function CaminhaoPage() {
 
   async function excluirManutencao(id: string) {
     await supabase.from('manutencoes').delete().eq('id', id)
-    setMostraNovaMan(false)
-    setEditandoMan(null)
-    await fetchHistoricoMan()
-    showMsg('Manutenção excluída.')
+    setMostraNovaMan(false); setEditandoMan(null)
+    await fetchHistoricoMan(); showMsg('Manutenção excluída.')
   }
 
   const filtradosMan = useMemo(() => {
@@ -352,7 +337,6 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">Gestão de Frota</h1>
@@ -369,7 +353,7 @@ export default function CaminhaoPage() {
         </div>
       </div>
 
-      {/* ABA CAMINHÕES */}
+      {/* ── ABA CAMINHÕES ── */}
       {abaGlobal === 'caminhoes' && (
         <div className="space-y-6">
           {!sel && !mostraCad ? (
@@ -377,7 +361,8 @@ export default function CaminhaoPage() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="relative flex-1 max-w-md">
                   <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"/>
-                  <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Pesquisar placa, modelo ou frota..."
+                  <input value={busca} onChange={e => setBusca(e.target.value)}
+                    placeholder="Pesquisar placa, modelo ou frota..."
                     className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-red-500 text-sm font-bold shadow-inner"/>
                 </div>
                 <button onClick={() => setMostraCad(true)}
@@ -385,29 +370,47 @@ export default function CaminhaoPage() {
                   <Plus size={16}/> Novo Caminhão
                 </button>
               </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filtrados.map(c => (
-                  <div key={c.id} onClick={() => selecionar(c)}
-                    className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100 hover:border-red-200 transition-all cursor-pointer group">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
-                        <Truck size={24}/>
+                {filtrados.map(c => {
+                  // ✅ Busca manutenção ativa com substituto para este caminhão
+                  const manAtiva = historicoMan.find(m =>
+                    m.caminhao_id === c.id &&
+                    m.status === 'EM ANDAMENTO' &&
+                    m.caminhao_substituto_placa
+                  )
+                  return (
+                    <div key={c.id} onClick={() => selecionar(c)}
+                      className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100 hover:border-red-200 transition-all cursor-pointer group">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
+                          <Truck size={24}/>
+                        </div>
+                        <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest
+                          ${c.status === 'rodando' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {c.status}
+                        </span>
                       </div>
-                      <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest
-                        ${c.status === 'rodando' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {c.status}
-                      </span>
+                      <h3 className="text-xl font-black text-gray-900 tracking-tighter mb-1">{c.placa}</h3>
+                      <p className="text-xs font-bold text-gray-400 uppercase mb-3">{c.modelo} • {c.ano}</p>
+
+                      {/* ✅ Mostra substituto quando em manutenção */}
+                      {manAtiva?.caminhao_substituto_placa && (
+                        <div className="mb-3 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 flex items-center gap-2">
+                          <span className="text-[10px] font-black text-blue-400 uppercase">Substituído por</span>
+                          <span className="text-xs font-black text-blue-700">🚛 {manAtiva.caminhao_substituto_placa}</span>
+                        </div>
+                      )}
+
+                      <div className="pt-3 border-t border-gray-50 flex items-center justify-between">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                          Motorista: <span className="text-gray-900">{c.motorista_atual || '—'}</span>
+                        </p>
+                        <ChevronRight size={16} className="text-gray-300 group-hover:text-red-600 transition-all"/>
+                      </div>
                     </div>
-                    <h3 className="text-xl font-black text-gray-900 tracking-tighter mb-1">{c.placa}</h3>
-                    <p className="text-xs font-bold text-gray-400 uppercase mb-4">{c.modelo} • {c.ano}</p>
-                    <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                        Motorista: <span className="text-gray-900">{c.motorista_atual || '—'}</span>
-                      </p>
-                      <ChevronRight size={16} className="text-gray-300 group-hover:text-red-600 transition-all"/>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </>
           ) : mostraCad ? (
@@ -534,7 +537,7 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* ABA CARRETAS */}
+      {/* ── ABA CARRETAS ── */}
       {abaGlobal === 'carretas' && (
         <div className="space-y-6">
           {!selCarreta && !mostraCadCarreta ? (
@@ -552,7 +555,8 @@ export default function CaminhaoPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filtradasCarretas.map(c => (
-                  <div key={c.id} onClick={() => { setSelCarreta(c); setEditCPlaca(c.placa); setEditCModelo(c.modelo); setEditCAno(c.ano); setEditCStatus(c.status); setEditCObs(c.obs) }}
+                  <div key={c.id}
+                    onClick={() => { setSelCarreta(c); setEditCPlaca(c.placa); setEditCModelo(c.modelo); setEditCAno(c.ano); setEditCStatus(c.status); setEditCObs(c.obs) }}
                     className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100 hover:border-red-200 transition-all cursor-pointer group">
                     <div className="flex justify-between items-start mb-4">
                       <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
@@ -622,7 +626,7 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* ABA MANUTENÇÃO */}
+      {/* ── ABA MANUTENÇÃO ── */}
       {abaGlobal === 'manutencao' && (
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -661,6 +665,9 @@ export default function CaminhaoPage() {
                       <td className="px-6 py-4">
                         <p className="font-black text-gray-900 text-sm">{m.caminhao_placa}</p>
                         {m.motorista_nome && <p className="text-[10px] text-gray-400 font-bold">{m.motorista_nome}</p>}
+                        {m.caminhao_substituto_placa && (
+                          <p className="text-[10px] text-blue-500 font-bold">🔄 Sub: {m.caminhao_substituto_placa}</p>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-xs font-black text-red-600 uppercase">{m.tipo}</p>
@@ -688,7 +695,7 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* MODAL MANUTENÇÃO */}
+      {/* ── MODAL MANUTENÇÃO ── */}
       {mostraNovaMan && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden">
