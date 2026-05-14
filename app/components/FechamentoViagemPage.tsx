@@ -74,9 +74,10 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       setCaminhao(null); setContratosDisponiveis([]); setMotoristaNome('')
       setKmInicial(''); setKmFinal(''); setIsSubstituto(false); return
     }
-    const mot = motoristas.find(m => m.id === motoristaId)
-    if (!mot) return
-    setMotoristaNome(mot.nome)
+    const motEncontrado = motoristas.find(m => m.id === motoristaId)
+    if (!motEncontrado) return
+    setMotoristaNome(motEncontrado.nome)
+    const mot = motEncontrado // Criando uma constante estável para o escopo assíncrono
 
     async function vincularCaminhao() {
       // 1. Verifica se há manutenção com substituto para este motorista na data de início
@@ -101,7 +102,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       // 2. Fallback para o caminhão principal
       setIsSubstituto(false)
       let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
-      if (mot?.caminhao_id) {
+      if (mot.caminhao_id) {
         q = supabase.from('caminhoes').select('id, placa')
           .or(`id.eq.${mot.caminhao_id},motorista_atual.eq.${motoristaId}`)
       }
