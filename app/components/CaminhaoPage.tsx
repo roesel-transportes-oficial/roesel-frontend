@@ -204,23 +204,52 @@ export default function CaminhaoPage() {
   // ── MANUTENÇÃO handlers ──
   async function salvarManutencao() {
     if (!manCamId || !manTipo) return; setLoading(true)
-    const cam = caminhoes.find(c => c.id === manCamId)
-    const sub = caminhoes.find(c => c.id === manSubstitutoId)
-    const nova = {
-      caminhao_id: manCamId, caminhao_placa: cam?.placa, tipo: manTipo, descricao: manDesc,
-      data_entrada: manEntrada, data_saida: manSaida || null, valor: parseFloat(manValor) || null,
-      status: manStatus, obs: manObs, caminhao_substituto_id: manSubstitutoId || null,
-      caminhao_substituto_placa: sub?.placa || null, motorista_nome: cam?.motorista_atual || null
-    }
-    const { error } = await supabase.from('manutencoes').insert(nova)
-    if (!error) {
-      if (manStatus === 'EM ANDAMENTO') {
-        await supabase.from('caminhoes').update({ status: 'manutencao', motivo_parado: manTipo, dt_parado: manEntrada }).eq('id', manCamId)
-        if (manSubstitutoId && cam?.motorista_atual) await supabase.from('caminhoes').update({ motorista_atual: cam.motorista_atual }).eq('id', manSubstitutoId)
+    try {
+      const cam = caminhoes.find(c => c.id === manCamId)
+      const sub = caminhoes.find(c => c.id === manSubstitutoId)
+      const nova = {
+        caminhao_id: manCamId, 
+        caminhao_placa: cam?.placa || '', 
+        tipo: manTipo, 
+        descricao: manDesc,
+        data_entrada: manEntrada, 
+        data_saida: manSaida || null, 
+        valor: parseFloat(manValor) || null,
+        status: manStatus, 
+        obs: manObs, 
+        caminhao_substituto_id: manSubstitutoId || null,
+        caminhao_substituto_placa: sub?.placa || null, 
+        motorista_nome: cam?.motorista_atual || null
       }
-      showMsg('✅ Manutenção registrada!'); setMostraNovaMan(false); fetchHistoricoMan(); fetch_()
+      
+      const { error } = await supabase.from('manutencoes').insert(nova)
+      if (error) throw error
+
+      if (manStatus === 'EM ANDAMENTO') {
+        await supabase.from('caminhoes').update({ 
+          status: 'manutencao', 
+          motivo_parado: manTipo, 
+          dt_parado: manEntrada 
+        }).eq('id', manCamId)
+        
+        if (manSubstitutoId && cam?.motorista_atual) {
+          await supabase.from('caminhoes').update({ 
+            motorista_atual: cam.motorista_atual 
+          }).eq('id', manSubstitutoId)
+        }
+      }
+      
+      showMsg('✅ Manutenção registrada!')
+      setMostraNovaMan(false)
+      // Resetar campos
+      setManCamId(''); setManTipo(''); setManDesc(''); setManValor(''); setManObs(''); setManSubstitutoId('')
+      fetchHistoricoMan()
+      fetch_()
+    } catch (e: any) {
+      alert('Erro ao salvar manutenção: ' + e.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const filtradosMan = useMemo(() => {
@@ -379,7 +408,7 @@ export default function CaminhaoPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-1"><label className={LC}>Placa</label><input value={editCPlaca} onChange={e => setEditCPlaca(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={editCModelo} onChange={e => setEditCModelo(e.target.value)} className={IC} /></div>
-                <div className="space-y-1"><label className={LC}>Status</label><select value={editCStatus} onChange={e => setEditCStatus(e.target.value)} className={IC}><option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option><option value="viagem">Em Viagem</option></select></div>
+                <div className="space-y-1"><label className={LC}>Ano</label><input value={editCAno} onChange={e => setEditCAno(e.target.value)} className={IC} /></div>
               </div>
             </div>
           )}
@@ -391,21 +420,38 @@ export default function CaminhaoPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-md">
               <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input value={buscaMan} onChange={e => setBuscaMan(e.target.value)} placeholder="Pesquisar por placa..." className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-red-500 transition-all text-sm font-bold shadow-inner" />
+              <input value={buscaMan} onChange={e => setBuscaMan(e.target.value)} placeholder="Pesquisar placa..." className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-red-500 transition-all text-sm font-bold shadow-inner" />
             </div>
-            <button onClick={() => setMostraNovaMan(true)} className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100 flex items-center gap-2"><Plus size={16} /> Nova Manutenção</button>
+            <button onClick={() => setMostraNovaMan(true)} className="bg-gray-900 hover:bg-black text-white px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"><Wrench size={16} /> Registrar Manutenção</button>
           </div>
-          <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
-            <table className="w-full text-left border-collapse">
-              <thead><tr className="bg-gray-50/30 border-b border-gray-100"><th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Veículo</th><th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Tipo</th><th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Período</th><th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Substituto</th><th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Status</th></tr></thead>
+
+          <div className="bg-white rounded-[2rem] shadow-xl border border-gray-100 overflow-hidden">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-gray-50/50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Veículo</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Tipo / Descrição</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Entrada / Saída</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
+                  <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Substituto</th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtradosMan.map(m => (
-                  <tr key={m.id} className="hover:bg-red-50/30 transition-colors group">
-                    <td className="px-8 py-5"><p className="text-sm font-black text-gray-900">{m.caminhao_placa}</p><p className="text-[10px] font-bold text-gray-400 uppercase">{m.motorista_nome || 'Sem motorista'}</p></td>
-                    <td className="px-8 py-5"><p className="text-sm font-black text-gray-800">{m.tipo}</p></td>
-                    <td className="px-8 py-5 text-[10px] font-black text-gray-600 uppercase">{fmtData(m.data_entrada)} → {m.data_saida ? fmtData(m.data_saida) : 'Aberto'}</td>
-                    <td className="px-8 py-5">{m.caminhao_substituto_placa ? <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-lg text-[10px] font-black uppercase border border-blue-100">{m.caminhao_substituto_placa}</span> : '—'}</td>
-                    <td className="px-8 py-5 text-right"><span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${m.status === 'CONCLUIDA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{m.status}</span></td>
+                  <tr key={m.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-6 py-4 font-black text-gray-900 text-sm">{m.caminhao_placa}</td>
+                    <td className="px-6 py-4">
+                      <p className="text-xs font-black text-red-600 uppercase">{m.tipo}</p>
+                      <p className="text-[10px] font-bold text-gray-400 truncate max-w-[200px]">{m.descricao}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-xs font-bold text-gray-900">{fmtData(m.data_entrada)}</p>
+                      <p className="text-[10px] font-bold text-gray-400">{m.data_saida ? fmtData(m.data_saida) : 'Em aberto'}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${m.status === 'CONCLUÍDO' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{m.status}</span>
+                    </td>
+                    <td className="px-6 py-4 text-xs font-black text-blue-600">{m.caminhao_substituto_placa || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -414,23 +460,22 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* Modal Nova Manutenção */}
       {mostraNovaMan && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
-            <div className="px-8 py-6 bg-red-600 flex items-center justify-between"><h2 className="text-white font-black text-xl uppercase tracking-tighter flex items-center gap-2"><Wrench size={20}/> Registrar Manutenção</h2><button onClick={() => setMostraNovaMan(false)} className="text-white/80 hover:text-white"><X size={24}/></button></div>
-            <div className="p-8 space-y-6">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden">
+            <div className="px-8 py-6 bg-gray-900 flex items-center justify-between">
+              <h2 className="text-white font-black text-xl uppercase tracking-tighter">Registrar Manutenção</h2>
+              <button onClick={() => setMostraNovaMan(false)} className="text-white/80 hover:text-white"><X size={24}/></button>
+            </div>
+            <div className="p-8 space-y-6 max-h-[80vh] overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-1"><label className={LC}>Caminhão</label><select value={manCamId} onChange={e => setManCamId(e.target.value)} className={IC}><option value="">Selecione...</option>{caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>
+                <div className="space-y-1"><label className={LC}>Veículo</label><select value={manCamId} onChange={e => setManCamId(e.target.value)} className={IC}><option value="">Selecione...</option>{caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>
                 <div className="space-y-1"><label className={LC}>Tipo</label><select value={manTipo} onChange={e => setManTipo(e.target.value)} className={IC}><option value="">Selecione...</option>{TIPOS_MANUTENCAO.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
-              </div>
-              <div className="space-y-1"><label className={LC}>Motivo / Descrição</label><input value={manDesc} onChange={e => setManDesc(e.target.value)} className={IC} placeholder="Ex: Troca de pastilhas de freio" /></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1"><label className={LC}>Data Entrada</label><input type="date" value={manEntrada} onChange={e => setManEntrada(e.target.value)} className={IC} /></div>
-                <div className="space-y-1"><label className={LC}>Data Retorno (Opcional)</label><input type="date" value={manSaida} onChange={e => setManSaida(e.target.value)} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Veículo Substituto</label><select value={manSubstitutoId} onChange={e => setManSubstitutoId(e.target.value)} className={IC}><option value="">Nenhum</option>{caminhoes.filter(c => c.id !== manCamId).map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>
               </div>
-              <div className="space-y-1"><label className={LC}>Caminhão Substituto (Opcional)</label><select value={manSubstitutoId} onChange={e => setManSubstitutoId(e.target.value)} className={IC}><option value="">Nenhum...</option>{caminhoes.filter(c => c.id !== manCamId).map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>
-              <button onClick={salvarManutencao} disabled={loading || !manCamId || !manTipo} className="w-full bg-red-600 hover:bg-red-700 text-white rounded-2xl py-4 text-sm font-black uppercase tracking-widest shadow-lg shadow-red-100">Confirmar Entrada</button>
+              <div className="space-y-1"><label className={LC}>Descrição</label><textarea value={manDesc} onChange={e => setManDesc(e.target.value)} className={`${IC} h-24 resize-none`} placeholder="Detalhes da manutenção..." /></div>
+              <button onClick={salvarManutencao} disabled={loading} className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-red-100 transition-all active:scale-95 disabled:opacity-50">{loading ? 'Salvando...' : 'Confirmar Registro'}</button>
             </div>
           </div>
         </div>
