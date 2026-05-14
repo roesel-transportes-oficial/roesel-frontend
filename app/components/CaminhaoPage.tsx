@@ -207,7 +207,7 @@ export default function CaminhaoPage() {
     try {
       const cam = caminhoes.find(c => c.id === manCamId)
       const sub = caminhoes.find(c => c.id === manSubstitutoId)
-      const nova = {
+      const nova: any = {
         caminhao_id: manCamId, 
         caminhao_placa: cam?.placa || '', 
         tipo: manTipo, 
@@ -216,11 +216,13 @@ export default function CaminhaoPage() {
         data_saida: manSaida || null, 
         valor: parseFloat(manValor) || null,
         status: manStatus, 
-        obs: manObs, 
-        caminhao_substituto_id: manSubstitutoId || null,
-        caminhao_substituto_placa: sub?.placa || null, 
-        motorista_nome: cam?.motorista_atual || null
+        obs: manObs
       }
+      
+      // Só adiciona se você criar as colunas no Supabase depois
+      // nova.caminhao_substituto_id = manSubstitutoId || null
+      // nova.caminhao_substituto_placa = sub?.placa || null
+      // nova.motorista_nome = cam?.motorista_atual || null
       
       const { error } = await supabase.from('manutencoes').insert(nova)
       if (error) throw error
