@@ -110,19 +110,46 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     }
 
     async function buscarKmInicial(camId: string) {
-      const { data: ultimoFech } = await supabase
-        .from('fechamento_viagens')
-        .select('km_final')
-        .eq('caminhao_id', camId)
-        .order('data_fim', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+  // 1. Tenta km_final do último fechamento deste caminhão
+  const { data: ultimoFech } = await supabase
+    .from('fechamento_viagens')
+    .select('km_final')
+    .eq('caminhao_id', camId)
+    .order('data_fim', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-      if (ultimoFech?.km_final) {
-        setKmInicial(String(ultimoFech.km_final))
+  if (ultimoFech?.km_final) {
+    setKmInicial(String(ultimoFech.km_final))
+    setKmFinal('')
+    return
+  }
+
+  // 2. Sem fechamento anterior → usa KM dos abastecimentos ordenados por data
+  //    data mais antiga = KM inicial | data mais recente = KM final
+  const { data: abasts } = await supabase
+    .from('abastecimentos')
+    .select('km, data')
+    .eq('caminhao_id', camId)
+    .not('km', 'is', null)
+    .gt('km', 0)
+    .order('data', { ascending: true }) // mais antigo primeiro
+
+  if (abasts && abasts.length > 0) {
+    const validos = abasts.filter(a => a.km && a.km > 0)
+    if (validos.length > 0) {
+      // Menor data → KM inicial
+      setKmInicial(String(validos[0].km))
+
+      // Maior data → KM final (se tiver mais de um)
+      if (validos.length > 1) {
+        setKmFinal(String(validos[validos.length - 1].km))
+      } else {
         setKmFinal('')
       }
     }
+  }
+}
 
     async function fetchContratos() {
       const { data: todos } = await supabase.from('contratos')
