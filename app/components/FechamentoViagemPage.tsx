@@ -24,7 +24,7 @@ type Fechamento    = {
   total_abastecimento?: number;
   total_frete?: number;
   comissao_motorista?: number;
-  contratos?: { contrato: { contrato: string; origem: string; destino: string } }[]
+  contratos?: { contrato: { contrato: string; origem: string; destino: string; fat_bruto?: number } }[]
 }
 
 export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
@@ -55,8 +55,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [sucesso, setSucesso]     = useState(false)
   const [excluindoId, setExcluindoId] = useState<string | null>(null)
   const [visualizando, setVisualizando] = useState<Fechamento | null>(null)
-  
-  // Estados de Edição no Histórico
   const [editando, setEditando] = useState<Fechamento | null>(null)
 
   useEffect(() => {
@@ -70,7 +68,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     }
   }, [abaAtiva])
 
-  // ✅ Motorista → caminhão + KM inicial automático + Detecção de Substituto
   useEffect(() => {
     if (!motoristaId) {
       setCaminhao(null); setContratosDisponiveis([]); setMotoristaNome('')
@@ -182,7 +179,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     [abastecimentos, abastSelecionados]
   )
 
-  // ✅ Atualiza KM Inicial e Final dinamicamente
   useEffect(() => {
     async function atualizarKms() {
       if (!caminhao?.id) return
@@ -250,14 +246,21 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
       const { data: relContratos } = await supabase
         .from('fechamento_contratos')
-        .select('fechamento_id, contrato:contrato_id(contrato, origem, destino)')
+        .select('fechamento_id, contrato:contrato_id(contrato, origem, destino, fat_bruto)')
 
       const formatado = (fechamentos || []).map(f => {
         const mot = mots?.find(m => m.id === f.motorista_id)
         const cam = cams?.find(c => c.id === f.caminhao_id)
         const conts = relContratos?.filter(rc => rc.fechamento_id === f.id) || []
+        
+        // ✅ RECÁLCULO INTELIGENTE: Se os totais estiverem zerados, soma na hora
+        const totalFreteRecalculado = f.total_frete || conts.reduce((t, c) => t + Number(c.contrato?.fat_bruto || 0), 0)
+        const comissaoRecalculada = f.comissao_motorista || (totalFreteRecalculated * 0.10)
+
         return {
           ...f,
+          total_frete: totalFreteRecalculado,
+          comissao_motorista: comissaoRecalculada,
           motorista: { nome: mot?.nome || '—' },
           caminhao: { placa: cam?.placa || '—' },
           contratos: conts
@@ -491,7 +494,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                       <CreditCard size={10}/> Vencimento
                     </label>
                     <input type="date" value={dataVencimento} onChange={e => setDataVencimento(e.target.value)}
-                      className="w-full bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-600"/>
+                      className="w-full bg-red-50 border-red-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-600"/>
                   </div>
                 </div>
               </div>
@@ -800,7 +803,10 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                   {visualizando.contratos?.map((c: any, i: number) => (
                     <div key={i} className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100">
                       <span className="text-xs font-black text-gray-900">#{c.contrato?.contrato}</span>
-                      <span className="text-xs font-bold text-gray-500">{c.contrato?.origem} → {c.contrato?.destino}</span>
+                      <span className="text-xs font-bold text-gray-500">
+                        {c.contrato?.origem} → {c.contrato?.destino} 
+                        <span className="ml-2 text-green-600 font-black">(R$ {fmt(c.contrato?.fat_bruto || 0)})</span>
+                      </span>
                     </div>
                   ))}
                 </div>
