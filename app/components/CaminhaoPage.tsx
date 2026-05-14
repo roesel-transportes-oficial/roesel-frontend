@@ -235,7 +235,7 @@ export default function CaminhaoPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">Gestão de Frota</h1>
-          <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">Caminhões, Carretas e Manutenção</p>
+          <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mt-1">Controle de veículos, carretas e manutenção</p>
         </div>
         <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
           <button onClick={() => setAbaGlobal('caminhoes')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${abaGlobal === 'caminhoes' ? 'bg-red-600 text-white shadow-lg shadow-red-100' : 'text-gray-400 hover:text-gray-600'}`}>Caminhões</button>
@@ -276,12 +276,9 @@ export default function CaminhaoPage() {
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-4xl mx-auto">
               <div className="flex items-center justify-between mb-8"><h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase">Novo Caminhão</h2><button onClick={() => setMostraCad(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="space-y-1"><label className={LC}>Placa</label><input value={cadPlaca} onChange={e => setCadPlaca(e.target.value.toUpperCase())} className={IC} /></div>
-                <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={cadPlacaCarreta} onChange={e => setCadPlacaCarreta(e.target.value.toUpperCase())} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Placa</label><input value={cadPlaca} onChange={e => setCadPlaca(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={cadModelo} onChange={e => setCadModelo(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Ano</label><input value={cadAno} onChange={e => setCadAno(e.target.value)} className={IC} /></div>
-                <div className="space-y-1"><label className={LC}>Frota</label><select value={cadFrota} onChange={e => setCadFrota(e.target.value)} className={IC}><option value="">Selecione...</option>{frotas.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}</select></div>
-                <div className="space-y-1"><label className={LC}>Motorista</label><select value={cadMotorista} onChange={e => setCadMotorista(e.target.value)} className={IC}><option value="">Selecione...</option>{motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}</select></div>
               </div>
               <button onClick={cadastrar} className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-red-100">Cadastrar Veículo</button>
             </div>
@@ -289,66 +286,51 @@ export default function CaminhaoPage() {
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-5xl mx-auto">
               <div className="flex items-center justify-between mb-8">
                 <button onClick={() => setSel(null)} className="flex items-center gap-2 text-gray-400 hover:text-red-600 font-black text-xs uppercase tracking-widest"><ArrowLeft size={16}/> Voltar</button>
-                <div className="flex gap-2">
-                  <button onClick={() => setAba('info')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${aba === 'info' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-400'}`}>Informações</button>
-                  <button onClick={() => setAba('licencas')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${aba === 'licencas' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-400'}`}>Licenças</button>
-                  <button onClick={salvar} className="bg-gray-900 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"><Save size={16}/> Salvar</button>
+                <div className="flex gap-3">
+                  <button onClick={salvar} className="bg-red-600 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"><Save size={16}/> Salvar</button>
                 </div>
+              </div>
+              
+              <div className="flex gap-6 mb-8 border-b border-gray-100">
+                <button onClick={() => setAba('info')} className={`pb-4 text-xs font-black uppercase tracking-widest transition-all ${aba === 'info' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-400'}`}>Informações</button>
+                <button onClick={() => setAba('licencas')} className={`pb-4 text-xs font-black uppercase tracking-widest transition-all ${aba === 'licencas' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-400'}`}>Licenças Estaduais</button>
               </div>
 
               {aba === 'info' ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-1"><label className={LC}>Placa</label><input value={editPlaca} onChange={e => setEditPlaca(e.target.value.toUpperCase())} className={IC} /></div>
-                  <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={editPlacaCarreta} onChange={e => setEditPlacaCarreta(e.target.value.toUpperCase())} className={IC} /></div>
+                  <div className="space-y-1"><label className={LC}>Placa</label><input value={editPlaca} onChange={e => setEditPlaca(e.target.value)} className={IC} /></div>
                   <div className="space-y-1"><label className={LC}>Modelo</label><input value={editModelo} onChange={e => setEditModelo(e.target.value)} className={IC} /></div>
-                  <div className="space-y-1"><label className={LC}>Ano</label><input value={editAno} onChange={e => setEditAno(e.target.value)} className={IC} /></div>
-                  <div className="space-y-1"><label className={LC}>Frota</label><select value={editFrota} onChange={e => setEditFrota(e.target.value)} className={IC}><option value="">Selecione...</option>{frotas.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}</select></div>
-                  <div className="space-y-1"><label className={LC}>Motorista</label><select value={editMotorista} onChange={e => setEditMotorista(e.target.value)} className={IC}><option value="">Selecione...</option>{motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}</select></div>
                   <div className="space-y-1"><label className={LC}>Status</label><select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={IC}><option value="rodando">Rodando</option><option value="manutencao">Manutenção</option><option value="parado">Parado</option></select></div>
-                  {editStatus !== 'rodando' && (
-                    <>
-                      <div className="space-y-1"><label className={LC}>Motivo</label><input value={editMotivo} onChange={e => setEditMotivo(e.target.value)} className={IC} /></div>
-                      <div className="space-y-1"><label className={LC}>Data Início</label><input type="date" value={editDtParado} onChange={e => setEditDtParado(e.target.value)} className={IC} /></div>
-                    </>
-                  )}
-                  <div className="md:col-span-3 space-y-1"><label className={LC}>Observações</label><textarea value={editObs} onChange={e => setEditObs(e.target.value)} rows={3} className={IC} /></div>
+                  <div className="space-y-1"><label className={LC}>Motorista Atual</label><select value={editMotorista} onChange={e => setEditMotorista(e.target.value)} className={IC}><option value="">Sem motorista</option>{motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}</select></div>
+                  <div className="space-y-1"><label className={LC}>Frota</label><select value={editFrota} onChange={e => setEditFrota(e.target.value)} className={IC}><option value="">Selecione...</option>{frotas.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}</select></div>
+                  <div className="space-y-1"><label className={LC}>Ano</label><input value={editAno} onChange={e => setEditAno(e.target.value)} className={IC} /></div>
                 </div>
               ) : (
-                <div className="space-y-8">
-                  <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
-                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-4 flex items-center gap-2"><Plus size={16} className="text-red-600"/> Adicionar Nova Licença</h3>
+                <div className="space-y-6">
+                  <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Nova Licença</h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                       <div className="space-y-1"><label className={LC}>Estado</label><select value={novaLicEstado} onChange={e => setNovaLicEstado(e.target.value)} className={IC}><option value="">Selecione...</option>{ESTADOS.map(uf => <option key={uf} value={uf}>{uf}</option>)}</select></div>
                       <div className="space-y-1"><label className={LC}>Vencimento</label><input type="date" value={novaLicVencimento} onChange={e => setNovaLicVencimento(e.target.value)} className={IC} /></div>
-                      <button onClick={adicionarLicenca} disabled={loading || !novaLicEstado || !novaLicVencimento} className="bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-red-100">Adicionar Licença</button>
+                      <button onClick={adicionarLicenca} className="bg-gray-900 text-white h-[42px] rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black transition-all">Adicionar</button>
                     </div>
                   </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {licencas.length === 0 ? (
-                      <div className="col-span-full py-12 text-center bg-gray-50 rounded-3xl border-2 border-dashed border-gray-100">
-                        <FileText size={32} className="mx-auto text-gray-200 mb-2" />
-                        <p className="text-xs font-bold text-gray-400 uppercase">Nenhuma licença cadastrada</p>
-                      </div>
-                    ) : (
-                      licencas.map(l => {
-                        const dias = diasParaVencer(l.vencimento)
-                        const vencido = dias !== null && dias < 0
-                        const critico = dias !== null && dias >= 0 && dias <= 30
-                        return (
-                          <div key={l.id} className={`p-5 rounded-3xl border-2 transition-all ${vencido ? 'bg-red-50 border-red-100' : critico ? 'bg-yellow-50 border-yellow-100' : 'bg-green-50 border-green-100'}`}>
-                            <div className="flex items-center justify-between mb-3">
-                              <span className="text-xl font-black text-gray-800">{l.estado}</span>
-                              <button onClick={() => excluirLicenca(l.id)} className="text-gray-300 hover:text-red-600 transition-all"><Trash2 size={16}/></button>
-                            </div>
-                            <p className="text-[10px] font-black text-gray-400 uppercase mb-3 flex items-center gap-1.5"><Calendar size={12}/> Vencimento: {fmtData(l.vencimento)}</p>
-                            <div className={`py-1.5 px-3 rounded-lg text-center text-[9px] font-black uppercase tracking-widest ${vencido ? 'bg-red-600 text-white' : critico ? 'bg-yellow-500 text-white' : 'bg-green-600 text-white'}`}>
-                              {vencido ? `Vencido há ${Math.abs(dias!)} dias` : `${dias} dias restantes`}
+                    {licencas.map(l => {
+                      const dias = diasParaVencer(l.vencimento)
+                      return (
+                        <div key={l.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between group">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-black text-xs">{l.estado}</div>
+                            <div>
+                              <p className="text-[10px] font-black text-gray-400 uppercase">Vencimento</p>
+                              <p className={`text-xs font-black ${dias !== null && dias < 30 ? 'text-red-600' : 'text-gray-900'}`}>{fmtData(l.vencimento)}</p>
                             </div>
                           </div>
-                        )
-                      })
-                    )}
+                          <button onClick={() => excluirLicenca(l.id)} className="text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -385,7 +367,7 @@ export default function CaminhaoPage() {
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-4xl mx-auto">
               <div className="flex items-center justify-between mb-8"><h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase">Nova Carreta</h2><button onClick={() => setMostraCadCarreta(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="space-y-1"><label className={LC}>Placa</label><input value={cadCPlaca} onChange={e => setCadCPlaca(e.target.value.toUpperCase())} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Placa</label><input value={cadCPlaca} onChange={e => setCadCPlaca(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={cadCModelo} onChange={e => setCadCModelo(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Ano</label><input value={cadCAno} onChange={e => setCadCAno(e.target.value)} className={IC} /></div>
               </div>
@@ -395,7 +377,7 @@ export default function CaminhaoPage() {
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-4xl mx-auto">
               <div className="flex items-center justify-between mb-8"><button onClick={() => setSelCarreta(null)} className="flex items-center gap-2 text-gray-400 hover:text-red-600 font-black text-xs uppercase tracking-widest"><ArrowLeft size={16}/> Voltar</button><button onClick={salvarCarreta} className="bg-red-600 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"><Save size={16}/> Salvar</button></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-1"><label className={LC}>Placa</label><input value={editCPlaca} onChange={e => setEditCPlaca(e.target.value.toUpperCase())} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Placa</label><input value={editCPlaca} onChange={e => setEditCPlaca(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={editCModelo} onChange={e => setEditCModelo(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Status</label><select value={editCStatus} onChange={e => setEditCStatus(e.target.value)} className={IC}><option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option><option value="viagem">Em Viagem</option></select></div>
               </div>
@@ -423,7 +405,7 @@ export default function CaminhaoPage() {
                     <td className="px-8 py-5"><p className="text-sm font-black text-gray-800">{m.tipo}</p></td>
                     <td className="px-8 py-5 text-[10px] font-black text-gray-600 uppercase">{fmtData(m.data_entrada)} → {m.data_saida ? fmtData(m.data_saida) : 'Aberto'}</td>
                     <td className="px-8 py-5">{m.caminhao_substituto_placa ? <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-lg text-[10px] font-black uppercase border border-blue-100">{m.caminhao_substituto_placa}</span> : '—'}</td>
-                    <td className="px-8 py-5 text-right"><span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${m.status === 'CONCLUIDA' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{m.status}</span></td>
+                    <td className="px-8 py-5 text-right"><span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase ${m.status === 'CONCLUIDA' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{m.status}</span></td>
                   </tr>
                 ))}
               </tbody>
