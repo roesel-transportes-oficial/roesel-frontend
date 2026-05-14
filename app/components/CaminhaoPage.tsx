@@ -3,16 +3,14 @@ import { useState, useEffect, useMemo } from 'react'
 import { caminhoesAPI, motoristasAPI } from '../services/api'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
-import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Truck, Wrench, X, User } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Truck, Wrench, X } from 'lucide-react'
 
 interface Caminhao {
   id: string; placa: string; placa_carreta: string; modelo: string; ano: string
   status: string; motivo_parado: string; dt_parado: string
   motorista_atual: string; obs_documentos: string; frota: string
 }
-interface Carreta {
-  id: string; placa: string; modelo: string; ano: string; status: string; obs: string
-}
+interface Carreta { id: string; placa: string; modelo: string; ano: string; status: string; obs: string }
 interface Motorista { id: string; nome: string; ativo: boolean }
 interface Frota { id: string; nome: string }
 interface Manutencao {
@@ -53,12 +51,11 @@ export default function CaminhaoPage() {
   const [loading, setLoading]       = useState(false)
   const [msg, setMsg]               = useState('')
 
-  // ── CAMINHÕES ──
-  const [busca, setBusca]           = useState('')
-  const [sel, setSel]               = useState<Caminhao | null>(null)
-  const [mostraCad, setMostraCad]   = useState(false)
-  const [aba, setAba]               = useState<'info' | 'licencas'>('info')
-  const [licencas, setLicencas]     = useState<Licenca[]>([])
+  const [busca, setBusca]         = useState('')
+  const [sel, setSel]             = useState<Caminhao | null>(null)
+  const [mostraCad, setMostraCad] = useState(false)
+  const [aba, setAba]             = useState<'info' | 'licencas'>('info')
+  const [licencas, setLicencas]   = useState<Licenca[]>([])
 
   const [editPlaca, setEditPlaca]               = useState('')
   const [editPlacaCarreta, setEditPlacaCarreta] = useState('')
@@ -70,10 +67,8 @@ export default function CaminhaoPage() {
   const [editMotorista, setEditMotorista]       = useState('')
   const [editFrota, setEditFrota]               = useState('')
   const [editObs, setEditObs]                   = useState('')
-
   const [novaLicEstado, setNovaLicEstado]         = useState('')
   const [novaLicVencimento, setNovaLicVencimento] = useState('')
-
   const [cadPlaca, setCadPlaca]               = useState('')
   const [cadPlacaCarreta, setCadPlacaCarreta] = useState('')
   const [cadModelo, setCadModelo]             = useState('')
@@ -83,26 +78,24 @@ export default function CaminhaoPage() {
   const [cadFrota, setCadFrota]               = useState('')
   const [cadObs, setCadObs]                   = useState('')
 
-  // ── CARRETAS ──
   const [buscaCarreta, setBuscaCarreta]         = useState('')
   const [selCarreta, setSelCarreta]             = useState<Carreta | null>(null)
   const [mostraCadCarreta, setMostraCadCarreta] = useState(false)
-  const [editCPlaca, setEditCPlaca]             = useState('')
-  const [editCModelo, setEditCModelo]           = useState('')
-  const [editCAno, setEditCAno]                 = useState('')
-  const [editCStatus, setEditCStatus]           = useState('disponivel')
-  const [editCObs, setEditCObs]                 = useState('')
-  const [cadCPlaca, setCadCPlaca]               = useState('')
-  const [cadCModelo, setCadCModelo]             = useState('')
-  const [cadCAno, setCadCAno]                   = useState('')
-  const [cadCStatus, setCadCStatus]             = useState('disponivel')
-  const [cadCObs, setCadCObs]                   = useState('')
+  const [editCPlaca, setEditCPlaca]   = useState('')
+  const [editCModelo, setEditCModelo] = useState('')
+  const [editCAno, setEditCAno]       = useState('')
+  const [editCStatus, setEditCStatus] = useState('disponivel')
+  const [editCObs, setEditCObs]       = useState('')
+  const [cadCPlaca, setCadCPlaca]   = useState('')
+  const [cadCModelo, setCadCModelo] = useState('')
+  const [cadCAno, setCadCAno]       = useState('')
+  const [cadCStatus, setCadCStatus] = useState('disponivel')
+  const [cadCObs, setCadCObs]       = useState('')
 
-  // ── MANUTENÇÃO ──
-  const [buscaMan, setBuscaMan]               = useState('')
-  const [historicoMan, setHistoricoMan]       = useState<Manutencao[]>([])
-  const [mostraNovaMan, setMostraNovaMan]     = useState(false)
-  const [editandoMan, setEditandoMan]         = useState<Manutencao | null>(null)
+  const [buscaMan, setBuscaMan]           = useState('')
+  const [historicoMan, setHistoricoMan]   = useState<Manutencao[]>([])
+  const [mostraNovaMan, setMostraNovaMan] = useState(false)
+  const [editandoMan, setEditandoMan]     = useState<Manutencao | null>(null)
   const [manCamId, setManCamId]               = useState('')
   const [manTipo, setManTipo]                 = useState('')
   const [manDesc, setManDesc]                 = useState('')
@@ -121,32 +114,57 @@ export default function CaminhaoPage() {
     fetchHistoricoMan()
   }, [])
 
-  async function fetch_() { const data = await caminhoesAPI.listar(); setCaminhoes(data) }
-  async function fetchFrotas() { const { data } = await supabase.from('frotas').select('*').order('nome'); if (data) setFrotas(data) }
-  async function fetchCarretas() { const { data } = await supabase.from('carretas').select('*').order('placa'); if (data) setCarretas(data) }
-  async function fetchHistoricoMan() { const { data } = await supabase.from('manutencoes').select('*').order('data_entrada', { ascending: false }); if (data) setHistoricoMan(data) }
-  async function fetchLicencas(caminhaoId: string) { const { data } = await supabase.from('licencas').select('*').eq('caminhao_id', caminhaoId).order('estado'); if (data) setLicencas(data) }
+  async function fetch_() {
+    const data = await caminhoesAPI.listar()
+    setCaminhoes(data)
+  }
+
+  async function fetchFrotas() {
+    const { data } = await supabase.from('frotas').select('*').order('nome')
+    if (data) setFrotas(data)
+  }
+
+  async function fetchCarretas() {
+    const { data } = await supabase.from('carretas').select('*').order('placa')
+    if (data) setCarretas(data)
+  }
+
+  async function fetchHistoricoMan() {
+    const { data } = await supabase.from('manutencoes').select('*').order('data_entrada', { ascending: false })
+    if (data) setHistoricoMan(data)
+  }
+
+  async function fetchLicencas(caminhaoId: string) {
+    const { data } = await supabase.from('licencas').select('*').eq('caminhao_id', caminhaoId).order('estado')
+    if (data) setLicencas(data)
+  }
 
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
 
-  // ── CAMINHÕES handlers ──
+  // ── CAMINHÕES ──
   const filtrados = useMemo(() => {
     if (!busca.trim()) return caminhoes
     const b = busca.toLowerCase()
-    return caminhoes.filter(c => c.placa?.toLowerCase().includes(b) || c.modelo?.toLowerCase().includes(b) || c.frota?.toLowerCase().includes(b))
+    return caminhoes.filter(c =>
+      c.placa?.toLowerCase().includes(b) ||
+      c.modelo?.toLowerCase().includes(b) ||
+      c.frota?.toLowerCase().includes(b)
+    )
   }, [caminhoes, busca])
 
   function selecionar(c: Caminhao) {
     setSel(c)
-    setEditPlaca(c.placa||''); setEditPlacaCarreta(c.placa_carreta||'')
-    setEditModelo(c.modelo||''); setEditAno(c.ano||''); setEditStatus(c.status||'rodando')
-    setEditMotivo(c.motivo_parado||''); setEditDtParado(c.dt_parado||'')
-    setEditMotorista(c.motorista_atual||''); setEditFrota(c.frota||''); setEditObs(c.obs_documentos||'')
+    setEditPlaca(c.placa || ''); setEditPlacaCarreta(c.placa_carreta || '')
+    setEditModelo(c.modelo || ''); setEditAno(c.ano || '')
+    setEditStatus(c.status || 'rodando'); setEditMotivo(c.motivo_parado || '')
+    setEditDtParado(c.dt_parado || ''); setEditMotorista(c.motorista_atual || '')
+    setEditFrota(c.frota || ''); setEditObs(c.obs_documentos || '')
     setAba('info'); fetchLicencas(c.id)
   }
 
   async function salvar() {
-    if (!sel) return; setLoading(true)
+    if (!sel) return
+    setLoading(true)
     await caminhoesAPI.atualizar(sel.id, {
       placa: editPlaca.toUpperCase(), placa_carreta: editPlacaCarreta.toUpperCase(),
       modelo: editModelo, ano: editAno, status: editStatus, frota: editFrota,
@@ -154,23 +172,28 @@ export default function CaminhaoPage() {
       dt_parado: editStatus !== 'rodando' ? editDtParado : null,
       motorista_atual: editMotorista, obs_documentos: editObs,
     })
-    await fetch_(); setLoading(false); setSel(null); showMsg('✅ Atualizado!')
+    await fetch_()
+    setLoading(false); setSel(null); showMsg('✅ Atualizado!')
   }
 
   async function cadastrar() {
-    if (!cadPlaca.trim()) return; setLoading(true)
+    if (!cadPlaca.trim()) return
+    setLoading(true)
     await caminhoesAPI.criar({
       placa: cadPlaca.toUpperCase(), placa_carreta: cadPlacaCarreta.toUpperCase(),
       modelo: cadModelo, ano: cadAno, status: cadStatus, frota: cadFrota,
       motivo_parado: '', dt_parado: null, motorista_atual: cadMotorista, obs_documentos: cadObs
     })
-    await fetch_(); setLoading(false); setMostraCad(false); showMsg('✅ Cadastrado!')
+    await fetch_()
+    setLoading(false); setMostraCad(false); showMsg('✅ Cadastrado!')
   }
 
   async function adicionarLicenca() {
-    if (!sel || !novaLicEstado || !novaLicVencimento) return; setLoading(true)
+    if (!sel || !novaLicEstado || !novaLicVencimento) return
+    setLoading(true)
     await supabase.from('licencas').insert({ caminhao_id: sel.id, estado: novaLicEstado, vencimento: novaLicVencimento })
-    fetchLicencas(sel.id); setNovaLicEstado(''); setNovaLicVencimento(''); setLoading(false); showMsg('✅ Licença adicionada!')
+    fetchLicencas(sel.id); setNovaLicEstado(''); setNovaLicVencimento('')
+    setLoading(false); showMsg('✅ Licença adicionada!')
   }
 
   async function excluirLicenca(id: string) {
@@ -178,29 +201,39 @@ export default function CaminhaoPage() {
     if (sel) fetchLicencas(sel.id)
   }
 
-  // ── CARRETAS handlers ──
+  // ── CARRETAS ──
   const filtradasCarretas = useMemo(() => {
     if (!buscaCarreta.trim()) return carretas
     return carretas.filter(c => c.placa?.toLowerCase().includes(buscaCarreta.toLowerCase()))
   }, [carretas, buscaCarreta])
 
   async function salvarCarreta() {
-    if (!selCarreta) return; setLoading(true)
-    await supabase.from('carretas').update({ placa: editCPlaca.toUpperCase(), modelo: editCModelo, ano: editCAno, status: editCStatus, obs: editCObs }).eq('id', selCarreta.id)
-    await fetchCarretas(); setLoading(false); setSelCarreta(null); showMsg('✅ Carreta atualizada!')
+    if (!selCarreta) return
+    setLoading(true)
+    await supabase.from('carretas').update({
+      placa: editCPlaca.toUpperCase(), modelo: editCModelo, ano: editCAno, status: editCStatus, obs: editCObs
+    }).eq('id', selCarreta.id)
+    await fetchCarretas()
+    setLoading(false); setSelCarreta(null); showMsg('✅ Carreta atualizada!')
   }
 
   async function cadastrarCarreta() {
-    if (!cadCPlaca.trim()) return; setLoading(true)
-    await supabase.from('carretas').insert({ placa: cadCPlaca.toUpperCase(), modelo: cadCModelo, ano: cadCAno, status: cadCStatus, obs: cadCObs })
-    await fetchCarretas(); setLoading(false); setMostraCadCarreta(false); showMsg('✅ Carreta cadastrada!')
+    if (!cadCPlaca.trim()) return
+    setLoading(true)
+    await supabase.from('carretas').insert({
+      placa: cadCPlaca.toUpperCase(), modelo: cadCModelo, ano: cadCAno, status: cadCStatus, obs: cadCObs
+    })
+    await fetchCarretas()
+    setLoading(false); setMostraCadCarreta(false); showMsg('✅ Carreta cadastrada!')
   }
 
-  // ── MANUTENÇÃO handlers ──
+  // ── MANUTENÇÃO ──
   function abrirNovaMan() {
     setEditandoMan(null)
-    setManCamId(''); setManTipo(''); setManDesc(''); setManEntrada(new Date().toISOString().split('T')[0])
-    setManSaida(''); setManValor(''); setManStatus('EM ANDAMENTO'); setManObs(''); setManSubstitutoId('')
+    setManCamId(''); setManTipo(''); setManDesc('')
+    setManEntrada(new Date().toISOString().split('T')[0])
+    setManSaida(''); setManValor(''); setManStatus('EM ANDAMENTO')
+    setManObs(''); setManSubstitutoId('')
     setMostraNovaMan(true)
   }
 
@@ -209,121 +242,86 @@ export default function CaminhaoPage() {
     setManCamId(m.caminhao_id); setManTipo(m.tipo); setManDesc(m.descricao)
     setManEntrada(m.data_entrada); setManSaida(m.data_saida || '')
     setManValor(m.valor ? String(m.valor) : ''); setManStatus(m.status)
-    setManObs(m.obs); setManSubstitutoId(m.caminhao_substituto_id || '')
+    setManObs(m.obs || ''); setManSubstitutoId(m.caminhao_substituto_id || '')
     setMostraNovaMan(true)
   }
 
   async function salvarManutencao() {
-  if (!manCamId || !manTipo) {
-    showMsg('❌ Selecione o veículo e o tipo'); return
-  }
-  setLoading(true)
-  try {
-    const cam = caminhoes.find(c => c.id === manCamId)
-    const sub = caminhoes.find(c => c.id === manSubstitutoId)
-
-    const dadosHistorico = {
-      caminhao_id:               manCamId,
-      caminhao_placa:            cam?.placa || '',
-      tipo:                      manTipo,
-      descricao:                 manDesc,
-      data_entrada:              manEntrada,
-      data_saida:                manSaida || null,
-      valor:                     parseFloat(manValor) || null,
-      status:                    manStatus,
-      obs:                       manObs,
-      caminhao_substituto_id:    manSubstitutoId || null,
-      caminhao_substituto_placa: sub?.placa || null,
-      motorista_nome:            cam?.motorista_atual || null,
+    if (!manCamId || !manTipo) {
+      showMsg('❌ Selecione o veículo e o tipo'); return
     }
+    setLoading(true)
+    try {
+      const cam = caminhoes.find(c => c.id === manCamId)
+      const sub = caminhoes.find(c => c.id === manSubstitutoId)
 
-    let saveError: any = null
-
-    if (editandoMan) {
-      const { error } = await supabase
-        .from('manutencoes')
-        .update(dadosHistorico)
-        .eq('id', editandoMan.id)
-      saveError = error
-    } else {
-      const { error } = await supabase
-        .from('manutencoes')
-        .insert(dadosHistorico)
-      saveError = error
-    }
-
-    if (saveError) {
-      console.error('Erro Supabase:', saveError)
-      showMsg('❌ ' + (saveError.message || 'Erro ao salvar'))
-      setLoading(false); return
-    }
-
-    // Atualiza status do caminhão
-    if (manStatus === 'EM ANDAMENTO') {
-      await supabase.from('caminhoes')
-        .update({ status: 'manutencao', motivo_parado: manTipo, dt_parado: manEntrada })
-        .eq('id', manCamId)
-
-      if (manSubstitutoId && cam?.motorista_atual) {
-        await supabase.from('caminhoes').update({ motorista_atual: cam.motorista_atual }).eq('id', manSubstitutoId)
-        await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manCamId)
+      const dadosHistorico = {
+        caminhao_id:               manCamId,
+        caminhao_placa:            cam?.placa || '',
+        tipo:                      manTipo,
+        descricao:                 manDesc,
+        data_entrada:              manEntrada,
+        data_saida:                manSaida || null,
+        valor:                     parseFloat(manValor) || null,
+        status:                    manStatus,
+        obs:                       manObs,
+        caminhao_substituto_id:    manSubstitutoId || null,
+        caminhao_substituto_placa: sub?.placa || null,
+        motorista_nome:            cam?.motorista_atual || null,
       }
-    } else if (manStatus === 'CONCLUÍDO') {
-      await supabase.from('caminhoes')
-        .update({ status: 'rodando', motivo_parado: '', dt_parado: null })
-        .eq('id', manCamId)
 
-      if (manSubstitutoId) {
-        const motoristaOriginal = editandoMan?.motorista_nome || cam?.motorista_atual
-        if (motoristaOriginal) {
-          await supabase.from('caminhoes').update({ motorista_atual: motoristaOriginal }).eq('id', manCamId)
-          await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manSubstitutoId)
-        }
-      }
-    }
-
-    showMsg(editandoMan ? '✅ Atualizado!' : '✅ Registrado!')
-    setMostraNovaMan(false)
-    setEditandoMan(null)
-    await fetchHistoricoMan()
-    await fetch_()
-  } catch (e: any) {
-    console.error('Erro inesperado:', e)
-    showMsg('❌ Erro: ' + (e.message || 'Erro desconhecido'))
-  } finally {
-    setLoading(false)
-  }
-}
+      let saveError: any = null
 
       if (editandoMan) {
-        const { error } = await supabase.from('manutencoes').update(dadosHistorico).eq('id', editandoMan.id)
-        if (error) throw error
+        const { error } = await supabase
+          .from('manutencoes')
+          .update(dadosHistorico)
+          .eq('id', editandoMan.id)
+        saveError = error
       } else {
-        const { error } = await supabase.from('manutencoes').insert(dadosHistorico)
-        if (error) throw error
+        const { error } = await supabase
+          .from('manutencoes')
+          .insert(dadosHistorico)
+        saveError = error
       }
 
-      // Lógica de status do caminhão
+      if (saveError) {
+        console.error('Supabase error:', saveError)
+        showMsg('❌ ' + (saveError.message || 'Erro ao salvar'))
+        setLoading(false)
+        return
+      }
+
+      // Atualiza status do caminhão
       if (manStatus === 'EM ANDAMENTO') {
-        await supabase.from('caminhoes').update({ status: 'manutencao', motivo_parado: manTipo, dt_parado: manEntrada }).eq('id', manCamId)
+        await supabase.from('caminhoes')
+          .update({ status: 'manutencao', motivo_parado: manTipo, dt_parado: manEntrada })
+          .eq('id', manCamId)
         if (manSubstitutoId && cam?.motorista_atual) {
           await supabase.from('caminhoes').update({ motorista_atual: cam.motorista_atual }).eq('id', manSubstitutoId)
           await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manCamId)
         }
       } else if (manStatus === 'CONCLUÍDO') {
-        await supabase.from('caminhoes').update({ status: 'rodando', motivo_parado: '', dt_parado: null }).eq('id', manCamId)
-        if (manSubstitutoId && cam?.motorista_atual) {
-          await supabase.from('caminhoes').update({ motorista_atual: cam.motorista_atual }).eq('id', manCamId)
-          await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manSubstitutoId)
+        await supabase.from('caminhoes')
+          .update({ status: 'rodando', motivo_parado: '', dt_parado: null })
+          .eq('id', manCamId)
+        if (manSubstitutoId) {
+          const motoristaOriginal = editandoMan?.motorista_nome || cam?.motorista_atual
+          if (motoristaOriginal) {
+            await supabase.from('caminhoes').update({ motorista_atual: motoristaOriginal }).eq('id', manCamId)
+            await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manSubstitutoId)
+          }
         }
       }
 
       showMsg(editandoMan ? '✅ Atualizado!' : '✅ Registrado!')
-      setMostraNovaMan(false); setEditandoMan(null)
-      fetchHistoricoMan(); fetch_()
+      setMostraNovaMan(false)
+      setEditandoMan(null)
+      await fetchHistoricoMan()
+      await fetch_()
     } catch (e: any) {
-      showMsg('❌ Erro ao salvar: ' + e.message)
-      console.error(e)
+      console.error('Erro inesperado:', e)
+      showMsg('❌ Erro: ' + (e.message || 'Erro desconhecido'))
     } finally {
       setLoading(false)
     }
@@ -331,7 +329,9 @@ export default function CaminhaoPage() {
 
   async function excluirManutencao(id: string) {
     await supabase.from('manutencoes').delete().eq('id', id)
-    fetchHistoricoMan()
+    setMostraNovaMan(false)
+    setEditandoMan(null)
+    await fetchHistoricoMan()
     showMsg('Manutenção excluída.')
   }
 
@@ -352,14 +352,14 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* ── HEADER ── */}
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">Gestão de Frota</h1>
           <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mt-1">Controle de veículos, carretas e manutenção</p>
         </div>
         <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
-          {(['caminhoes','carretas','manutencao'] as const).map(ab => (
+          {(['caminhoes', 'carretas', 'manutencao'] as const).map(ab => (
             <button key={ab} onClick={() => setAbaGlobal(ab)}
               className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all
                 ${abaGlobal === ab ? 'bg-red-600 text-white shadow-lg shadow-red-100' : 'text-gray-400 hover:text-gray-600'}`}>
@@ -369,7 +369,7 @@ export default function CaminhaoPage() {
         </div>
       </div>
 
-      {/* ── ABA CAMINHÕES ── */}
+      {/* ABA CAMINHÕES */}
       {abaGlobal === 'caminhoes' && (
         <div className="space-y-6">
           {!sel && !mostraCad ? (
@@ -418,6 +418,7 @@ export default function CaminhaoPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <div className="space-y-1"><label className={LC}>Placa *</label><input value={cadPlaca} onChange={e => setCadPlaca(e.target.value)} className={IC}/></div>
+                <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={cadPlacaCarreta} onChange={e => setCadPlacaCarreta(e.target.value)} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={cadModelo} onChange={e => setCadModelo(e.target.value)} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Ano</label><input value={cadAno} onChange={e => setCadAno(e.target.value)} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Motorista</label>
@@ -430,13 +431,6 @@ export default function CaminhaoPage() {
                   <select value={cadFrota} onChange={e => setCadFrota(e.target.value)} className={IC}>
                     <option value="">Selecione...</option>
                     {frotas.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1"><label className={LC}>Status</label>
-                  <select value={cadStatus} onChange={e => setCadStatus(e.target.value)} className={IC}>
-                    <option value="rodando">Rodando</option>
-                    <option value="manutencao">Manutenção</option>
-                    <option value="parado">Parado</option>
                   </select>
                 </div>
               </div>
@@ -540,7 +534,7 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* ── ABA CARRETAS ── */}
+      {/* ABA CARRETAS */}
       {abaGlobal === 'carretas' && (
         <div className="space-y-6">
           {!selCarreta && !mostraCadCarreta ? (
@@ -628,7 +622,7 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* ── ABA MANUTENÇÃO ── */}
+      {/* ABA MANUTENÇÃO */}
       {abaGlobal === 'manutencao' && (
         <div className="space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -663,7 +657,7 @@ export default function CaminhaoPage() {
                 <tbody className="divide-y divide-gray-50">
                   {filtradosMan.map(m => (
                     <tr key={m.id} onClick={() => abrirEdicaoMan(m)}
-                      className="hover:bg-red-50/30 transition-colors cursor-pointer group">
+                      className="hover:bg-red-50/30 transition-colors cursor-pointer">
                       <td className="px-6 py-4">
                         <p className="font-black text-gray-900 text-sm">{m.caminhao_placa}</p>
                         {m.motorista_nome && <p className="text-[10px] text-gray-400 font-bold">{m.motorista_nome}</p>}
@@ -694,7 +688,7 @@ export default function CaminhaoPage() {
         </div>
       )}
 
-      {/* ── MODAL MANUTENÇÃO ── */}
+      {/* MODAL MANUTENÇÃO */}
       {mostraNovaMan && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden">
@@ -712,7 +706,11 @@ export default function CaminhaoPage() {
                   <label className={LC}>Veículo *</label>
                   <select value={manCamId} onChange={e => setManCamId(e.target.value)} className={IC} disabled={!!editandoMan}>
                     <option value="">Selecione...</option>
-                    {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa}{c.motorista_atual && ` · ${c.motorista_atual}`}</option>)}
+                    {caminhoes.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.placa}{c.motorista_atual ? ` · ${c.motorista_atual}` : ''}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -745,19 +743,22 @@ export default function CaminhaoPage() {
                   <label className={LC}>Veículo Substituto</label>
                   <select value={manSubstitutoId} onChange={e => setManSubstitutoId(e.target.value)} className={IC}>
                     <option value="">Nenhum</option>
-                    {caminhoes.filter(c => c.id !== manCamId).map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}
+                    {caminhoes.filter(c => c.id !== manCamId).map(c => (
+                      <option key={c.id} value={c.id}>{c.placa}</option>
+                    ))}
                   </select>
                 </div>
               </div>
               <div className="space-y-1">
                 <label className={LC}>Descrição</label>
-                <textarea value={manDesc} onChange={e => setManDesc(e.target.value)} className={IC + " h-24 resize-none"} placeholder="Detalhes da manutenção..."/>
+                <textarea value={manDesc} onChange={e => setManDesc(e.target.value)}
+                  className={IC + " h-24 resize-none"} placeholder="Detalhes da manutenção..."/>
               </div>
               <div className="space-y-1">
                 <label className={LC}>Observações</label>
-                <textarea value={manObs} onChange={e => setManObs(e.target.value)} className={IC + " h-20 resize-none"} placeholder="Notas extras..."/>
+                <textarea value={manObs} onChange={e => setManObs(e.target.value)}
+                  className={IC + " h-20 resize-none"} placeholder="Notas extras..."/>
               </div>
-
               <div className="flex gap-3 pt-2">
                 <button onClick={salvarManutencao} disabled={loading || !manCamId || !manTipo}
                   className="flex-1 bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-red-100 transition-all disabled:opacity-50">
@@ -765,7 +766,7 @@ export default function CaminhaoPage() {
                 </button>
                 {editandoMan && (
                   <button onClick={() => excluirManutencao(editandoMan.id)}
-                    className="px-6 py-4 bg-red-50 text-red-600 border border-red-100 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-100 transition-all">
+                    className="px-6 py-4 bg-red-50 text-red-600 border border-red-100 rounded-2xl font-black hover:bg-red-100 transition-all">
                     <Trash2 size={16}/>
                   </button>
                 )}
