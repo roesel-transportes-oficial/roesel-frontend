@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight, Download } from 'lucide-react'
+import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight, Download, Edit2 } from 'lucide-react'
 
 type Motorista     = { id: string; nome: string; caminhao_id?: string }
 type Caminhao      = { id: string; placa: string }
@@ -55,7 +55,9 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [sucesso, setSucesso]     = useState(false)
   const [excluindoId, setExcluindoId] = useState<string | null>(null)
   const [visualizando, setVisualizando] = useState<Fechamento | null>(null)
-  const [editandoVencimento, setEditandoVencimento] = useState<{id: string, data: string} | null>(null)
+  
+  // Estados de Edição no Histórico
+  const [editando, setEditando] = useState<Fechamento | null>(null)
 
   useEffect(() => {
     supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
@@ -77,10 +79,9 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     const motEncontrado = motoristas.find(m => m.id === motoristaId)
     if (!motEncontrado) return
     setMotoristaNome(motEncontrado.nome)
-    const mot = motEncontrado // Criando uma constante estável para o escopo assíncrono
+    const mot = motEncontrado
 
     async function vincularCaminhao() {
-      // 1. Verifica se há manutenção com substituto para este motorista na data de início
       if (dataInicio) {
         const { data: manutencao } = await supabase
           .from('manutencoes')
@@ -99,7 +100,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         }
       }
 
-      // 2. Fallback para o caminhão principal
       setIsSubstituto(false)
       let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
       if (mot.caminhao_id) {
@@ -305,7 +305,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       setTimeout(() => {
         setSucesso(false)
         setAbaAtiva('historico')
-        // Reset
         setMotoristaId(''); setCaminhao(null); setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set())
         setDataInicio(''); setDataFim(''); setKmInicial(''); setKmFinal(''); setDataVencimento('')
       }, 2000)
@@ -322,18 +321,26 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     else { setExcluindoId(null); fetchHistorico() }
   }
 
-  async function atualizarVencimento() {
-    if (!editandoVencimento) return
+  async function salvarEdicao() {
+    if (!editando) return
+    setSalvando(true)
     const { error } = await supabase
       .from('fechamento_viagens')
-      .update({ data_vencimento: editandoVencimento.data })
-      .eq('id', editandoVencimento.id)
+      .update({ 
+        data_inicio: editando.data_inicio,
+        data_fim: editando.data_fim,
+        km_inicial: Number(editando.km_inicial),
+        km_final: Number(editando.km_final),
+        data_vencimento: editando.data_vencimento 
+      })
+      .eq('id', editando.id)
     
-    if (error) setErro('Erro ao atualizar vencimento: ' + error.message)
+    if (error) setErro('Erro ao atualizar: ' + error.message)
     else {
-      setEditandoVencimento(null)
+      setEditando(null)
       fetchHistorico()
     }
+    setSalvando(false)
   }
 
   function exportarCSV() {
@@ -487,29 +494,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                       className="w-full bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-600"/>
                   </div>
                 </div>
-                {kmInicial && kmFinal && Number(kmFinal) > Number(kmInicial) && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 space-y-2">
-                    <p className="text-xs text-blue-700">
-                      Distância: <strong>{(Number(kmFinal) - Number(kmInicial)).toLocaleString('pt-BR')} km</strong>
-                      {resumo.mediaKmL > 0 && <span className="ml-3">Média: <strong>{fmt(resumo.mediaKmL)} km/L</strong></span>}
-                    </p>
-                    {selecionados.length > 0 && (
-                      <div className="pt-2 border-t border-blue-100">
-                        <p className="text-[10px] font-black text-blue-400 uppercase mb-1">Rotas dos Contratos Selecionados</p>
-                        <div className="space-y-1">
-                          {selecionados.map(c => (
-                            <div key={c.id} className="flex items-center gap-2 text-[11px] font-bold text-blue-800">
-                              <span className="opacity-50">#{c.contrato}:</span>
-                              <span>{c.origem || '—'}</span>
-                              <ArrowRight size={10} className="opacity-30"/>
-                              <span>{c.destino || '—'}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {/* ── Abastecimentos ── */}
@@ -711,30 +695,40 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                       <p className="text-[10px] font-bold text-red-600">{h.caminhao?.placa || '—'}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</p>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {h.contratos?.map((c: any, i: number) => (
-                          <span key={i} className="text-[9px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">
-                            {c.contrato?.contrato}: {c.contrato?.origem} → {c.contrato?.destino}
-                          </span>
-                        ))}
-                      </div>
+                      {editando?.id === h.id ? (
+                        <div className="flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center gap-1">
+                            <input type="date" value={editando.data_inicio} onChange={e => setEditando({...editando, data_inicio: e.target.value})} className="text-[10px] border rounded p-1"/>
+                            <span className="text-gray-400">→</span>
+                            <input type="date" value={editando.data_fim} onChange={e => setEditando({...editando, data_fim: e.target.value})} className="text-[10px] border rounded p-1"/>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <input type="number" placeholder="KM Ini" value={editando.km_inicial} onChange={e => setEditando({...editando, km_inicial: Number(e.target.value)})} className="text-[10px] border rounded p-1 w-20"/>
+                            <input type="number" placeholder="KM Fim" value={editando.km_final} onChange={e => setEditando({...editando, km_final: Number(e.target.value)})} className="text-[10px] border rounded p-1 w-20"/>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</p>
+                          <p className="text-[10px] text-gray-400 font-bold">{h.km_inicial.toLocaleString()} → {h.km_final.toLocaleString()} km</p>
+                        </>
+                      )}
                     </td>
                     <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                      {editandoVencimento?.id === h.id ? (
+                      {editando?.id === h.id ? (
                         <div className="flex items-center gap-2">
-                          <input type="date" value={editandoVencimento.data} 
-                            onChange={e => setEditandoVencimento({...editandoVencimento, data: e.target.value})}
+                          <input type="date" value={editando.data_vencimento} 
+                            onChange={e => setEditando({...editando, data_vencimento: e.target.value})}
                             className="text-xs border rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-red-500"/>
-                          <button onClick={atualizarVencimento} className="text-green-600"><CheckCircle2 size={14}/></button>
-                          <button onClick={() => setEditandoVencimento(null)} className="text-red-600"><X size={14}/></button>
+                          <button onClick={salvarEdicao} className="text-green-600"><CheckCircle2 size={14}/></button>
+                          <button onClick={() => setEditando(null)} className="text-red-600"><X size={14}/></button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2 group/edit">
                           <span className="text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</span>
-                          <button onClick={() => setEditandoVencimento({id: h.id, data: h.data_vencimento})} 
+                          <button onClick={() => setEditando(h)} 
                             className="opacity-0 group-hover/edit:opacity-100 text-gray-400 hover:text-red-600 transition-all">
-                            <Calendar size={12}/>
+                            <Edit2 size={12}/>
                           </button>
                         </div>
                       )}
