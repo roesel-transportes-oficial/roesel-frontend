@@ -223,7 +223,9 @@ export default function CaminhaoPage() {
     try {
       const cam = caminhoes.find(c => c.id === manCamId)
       const sub = caminhoes.find(c => c.id === manSubstitutoId)
-      const dados: any = {
+      
+      // 1. Prepara os dados para o histórico (tenta incluir substituto se colunas existirem)
+      const dadosHistorico: any = {
         caminhao_id: manCamId, 
         caminhao_placa: cam?.placa || '', 
         tipo: manTipo, 
@@ -234,75 +236,65 @@ export default function CaminhaoPage() {
         status: manStatus, 
         obs: manObs
       }
-      
-      // Tenta adicionar campos extras se as colunas existirem (não trava se falhar)
+
+      // Tenta incluir campos de substituto no histórico (não trava se falhar)
       try {
-        dados.caminhao_substituto_id = manSubstitutoId || null
-        dados.caminhao_substituto_placa = sub?.placa || null
-        dados.motorista_nome = cam?.motorista_atual || null
+        dadosHistorico.caminhao_substituto_id = manSubstitutoId || null
+        dadosHistorico.caminhao_substituto_placa = sub?.placa || null
+        dadosHistorico.motorista_nome = cam?.motorista_atual || null
       } catch(e) {}
 
+      // 2. Salva no histórico de manutenções
       if (editandoMan) {
-        const { error } = await supabase.from('manutencoes').update(dados).eq('id', editandoMan.id)
+        const { error } = await supabase.from('manutencoes').update(dadosHistorico).eq('id', editandoMan.id)
         if (error) throw error
-        showMsg('✅ Manutenção atualizada!')
       } else {
-        const { error } = await supabase.from('manutencoes').insert(dados)
+        const { error } = await supabase.from('manutencoes').insert(dadosHistorico)
         if (error) throw error
-        showMsg('✅ Manutenção registrada!')
       }
 
-      // ── LÓGICA DE SUBSTITUIÇÃO E STATUS ──
+      // 3. LÓGICA DE STATUS E TROCA DE MOTORISTA (REGRAS COMBINADAS)
       if (manStatus === 'EM ANDAMENTO') {
-        // 1. Coloca o caminhão original em manutenção
+        // Coloca o original em manutenção
         await supabase.from('caminhoes').update({ 
           status: 'manutencao', 
           motivo_parado: manTipo, 
           dt_parado: manEntrada 
         }).eq('id', manCamId)
 
-        // 2. Se tiver substituto e motorista, move o motorista para o substituto
+        // Se tiver substituto e motorista, faz a troca
         if (manSubstitutoId && cam?.motorista_atual) {
-          // Tira o motorista do original (opcional, já está em manutenção)
-          // Coloca o motorista no substituto
-          await supabase.from('caminhoes').update({ 
-            motorista_atual: cam.motorista_atual 
-          }).eq('id', manSubstitutoId)
-          
-          // Limpa o motorista do original para não ficar duplicado
-          await supabase.from('caminhoes').update({ 
-            motorista_atual: '' 
-          }).eq('id', manCamId)
+          // Move motorista para o substituto
+          await supabase.from('caminhoes').update({ motorista_atual: cam.motorista_atual }).eq('id', manSubstitutoId)
+          // Limpa motorista do original
+          await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', manCamId)
         }
       } else if (manStatus === 'CONCLUÍDO') {
-        // 1. Volta o caminhão original para rodando
+        // Volta o original para rodando
         await supabase.from('caminhoes').update({ 
           status: 'rodando', 
           motivo_parado: '', 
           dt_parado: null 
         }).eq('id', manCamId)
 
-        // 2. Se tinha um substituto com o motorista, devolve o motorista para o original
-        if (editandoMan?.caminhao_substituto_id && editandoMan?.motorista_nome) {
-          // Devolve o motorista para o original
-          await supabase.from('caminhoes').update({ 
-            motorista_atual: editandoMan.motorista_nome 
-          }).eq('id', manCamId)
-
-          // Limpa o motorista do substituto
-          await supabase.from('caminhoes').update({ 
-            motorista_atual: '' 
-          }).eq('id', editandoMan.caminhao_substituto_id)
+        // Se tinha substituto, devolve o motorista
+        const subId = editandoMan?.caminhao_substituto_id || manSubstitutoId
+        const motNome = editandoMan?.motorista_nome || cam?.motorista_atual
+        
+        if (subId && motNome) {
+          await supabase.from('caminhoes').update({ motorista_atual: motNome }).eq('id', manCamId)
+          await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', subId)
         }
       }
       
+      showMsg(editandoMan ? '✅ Atualizado!' : '✅ Registrado!')
       setMostraNovaMan(false)
       setEditandoMan(null)
       setManCamId(''); setManTipo(''); setManDesc(''); setManValor(''); setManObs(''); setManSubstitutoId('')
       fetchHistoricoMan()
       fetch_()
     } catch (e: any) {
-      alert('Erro ao salvar manutenção: ' + e.message)
+      alert('Erro ao salvar: ' + e.message)
     } finally {
       setLoading(false)
     }
@@ -533,7 +525,7 @@ export default function CaminhaoPage() {
                 <div className="space-y-1"><label className={LC}>Data Saída</label><input type="date" value={manSaida} onChange={e => setManSaida(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Valor (R$)</label><input type="number" value={manValor} onChange={e => setManValor(e.target.value)} className={IC} placeholder="0,00" /></div>
                 <div className="space-y-1"><label className={LC}>Status</label><select value={manStatus} onChange={e => setManStatus(e.target.value)} className={IC}><option value="EM ANDAMENTO">Em Andamento</option><option value="CONCLUÍDO">Concluído</option></select></div>
-                <div className="space-y-1 md:col-span-2"><label className={LC}>Veículo Substituto</label><select value={manSubstitutoId} onChange={e => setManSubstitutoId(e.target.value)} className={IC} disabled={!!editandoMan}><option value="">Nenhum (Motorista fica parado)</option>{caminhoes.filter(c => c.id !== manCamId).map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>
+                <div className="space-y-1 md:col-span-2"><label className={LC}>Veículo Substituto</label><select value={manSubstitutoId} onChange={e => setManSubstitutoId(e.target.value)} className={IC}><option value="">Nenhum (Motorista fica parado)</option>{caminhoes.filter(c => c.id !== manCamId).map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}</select></div>
               </div>
               <div className="space-y-1"><label className={LC}>Descrição</label><textarea value={manDesc} onChange={e => setManDesc(e.target.value)} className={`${IC} h-24 resize-none`} placeholder="Detalhes da manutenção..." /></div>
               <div className="space-y-1"><label className={LC}>Observações Internas</label><textarea value={manObs} onChange={e => setManObs(e.target.value)} className={`${IC} h-20 resize-none`} placeholder="Notas extras..." /></div>
