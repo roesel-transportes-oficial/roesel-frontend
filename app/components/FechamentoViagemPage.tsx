@@ -236,46 +236,40 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   async function fetchHistorico() {
     setCarregandoHistorico(true)
     try {
+      // ✅ Otimizado para buscar tudo em uma única chamada, evitando que os dados sumam
       const { data: fechamentos, error: errorFech } = await supabase
-        .from('fechamento_viagens').select('*').order('created_at', { ascending: false })
+        .from('fechamento_viagens')
+        .select(`
+          *,
+          motorista:motorista_id(nome),
+          caminhao:caminhao_id(placa),
+          contratos:fechamento_contratos(
+            contrato:contrato_id(contrato, origem, destino, fat_bruto)
+          ),
+          abastecimentos:fechamento_abastecimentos(
+            abastecimento:abastecimento_id(litros_combustivel, total)
+          )
+        `)
+        .order('created_at', { ascending: false })
+
       if (errorFech) throw errorFech
 
-      const [{ data: mots }, { data: cams }] = await Promise.all([
-        supabase.from('motoristas').select('id, nome'),
-        supabase.from('caminhoes').select('id, placa')
-      ])
-
-      const { data: relContratos } = await supabase
-        .from('fechamento_contratos')
-        .select('fechamento_id, contrato:contrato_id(contrato, origem, destino, fat_bruto)')
-
-      const fechIds = (fechamentos || []).map(f => f.id)
-      const { data: relAbast } = await supabase
-        .from('fechamento_abastecimentos')
-        .select('fechamento_id, abastecimento:abastecimento_id(litros_combustivel, total)')
-        .in('fechamento_id', fechIds)
-
-      const litrosPorFech: Record<string, number> = {}
-      const valorPorFech: Record<string, number>  = {}
-      relAbast?.forEach((fa: any) => {
-        litrosPorFech[fa.fechamento_id] = (litrosPorFech[fa.fechamento_id] || 0) + (fa.abastecimento?.litros_combustivel || 0)
-        valorPorFech[fa.fechamento_id]  = (valorPorFech[fa.fechamento_id]  || 0) + (fa.abastecimento?.total || 0)
-      })
-
       const formatado = (fechamentos || []).map(f => {
-        const mot   = mots?.find(m => m.id === f.motorista_id)
-        const cam   = cams?.find(c => c.id === f.caminhao_id)
-        const conts = relContratos?.filter(rc => rc.fechamento_id === f.id) || []
-        const totalFreteRecalculado  = f.total_frete || conts.reduce((t, c: any) => t + Number(c.contrato?.fat_bruto || 0), 0)
-        const totalLitrosRecalculado = (f.total_litros && f.total_litros > 0) ? f.total_litros : (litrosPorFech[f.id] || 0)
+        const conts = f.contratos || []
+        const abasts = f.abastecimentos || []
+        
+        const totalFreteRecalculado  = f.total_frete || conts.reduce((t: number, c: any) => t + Number(c.contrato?.fat_bruto || 0), 0)
+        const totalLitrosRecalculado = (f.total_litros && f.total_litros > 0) ? f.total_litros : abasts.reduce((t: number, a: any) => t + (a.abastecimento?.litros_combustivel || 0), 0)
+        const totalAbastRecalculado  = (f.total_abastecimento && f.total_abastecimento > 0) ? f.total_abastecimento : abasts.reduce((t: number, a: any) => t + (a.abastecimento?.total || 0), 0)
+
         return {
           ...f,
           total_litros: totalLitrosRecalculado,
-          total_abastecimento: (f.total_abastecimento && f.total_abastecimento > 0) ? f.total_abastecimento : (valorPorFech[f.id] || 0),
+          total_abastecimento: totalAbastRecalculado,
           total_frete: totalFreteRecalculado,
           comissao_motorista: f.comissao_motorista || totalFreteRecalculado * 0.10,
-          motorista: { nome: mot?.nome || '—' },
-          caminhao: { placa: cam?.placa || '—' },
+          motorista: { nome: f.motorista?.nome || '—' },
+          caminhao: { placa: f.caminhao?.placa || '—' },
           contratos: conts
         }
       })
@@ -295,13 +289,19 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     try {
       const { data: fech, error: errorFech } = await supabase
         .from('fechamento_viagens').insert({
-          motorista_id: motoristaId, caminhao_id: caminhao.id,
-          data_inicio: dataInicio, data_fim: dataFim,
-          km_inicial: Number(kmInicial), km_final: Number(kmFinal),
+          motorista_id: motoristaId, 
+          caminhao_id: caminhao.id,
+          data_inicio: dataInicio, 
+          data_fim: dataFim,
+          km_inicial: Number(kmInicial), 
+          km_final: Number(kmFinal),
           data_vencimento: dataVencimento,
-          total_litros: resumo.litros, total_abastecimento: resumo.valor,
-          total_frete: resumo.frete, comissao_motorista: resumo.comissao
+          total_litros: resumo.litros, 
+          total_abastecimento: resumo.valor,
+          total_frete: resumo.frete, 
+          comissao_motorista: resumo.comissao
         }).select().single()
+      
       if (errorFech) throw errorFech
 
       await supabase.from('fechamento_contratos').insert(
@@ -329,176 +329,132 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   }
 
   async function excluir(id: string) {
-    await supabase.from('fechamento_contratos').delete().eq('fechamento_id', id)
-    await supabase.from('fechamento_abastecimentos').delete().eq('fechamento_id', id)
-    const { error } = await supabase.from('fechamento_viagens').delete().eq('id', id)
-    if (error) setErro('Erro ao excluir: ' + error.message)
-    else { setExcluindoId(null); fetchHistorico() }
+    if (!confirm('Deseja realmente excluir este fechamento?')) return
+    try {
+      await supabase.from('fechamento_contratos').delete().eq('fechamento_id', id)
+      await supabase.from('fechamento_abastecimentos').delete().eq('fechamento_id', id)
+      const { error } = await supabase.from('fechamento_viagens').delete().eq('id', id)
+      if (error) throw error
+      fetchHistorico()
+    } catch (e: any) {
+      setErro('Erro ao excluir: ' + e.message)
+    }
   }
 
   async function salvarEdicao() {
     if (!editando) return
-    setSalvando(true)
-    const { error } = await supabase.from('fechamento_viagens').update({
-      data_inicio: editando.data_inicio, data_fim: editando.data_fim,
-      km_inicial: Number(editando.km_inicial), km_final: Number(editando.km_final),
-      data_vencimento: editando.data_vencimento
-    }).eq('id', editando.id)
-    if (error) setErro('Erro ao atualizar: ' + error.message)
-    else { setEditando(null); fetchHistorico() }
-    setSalvando(false)
+    try {
+      const { error } = await supabase
+        .from('fechamento_viagens')
+        .update({
+          data_inicio: editando.data_inicio,
+          data_fim: editando.data_fim,
+          km_inicial: editando.km_inicial,
+          km_final: editando.km_final,
+          data_vencimento: editando.data_vencimento
+        })
+        .eq('id', editando.id)
+      if (error) throw error
+      setEditando(null)
+      fetchHistorico()
+    } catch (e: any) {
+      setErro('Erro ao editar: ' + e.message)
+    }
   }
 
   function exportarCSV() {
-    const headers = ['Data Lançamento','Motorista','Placa','Início','Fim','KM Inicial','KM Final','KM Rodado','Litros','Média','Vencimento','Total Frete','Comissão']
-    const rows = historicoFiltrado.map(h => {
-      const km = (h.km_final || 0) - (h.km_inicial || 0)
-      const litros = h.total_litros || 0
-      return [
-        new Date(h.created_at).toLocaleDateString('pt-BR'), h.motorista.nome, h.caminhao.placa,
-        fmtData(h.data_inicio), fmtData(h.data_fim), h.km_inicial, h.km_final, km, litros,
-        km > 0 && litros > 0 ? (km / litros).toFixed(2) : '0',
-        fmtData(h.data_vencimento), h.total_frete || 0, h.comissao_motorista || 0
-      ]
-    })
-    const csv = [headers, ...rows].map(e => e.join(';')).join('\n')
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
+    if (historico.length === 0) return
+    const headers = ['Data', 'Motorista', 'Placa', 'KM Inicial', 'KM Final', 'Total Frete', 'Comissão']
+    const rows = historico.map(h => [
+      new Date(h.created_at).toLocaleDateString('pt-BR'),
+      h.motorista.nome,
+      h.caminhao.placa,
+      h.km_inicial,
+      h.km_final,
+      h.total_frete,
+      h.comissao_motorista
+    ])
+    const csvContent = [headers, ...rows].map(e => e.join(',')).join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
-    link.setAttribute('href', url)
-    link.setAttribute('download', `fechamentos_${new Date().toISOString().split('T')[0]}.csv`)
+    link.href = URL.createObjectURL(blob)
+    link.download = `historico_fechamentos_${new Date().toISOString().split('T')[0]}.csv`
     link.click()
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen">
-
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fechamento de Viagem</h1>
-          <p className="text-sm text-gray-500">Gestão de viagens, contratos e abastecimentos</p>
-        </div>
-        <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
-          <button onClick={() => setAbaAtiva('novo')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
-              ${abaAtiva === 'novo' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            Novo Fechamento
-          </button>
-          <button onClick={() => setAbaAtiva('historico')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
-              ${abaAtiva === 'historico' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            Histórico
-          </button>
-        </div>
-      </div>
-
-      {abaAtiva === 'novo' ? (
-        <>
-          {/* ── Painel escuro sticky ── */}
-          <div className="sticky top-4 z-40">
-            <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-2xl border border-gray-800 grid grid-cols-2 md:grid-cols-5 gap-6">
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Distância</p>
-                <p className="text-2xl font-bold mt-1">{resumo.km > 0 ? `${resumo.km.toLocaleString('pt-BR')} km` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Combustível</p>
-                <p className="text-2xl font-bold text-blue-400 mt-1">{resumo.litros > 0 ? `${fmt(resumo.litros)} L` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Média KM/L</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{resumo.mediaKmL > 0 ? fmt(resumo.mediaKmL) : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Total Frete</p>
-                <p className="text-2xl font-bold text-yellow-400 mt-1">{resumo.frete > 0 ? `R$ ${fmt(resumo.frete)}` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Comissão (10%)</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{resumo.comissao > 0 ? `R$ ${fmt(resumo.comissao)}` : '—'}</p>
-              </div>
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+          <div className="flex items-center gap-4">
+            <div className="bg-red-600 p-3 rounded-2xl shadow-lg shadow-red-100">
+              <Truck className="text-white" size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-gray-900 uppercase tracking-tight">Fechamento de Viagem</h1>
+              <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Controle de motoristas e comissões</p>
             </div>
           </div>
+          <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+            <button onClick={() => setAbaAtiva('novo')}
+              className={`px-6 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${abaAtiva === 'novo' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
+              Novo Fechamento
+            </button>
+            <button onClick={() => setAbaAtiva('historico')}
+              className={`px-6 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${abaAtiva === 'historico' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
+              Histórico
+            </button>
+          </div>
+        </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {abaAtiva === 'novo' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <div className="lg:col-span-8 space-y-6">
-
-              {/* Motorista + Datas + KM */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Dados Básicos */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-5 border-b border-gray-100 bg-gray-50/50">
+                  <h2 className="text-xs font-black text-gray-700 uppercase tracking-widest flex items-center gap-2">
+                    <User size={16} className="text-red-600"/> Informações da Viagem
+                  </h2>
+                </div>
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      <User size={14} className="text-red-600"/> Motorista
-                    </label>
-                    <select value={motoristaId}
-                      onChange={e => {
-                        setMotoristaId(e.target.value)
-                        setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set())
-                        setKmInicial(''); setKmFinal('')
-                      }}
-                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm font-bold focus:border-red-500 focus:bg-white outline-none transition-all">
-                      <option value="">Selecione o motorista</option>
+                    <label className="text-[10px] font-black text-gray-400 uppercase">Motorista</label>
+                    <select value={motoristaId} onChange={e => setMotoristaId(e.target.value)}
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold text-sm">
+                      <option value="">Selecione...</option>
                       {motoristas.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
-                      <Truck size={14} className="text-red-600"/> Placa do Caminhão
-                    </label>
-                    <div className={`w-full border-2 rounded-xl px-4 py-3 text-sm font-black flex items-center justify-between
-                      ${isSubstituto ? 'bg-blue-50 border-blue-100 text-blue-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                      <div className="flex items-center gap-2">
-                        {caminhao ? caminhao.placa : 'Aguardando...'}
-                        {isSubstituto && (
-                          <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase">
-                            Substituto
-                          </span>
-                        )}
-                      </div>
-                      {caminhao && <CheckCircle2 size={16} className={isSubstituto ? 'text-blue-500' : 'text-red-500'}/>}
-                    </div>
-                    {isSubstituto && (
-                      <p className="text-[10px] text-blue-500 font-bold">
-                        🔧 Caminhão em manutenção — usando substituto automaticamente
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t border-gray-50">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Saída Viagem</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase">Data Início</label>
                     <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold text-sm"/>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">Retorno Viagem</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase">Data Fim</label>
                     <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold text-sm"/>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
-                      KM Inicial {kmInicial && <span className="text-green-500 text-[9px]">● auto</span>}
-                    </label>
-                    <input type="number" value={kmInicial} onChange={e => setKmInicial(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase">KM Final</label>
-                    <input type="number" value={kmFinal} onChange={e => setKmFinal(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-red-600 uppercase flex items-center gap-1">
-                      <CreditCard size={10}/> Vencimento
-                    </label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase">Vencimento Pagamento</label>
                     <input type="date" value={dataVencimento} onChange={e => setDataVencimento(e.target.value)}
-                      className="w-full bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-600"/>
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold text-sm"/>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase">KM Inicial</label>
+                    <input type="number" value={kmInicial} onChange={e => setKmInicial(e.target.value)}
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold text-sm"/>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-gray-400 uppercase">KM Final</label>
+                    <input type="number" value={kmFinal} onChange={e => setKmFinal(e.target.value)}
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 font-bold text-sm"/>
                   </div>
                 </div>
-
-                {kmInicial && kmFinal && Number(kmFinal) > Number(kmInicial) && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
+                {kmFinal && kmInicial && (
+                  <div className="px-6 py-4 bg-blue-50 border-t border-blue-100">
                     <p className="text-xs text-blue-700">
                       Distância: <strong>{(Number(kmFinal) - Number(kmInicial)).toLocaleString('pt-BR')} km</strong>
                       {resumo.mediaKmL > 0 && <span className="ml-3">Média: <strong>{fmt(resumo.mediaKmL)} km/L</strong></span>}
@@ -657,108 +613,109 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
               </div>
             </div>
           </div>
-
-          {/* Salvar */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-gray-200">
-            <div className="flex-1 text-sm font-bold">
-              {erro    && <span className="text-red-600">⚠️ {erro}</span>}
-              {sucesso && <span className="text-green-600">✅ Fechamento realizado com sucesso!</span>}
+        ) : (
+          /* ── HISTÓRICO ── */
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="relative flex-1 max-w-md">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"/>
+                <input type="text" placeholder="Pesquisar motorista ou placa..." value={buscaHistorico}
+                  onChange={e => setBuscaHistorico(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-sm font-medium"/>
+              </div>
+              <button onClick={exportarCSV}
+                className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all">
+                <Download size={16}/> Exportar CSV
+              </button>
             </div>
-            <button onClick={salvar}
-              disabled={!motoristaId || selecionados.length === 0 || salvando}
-              className="w-full md:w-auto bg-red-600 text-white px-16 py-5 rounded-2xl font-black text-base uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 shadow-2xl shadow-red-200 transition-all active:scale-95">
-              {salvando ? 'Processando...' : 'Finalizar Fechamento'}
-            </button>
-          </div>
-        </>
-      ) : (
-        /* ── HISTÓRICO ── */
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"/>
-              <input type="text" placeholder="Pesquisar motorista ou placa..." value={buscaHistorico}
-                onChange={e => setBuscaHistorico(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-sm font-medium"/>
-            </div>
-            <button onClick={exportarCSV}
-              className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all">
-              <Download size={16}/> Exportar CSV
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-100">
-                  {['Data Lançamento','Motorista / Placa','Período / KM','Vencimento',''].map(h => (
-                    <th key={h} className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {carregandoHistorico ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-                ) : historicoFiltrado.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
-                ) : historicoFiltrado.map(h => (
-                  <tr key={h.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => setVisualizando(h)}>
-                    <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-black text-gray-900">{h.motorista?.nome || '—'}</p>
-                      <p className="text-[10px] font-bold text-red-600">{h.caminhao?.placa || '—'}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      {editando?.id === h.id ? (
-                        <div className="flex flex-col gap-2" onClick={e => e.stopPropagation()}>
-                          <div className="flex items-center gap-1">
-                            <input type="date" value={editando.data_inicio} onChange={e => setEditando({...editando, data_inicio: e.target.value})} className="text-[10px] border rounded p-1"/>
-                            <span className="text-gray-400">→</span>
-                            <input type="date" value={editando.data_fim} onChange={e => setEditando({...editando, data_fim: e.target.value})} className="text-[10px] border rounded p-1"/>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <input type="number" placeholder="KM Ini" value={editando.km_inicial} onChange={e => setEditando({...editando, km_inicial: Number(e.target.value)})} className="text-[10px] border rounded p-1 w-20"/>
-                            <input type="number" placeholder="KM Fim" value={editando.km_final} onChange={e => setEditando({...editando, km_final: Number(e.target.value)})} className="text-[10px] border rounded p-1 w-20"/>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</p>
-                          <p className="text-[10px] text-gray-400 font-bold">{h.km_inicial?.toLocaleString()} → {h.km_final?.toLocaleString()} km</p>
-                        </>
-                      )}
-                    </td>
-                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                      {editando?.id === h.id ? (
-                        <div className="flex items-center gap-2">
-                          <input type="date" value={editando.data_vencimento}
-                            onChange={e => setEditando({...editando, data_vencimento: e.target.value})}
-                            className="text-xs border rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-red-500"/>
-                          <button onClick={salvarEdicao} className="text-green-600"><CheckCircle2 size={14}/></button>
-                          <button onClick={() => setEditando(null)} className="text-red-600"><X size={14}/></button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 group/edit">
-                          <span className="text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</span>
-                          <button onClick={() => setEditando(h)}
-                            className="opacity-0 group-hover/edit:opacity-100 text-gray-400 hover:text-red-600 transition-all">
-                            <Edit2 size={12}/>
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => setExcluindoId(h.id)}
-                        className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
-                        <X size={16}/>
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50/50 border-b border-gray-100">
+                    {['Data Lançamento','Motorista / Placa','Período / KM','Vencimento',''].map(h => (
+                      <th key={h} className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {carregandoHistorico ? (
+                    <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+                  ) : historicoFiltrado.length === 0 ? (
+                    <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
+                  ) : historicoFiltrado.map(h => (
+                    <tr key={h.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => setVisualizando(h)}>
+                      <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-black text-gray-900">{h.motorista?.nome || '—'}</p>
+                        <p className="text-[10px] font-bold text-red-600">{h.caminhao?.placa || '—'}</p>
+                      </td>
+                      <td className="px-6 py-4">
+                        {editando?.id === h.id ? (
+                          <div className="flex flex-col gap-2" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center gap-1">
+                              <input type="date" value={editando.data_inicio} onChange={e => setEditando({...editando, data_inicio: e.target.value})} className="text-[10px] border rounded p-1"/>
+                              <span className="text-gray-400">→</span>
+                              <input type="date" value={editando.data_fim} onChange={e => setEditando({...editando, data_fim: e.target.value})} className="text-[10px] border rounded p-1"/>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <input type="number" placeholder="KM Ini" value={editando.km_inicial} onChange={e => setEditando({...editando, km_inicial: Number(e.target.value)})} className="text-[10px] border rounded p-1 w-16"/>
+                              <span className="text-gray-400">→</span>
+                              <input type="number" placeholder="KM Fim" value={editando.km_final} onChange={e => setEditando({...editando, km_final: Number(e.target.value)})} className="text-[10px] border rounded p-1 w-16"/>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-xs font-bold text-gray-600">{fmtData(h.data_inicio)} → {fmtData(h.data_fim)}</p>
+                            <p className="text-[10px] text-gray-400 font-bold">{h.km_inicial?.toLocaleString()} → {h.km_final?.toLocaleString()} km</p>
+                          </>
+                        )}
+                      </td>
+                      <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                        {editando?.id === h.id ? (
+                          <div className="flex items-center gap-2">
+                            <input type="date" value={editando.data_vencimento}
+                              onChange={e => setEditando({...editando, data_vencimento: e.target.value})}
+                              className="text-xs border rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-red-500"/>
+                            <button onClick={salvarEdicao} className="text-green-600"><CheckCircle2 size={14}/></button>
+                            <button onClick={() => setEditando(null)} className="text-red-600"><X size={14}/></button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 group/edit">
+                            <span className="text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</span>
+                            <button onClick={() => setEditando(h)}
+                              className="opacity-0 group-hover/edit:opacity-100 text-gray-400 hover:text-red-600 transition-all">
+                              <Edit2 size={12}/>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setExcluindoId(h.id)}
+                          className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
+                          <X size={16}/>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+        )}
+
+        {/* Salvar */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-gray-200">
+          <div className="flex-1 text-sm font-bold">
+            {erro    && <span className="text-red-600">⚠️ {erro}</span>}
+            {sucesso && <span className="text-green-600">✅ Fechamento realizado com sucesso!</span>}
+          </div>
+          <button onClick={salvar}
+            disabled={!motoristaId || selecionados.length === 0 || salvando}
+            className="w-full md:w-auto bg-red-600 text-white px-16 py-5 rounded-2xl font-black text-base uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 shadow-2xl shadow-red-200 transition-all active:scale-95">
+            {salvando ? 'Processando...' : 'Finalizar Fechamento'}
+          </button>
         </div>
-      )}
+      </div>
 
       {/* ── MODAL VISUALIZAÇÃO ── */}
       {visualizando && (
