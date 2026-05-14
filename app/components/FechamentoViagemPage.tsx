@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight } from 'lucide-react'
+import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight, Download } from 'lucide-react'
 
 type Motorista     = { id: string; nome: string; caminhao_id?: string }
 type Caminhao      = { id: string; placa: string }
@@ -26,6 +26,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [motoristaId, setMotoristaId]             = useState('')
   const [motoristaNome, setMotoristaNome]         = useState('')
   const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
+  const [isSubstituto, setIsSubstituto]           = useState(false)
   const [dataInicio, setDataInicio]               = useState('')
   const [dataFim, setDataFim]                     = useState('')
   const [kmInicial, setKmInicial]                 = useState('')
@@ -60,18 +61,37 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     }
   }, [abaAtiva])
 
-  // ✅ Motorista → caminhão + KM inicial automático
+  // ✅ Motorista → caminhão + KM inicial automático + Detecção de Substituto
   useEffect(() => {
     if (!motoristaId) {
       setCaminhao(null); setContratosDisponiveis([]); setMotoristaNome('')
-      setKmInicial(''); setKmFinal(''); return
+      setKmInicial(''); setKmFinal(''); setIsSubstituto(false); return
     }
     const mot = motoristas.find(m => m.id === motoristaId)
     if (!mot) return
     setMotoristaNome(mot.nome)
 
     async function vincularCaminhao() {
-      // 1. Busca caminhão
+      // 1. Verifica se há caminhão substituto em manutenção para este motorista na data de início
+      if (dataInicio) {
+        const { data: manutencao } = await supabase
+          .from('manutencoes')
+          .select('caminhao_substituto_id, caminhao_substituto_placa')
+          .eq('motorista_nome', mot.nome)
+          .lte('data_entrada', dataInicio)
+          .or(`data_saida.is.null,data_saida.gte.${dataInicio}`)
+          .maybeSingle()
+
+        if (manutencao?.caminhao_substituto_id) {
+          setCaminhao({ id: manutencao.caminhao_substituto_id, placa: manutencao.caminhao_substituto_placa || '' })
+          setIsSubstituto(true)
+          buscarKmInicial(manutencao.caminhao_substituto_id)
+          return
+        }
+      }
+
+      // 2. Se não houver substituto, busca o caminhão principal
+      setIsSubstituto(false)
       let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
       if (mot?.caminhao_id) {
         q = supabase.from('caminhoes').select('id, placa')
@@ -80,12 +100,14 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       const { data: cam } = await q.maybeSingle()
       if (!cam) return
       setCaminhao(cam)
+      buscarKmInicial(cam.id)
+    }
 
-      // KM inicial = km_final do último fechamento deste caminhão (apenas inicialização)
+    async function buscarKmInicial(camId: string) {
       const { data: ultimoFech } = await supabase
         .from("fechamento_viagens")
         .select("km_final")
-        .eq("caminhao_id", cam.id)
+        .eq("caminhao_id", camId)
         .order("data_fim", { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -94,25 +116,21 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         setKmInicial(String(ultimoFech.km_final))
       }
     }
+
     vincularCaminhao()
 
     async function fetchContratos() {
-      // 1. Busca todos os contratos
       const { data: todos } = await supabase.from('contratos')
         .select('id, contrato, fat_bruto, cliente, origem, destino')
         .order('created_at', { ascending: false }).limit(200)
       
       if (!todos) return
-
-      // 2. Busca IDs de contratos que já estão em algum fechamento
       const { data: jaUsados } = await supabase.from('fechamento_contratos').select('contrato_id')
       const idsUsados = new Set(jaUsados?.map(u => u.contrato_id) || [])
-
-      // 3. Filtra apenas os que não foram usados
       setContratosDisponiveis(todos.filter(c => !idsUsados.has(c.id)))
     }
     fetchContratos()
-  }, [motoristaId, motoristas])
+  }, [motoristaId, motoristas, dataInicio])
 
   useEffect(() => {
     if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
@@ -159,8 +177,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   useEffect(() => {
     async function atualizarKms() {
       if (!caminhao?.id) return
-
-      // 1. Busca o KM Final do último fechamento (Prioridade Máxima para o KM Inicial)
       const { data: ultimoFech } = await supabase
         .from('fechamento_viagens')
         .select('km_final')
@@ -170,17 +186,14 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         .maybeSingle()
 
       if (ultimoFech?.km_final) {
-        // Se existe fechamento anterior, o KM Inicial é OBRIGATORIAMENTE o KM Final dele
         setKmInicial(String(ultimoFech.km_final))
       } else if (abastAtivos.length > 0) {
-        // Se NÃO existe fechamento anterior, usa o menor KM dos abastecimentos como fallback para o Início
         const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
         if (kms.length > 0) setKmInicial(String(Math.min(...kms)))
       } else {
         setKmInicial('')
       }
 
-      // 2. KM Final: Sempre o maior KM entre os abastecimentos selecionados
       if (abastAtivos.length > 0) {
         const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
         if (kms.length > 0) setKmFinal(String(Math.max(...kms)))
@@ -214,291 +227,128 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   async function fetchHistorico() {
     setCarregandoHistorico(true)
     try {
-      // 1. Busca todos os fechamentos
       const { data: fechamentos, error: errorFech } = await supabase
         .from('fechamento_viagens')
         .select('*')
         .order('created_at', { ascending: false })
       
       if (errorFech) throw errorFech
-
-      // 2. Busca todos os motoristas e caminhões para mapeamento manual (mais seguro)
       const [{ data: mots }, { data: cams }] = await Promise.all([
         supabase.from('motoristas').select('id, nome'),
         supabase.from('caminhoes').select('id, placa')
       ])
-
-      // 3. Busca os contratos vinculados
       const { data: relContratos } = await supabase
         .from('fechamento_contratos')
         .select('fechamento_id, contrato:contrato_id(contrato, origem, destino)')
 
-      // 4. Monta o objeto final manualmente para garantir que nada falhe
       const formatado = (fechamentos || []).map(f => {
         const mot = mots?.find(m => m.id === f.motorista_id)
         const cam = cams?.find(c => c.id === f.caminhao_id)
-        const conts = relContratos?.filter(rc => rc.fechamento_id === f.id) || []
-
         return {
           ...f,
-          motorista: { nome: mot?.nome || 'Motorista não encontrado' },
-          caminhao: { placa: cam?.placa || 'Placa não encontrada' },
-          contratos: conts
+          motorista: { nome: mot?.nome || '—' },
+          caminhao: { placa: cam?.placa || '—' },
+          contratos: relContratos?.filter(r => r.fechamento_id === f.id)
         }
       })
-      
-      setHistorico(formatado as any)
-    } catch (err) {
-      console.error('Erro fatal ao buscar histórico:', err)
-      setErro('Erro ao carregar histórico. Verifique sua conexão.')
-    } finally {
-      setCarregandoHistorico(false)
-    }
-  }
-
-  async function atualizarVencimento(id: string, novaData: string) {
-    const { error } = await supabase.from('fechamento_viagens').update({ data_vencimento: novaData }).eq('id', id)
-    if (error) {
-      setErro('Erro ao atualizar data: ' + error.message)
-    } else {
-      setSucesso(true)
-      setTimeout(() => setSucesso(false), 3000)
-      fetchHistorico()
-      setVisualizando(prev => prev ? { ...prev, data_vencimento: novaData } : null)
-    }
-  }
-
-  async function excluirFechamento(id: string) {
-    const { error } = await supabase.from('fechamento_viagens').delete().eq('id', id)
-    if (error) {
-      setErro('Erro ao excluir: ' + error.message)
-    } else {
-      setSucesso(true)
-      setTimeout(() => setSucesso(false), 3000)
-      fetchHistorico()
-    }
-    setExcluindoId(null)
+      setHistorico(formatado)
+    } catch (e: any) { setErro(e.message) }
+    finally { setCarregandoHistorico(false) }
   }
 
   async function salvar() {
-    setErro('')
-    if (!motoristaId || !dataInicio || !dataFim || !kmInicial || !kmFinal || !dataVencimento) {
-      setErro('Preencha todos os campos obrigatórios.'); return
-    }
-    if (selecionados.length === 0) { setErro('Adicione ao menos um contrato.'); return }
-    setSalvando(true)
+    if (!motoristaId || !caminhao || selecionados.length === 0) return
+    setSalvando(true); setErro('')
+    try {
+      const { data: fech, error: errF } = await supabase.from('fechamento_viagens').insert({
+        motorista_id: motoristaId, caminhao_id: caminhao.id,
+        data_inicio: dataInicio, data_fim: dataFim,
+        km_inicial: Number(kmInicial), km_final: Number(kmFinal),
+        total_litros: resumo.litros, total_abastecimento: resumo.valor,
+        total_frete: resumo.frete, comissao_motorista: resumo.comissao,
+        data_vencimento: dataVencimento
+      }).select().single()
 
-    const { data: fech, error } = await supabase.from('fechamento_viagens').insert({
-      motorista_id: motoristaId,
-      caminhao_id: caminhao?.id || null,
-      data_inicio: dataInicio,
-      data_fim: dataFim,
-      km_inicial: Number(kmInicial),
-      km_final: Number(kmFinal),
-      data_vencimento: dataVencimento,
-      status_financeiro: 'pendente'
-    }).select('id').single()
+      if (errF) throw errF
+      const rels = selecionados.map(c => ({ fechamento_id: fech.id, contrato_id: c.id }))
+      const { error: errC } = await supabase.from('fechamento_contratos').insert(rels)
+      if (errC) throw errC
 
-    if (error || !fech) {
-      console.error('Erro Supabase:', error)
-      setErro('Erro ao salvar no Supabase: ' + error?.message)
-      setSalvando(false)
-      return
-    }
+      setSucesso(true); setMotoristaId(''); setSelecionados([]); setAbastecimentos([])
+      setTimeout(() => setSucesso(false), 3000)
+    } catch (e: any) { setErro(e.message) }
+    finally { setSalvando(false) }
+  }
 
-    await Promise.all([
-      supabase.from('fechamento_contratos').insert(
-        selecionados.map(c => ({ fechamento_id: fech.id, contrato_id: c.id }))
-      ),
-      abastAtivos.length > 0 && supabase.from('fechamento_abastecimentos').insert(
-        abastAtivos.map(a => ({ fechamento_id: fech.id, abastecimento_id: a.id }))
-      )
-    ])
+  async function excluir(id: string) {
+    if (!confirm('Excluir este fechamento?')) return
+    await supabase.from('fechamento_viagens').delete().eq('id', id)
+    fetchHistorico()
+  }
 
-    await supabase.from('premios').insert({
-      motorista: motoristaNome,
-      status: 'pendente',
-      valor: resumo.comissao,
-      obs: [
-        `Período: ${fmtData(dataInicio)} → ${fmtData(dataFim)}`,
-        `Vencimento: ${fmtData(dataVencimento)}`,
-        `Placa: ${caminhao?.placa || '—'}`,
-        `KM Rodado: ${resumo.km.toLocaleString('pt-BR')} km`,
-        `Contratos: ${selecionados.length} (Frete R$ ${fmt(resumo.frete)})`,
-        `Abastecimento: R$ ${fmt(resumo.valor)} (${fmt(resumo.litros)} L)`,
-        `Média: ${resumo.mediaKmL > 0 ? fmt(resumo.mediaKmL) + ' km/L' : '—'}`,
-        `Comissão 10%: R$ ${fmt(resumo.comissao)}`,
-      ].join(' | ')
-    })
-
-    setSalvando(false)
-    setSucesso(true)
-    setTimeout(() => setSucesso(false), 5000)
-    
-    // Atualiza o histórico imediatamente
-    setTimeout(() => fetchHistorico(), 500)
-
-    // Limpa os campos após salvar, mas permanece na página
-    setMotoristaId('')
-    setSelecionados([])
-    setAbastecimentos([])
-    setAbastSelecionados(new Set())
-    setKmInicial('')
-    setKmFinal('')
-    setDataInicio('')
-    setDataFim('')
-    setDataVencimento('')
+  function exportarCSV() {
+    const cabecalho = "Data;Motorista;Placa;Inicio;Fim;KM Inicial;KM Final;KM Rodado;Litros;Media;Vencimento\n"
+    const linhas = historicoFiltrado.map(h => {
+      const km = h.km_final - h.km_inicial
+      const media = h.total_litros > 0 ? (km / h.total_litros).toFixed(2) : '0'
+      return `${new Date(h.created_at).toLocaleDateString()};${h.motorista.nome};${h.caminhao.placa};${h.data_inicio};${h.data_fim};${h.km_inicial};${h.km_final};${km};${h.total_litros};${media};${h.data_vencimento}`
+    }).join("\n")
+    const blob = new Blob([cabecalho + linhas], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement("a")
+    link.href = URL.createObjectURL(blob)
+    link.setAttribute("download", `fechamentos_${new Date().toLocaleDateString()}.csv`)
+    link.click()
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen relative">
-      {/* Modal de Confirmação de Exclusão */}
-      {excluindoId && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-gray-100 text-center space-y-6">
-            <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto">
-              <AlertCircle size={32}/>
-            </div>
-            <div>
-              <h3 className="text-xl font-black text-gray-900 uppercase tracking-tight">Excluir Fechamento?</h3>
-              <p className="text-sm font-bold text-gray-500 mt-2">Esta ação não pode ser desfeita. Deseja continuar?</p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setExcluindoId(null)} className="flex-1 py-4 bg-gray-100 text-gray-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all">Cancelar</button>
-              <button onClick={() => excluirFechamento(excluindoId)} className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-700 shadow-lg shadow-red-200 transition-all">Sim, Excluir</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Visualização Detalhada */}
-      {visualizando && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <div>
-                <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Detalhes do Fechamento</h3>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Lançado em {new Date(visualizando.created_at).toLocaleDateString('pt-BR')}</p>
-              </div>
-              <button onClick={() => setVisualizando(null)} className="p-2 hover:bg-gray-200 rounded-xl transition-colors text-gray-400"><X size={20}/></button>
-            </div>
-            <div className="p-8 overflow-y-auto space-y-8">
-              <div className="grid grid-cols-2 gap-8">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Motorista</p>
-                  <p className="text-base font-black text-gray-900">{visualizando.motorista?.nome || '—'}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Placa</p>
-                  <p className="text-base font-black text-red-600">{visualizando.caminhao?.placa || '—'}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Período</p>
-                  <p className="text-sm font-bold text-gray-700">{fmtData(visualizando.data_inicio)} → {fmtData(visualizando.data_fim)}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">KM Rodado</p>
-                  <p className="text-sm font-bold text-gray-700">{(visualizando.km_final - visualizando.km_inicial).toLocaleString('pt-BR')} km (Início: {visualizando.km_inicial} | Fim: {visualizando.km_final})</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-red-600">Data de Pagamento (Vencimento)</p>
-                  <input 
-                    type="date" 
-                    value={visualizando.data_vencimento} 
-                    onChange={(e) => atualizarVencimento(visualizando.id, e.target.value)}
-                    className="w-full bg-red-50 border border-red-100 rounded-xl px-4 py-2 text-sm font-bold text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Contratos / Destinos</p>
-                <div className="grid grid-cols-1 gap-2">
-                  {visualizando.contratos?.map((c: any, i: number) => (
-                    <div key={i} className="bg-gray-50 border border-gray-100 p-3 rounded-xl flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span className="text-xs font-black text-gray-900">{c.contrato?.contrato || 'Contrato'}</span>
-                        <span className="text-[10px] text-gray-400 font-bold uppercase">Contrato #{i+1}</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs font-bold text-gray-600 bg-white px-4 py-2 rounded-lg border border-gray-100 shadow-sm">
-                        <span>{c.contrato?.origem}</span>
-                        <ArrowRight size={12} className="text-red-400"/>
-                        <span>{c.contrato?.destino}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end">
-              <button onClick={() => setVisualizando(null)} className="px-8 py-3 bg-gray-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all">Concluir</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Notificação de Sucesso */}
-      {sucesso && (
-        <div className="fixed top-6 right-6 z-[100] animate-in slide-in-from-right-full duration-500">
-          <div className="bg-green-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 border border-green-500">
-            <CheckCircle2 size={20} className="text-green-100"/>
-            <div>
-              <p className="font-black text-sm uppercase tracking-widest">Sucesso!</p>
-              <p className="text-xs font-bold text-green-50 opacity-90">Operação realizada com sucesso.</p>
-            </div>
-            <button onClick={() => setSucesso(false)} className="ml-4 hover:bg-white/10 p-1 rounded-lg transition-colors">
-              <X size={16}/>
-            </button>
-          </div>
-        </div>
-      )}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="p-6 max-w-full bg-gray-50 min-h-screen font-sans">
+      {/* ── Header ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Fechamento de Viagem</h1>
-          <p className="text-sm text-gray-500">Gestão de viagens, contratos e abastecimentos</p>
+          <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">Sistema de Fechamento</h1>
+          <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">Gestão de viagens, contratos e abastecimentos</p>
         </div>
-        <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
-          <button onClick={() => setAbaAtiva('novo')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
-              ${abaAtiva === 'novo' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            Novo Fechamento
-          </button>
-          <button onClick={() => setAbaAtiva('historico')}
-            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
-              ${abaAtiva === 'historico' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
-            Histórico
-          </button>
+        <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
+          <button onClick={() => setAbaAtiva('novo')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${abaAtiva === 'novo' ? 'bg-red-600 text-white shadow-lg shadow-red-100' : 'text-gray-400 hover:text-gray-600'}`}>Novo Fechamento</button>
+          <button onClick={() => setAbaAtiva('historico')} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${abaAtiva === 'historico' ? 'bg-red-600 text-white shadow-lg shadow-red-100' : 'text-gray-400 hover:text-gray-600'}`}>Histórico</button>
         </div>
-      </header>
+      </div>
+
+      {/* ── Barra de Resumo Fixa ── */}
+      {abaAtiva === 'novo' && (
+        <div className="sticky top-6 z-40 mb-8">
+          <div className="bg-gray-900 rounded-[2rem] shadow-2xl border border-white/10 p-6 flex flex-wrap items-center justify-between gap-8 backdrop-blur-md bg-opacity-95">
+            <div className="flex-1 min-w-[120px]">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Distância</p>
+              <p className="text-2xl font-black text-white tracking-tighter">{resumo.km > 0 ? `${resumo.km.toLocaleString()} km` : '—'}</p>
+              <div className="h-1 w-8 bg-blue-600 mt-2 rounded-full"/>
+            </div>
+            <div className="flex-1 min-w-[120px]">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Combustível</p>
+              <p className="text-2xl font-black text-white tracking-tighter">{resumo.litros > 0 ? `${fmt(resumo.litros)} L` : '—'}</p>
+              <div className="h-1 w-8 bg-blue-400 mt-2 rounded-full"/>
+            </div>
+            <div className="flex-1 min-w-[120px]">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Média KM/L</p>
+              <p className="text-2xl font-black text-green-400 tracking-tighter">{resumo.mediaKmL > 0 ? fmt(resumo.mediaKmL) : '—'}</p>
+              <div className="h-1 w-8 bg-green-500 mt-2 rounded-full"/>
+            </div>
+            <div className="flex-1 min-w-[120px]">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Total Frete</p>
+              <p className="text-2xl font-black text-yellow-400 tracking-tighter">{resumo.frete > 0 ? `R$ ${fmt(resumo.frete)}` : '—'}</p>
+              <div className="h-1 w-8 bg-yellow-500 mt-2 rounded-full"/>
+            </div>
+            <div className="flex-1 min-w-[120px]">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Custo Abast.</p>
+              <p className="text-2xl font-black text-red-400 tracking-tighter">{resumo.valor > 0 ? `R$ ${fmt(resumo.valor)}` : '—'}</p>
+              <div className="h-1 w-8 bg-red-500 mt-2 rounded-full"/>
+            </div>
+          </div>
+        </div>
+      )}
 
       {abaAtiva === 'novo' ? (
         <>
-          {/* ── Resumo sticky ── */}
-          <div className="sticky top-4 z-40">
-            <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-2xl border border-gray-800 grid grid-cols-2 md:grid-cols-5 gap-6">
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Distância</p>
-                <p className="text-2xl font-bold mt-1">{resumo.km > 0 ? `${resumo.km.toLocaleString('pt-BR')} km` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Combustível</p>
-                <p className="text-2xl font-bold text-blue-400 mt-1">{resumo.litros > 0 ? `${fmt(resumo.litros)} L` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Média KM/L</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{resumo.mediaKmL > 0 ? fmt(resumo.mediaKmL) : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Total Frete</p>
-                <p className="text-2xl font-bold text-yellow-400 mt-1">{resumo.frete > 0 ? `R$ ${fmt(resumo.frete)}` : '—'}</p>
-              </div>
-              <div>
-                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Comissão (10%)</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{resumo.comissao > 0 ? `R$ ${fmt(resumo.comissao)}` : '—'}</p>
-              </div>
-            </div>
-          </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-8 space-y-6">
 
@@ -525,7 +375,10 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                       <Truck size={14} className="text-red-600"/> Placa do Caminhão
                     </label>
                     <div className="w-full bg-red-50 border-2 border-red-100 rounded-xl px-4 py-3 text-sm font-black text-red-700 flex items-center justify-between">
-                      {caminhao ? caminhao.placa : 'Aguardando...'}
+                      <div className="flex items-center gap-2">
+                        {caminhao ? caminhao.placa : 'Aguardando...'}
+                        {isSubstituto && <span className="bg-blue-600 text-white text-[8px] px-1.5 py-0.5 rounded-full animate-pulse">SUBSTITUTO</span>}
+                      </div>
                       {caminhao && <CheckCircle2 size={16} className="text-red-500"/>}
                     </div>
                   </div>
@@ -759,6 +612,9 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                 onChange={e => setBuscaHistorico(e.target.value)}
                 className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-red-500 text-sm font-medium"/>
             </div>
+            <button onClick={exportarCSV} className="bg-gray-900 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-gray-800 transition-all">
+              <Download size={16}/> Exportar CSV
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -793,7 +649,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                     </td>
                     <td className="px-6 py-4 text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</td>
                     <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => setExcluindoId(h.id)} 
+                      <button onClick={() => excluir(h.id)} 
                         className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
                         <X size={16}/>
                       </button>
