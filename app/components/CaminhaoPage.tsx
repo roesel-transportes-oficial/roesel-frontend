@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { caminhoesAPI, motoristasAPI } from '../services/api'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
-import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Truck, Wrench, FileText, X, Calendar, User, AlertCircle, CheckCircle2, Clock, Download, ArrowRight } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Truck, Wrench, FileText, X, Calendar, User, AlertCircle, CheckCircle2, Clock, Download, ArrowRight, MapPin } from 'lucide-react'
 
 interface Caminhao {
   id: string; placa: string; placa_carreta: string; modelo: string; ano: string
@@ -25,8 +25,6 @@ interface Manutencao {
 }
 interface Licenca { id: string; caminhao_id: string; estado: string; vencimento: string }
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 const TIPOS_MANUTENCAO = ['Troca de óleo','Revisão geral','Freios','Pneus','Suspensão','Motor','Câmbio','Elétrica','Funilaria/Pintura','Outro']
 
@@ -37,6 +35,11 @@ function fmtData(d: string) {
   if (!d) return '—'
   const [y, m, dia] = d.split('-')
   return `${dia}/${m}/${y}`
+}
+
+function diasParaVencer(data: string) {
+  if (!data) return null
+  return Math.ceil((new Date(data + 'T00:00:00').getTime() - new Date().getTime()) / 86400000)
 }
 
 export default function CaminhaoPage() {
@@ -55,8 +58,7 @@ export default function CaminhaoPage() {
   const [busca, setBusca] = useState('')
   const [sel, setSel] = useState<Caminhao | null>(null)
   const [mostraCad, setMostraCad] = useState(false)
-  const [aba, setAba] = useState<'info' | 'manutencao' | 'licencas'>('info')
-  const [manutencoes, setManutencoes] = useState<Manutencao[]>([])
+  const [aba, setAba] = useState<'info' | 'licencas'>('info')
   const [licencas, setLicencas] = useState<Licenca[]>([])
   
   // Estados de Edição Caminhão
@@ -70,6 +72,10 @@ export default function CaminhaoPage() {
   const [editMotorista, setEditMotorista] = useState('')
   const [editFrota, setEditFrota] = useState('')
   const [editObs, setEditObs] = useState('')
+
+  // Estados de Licença
+  const [novaLicEstado, setNovaLicEstado] = useState('')
+  const [novaLicVencimento, setNovaLicVencimento] = useState('')
 
   // Estados de Cadastro Caminhão
   const [cadPlaca, setCadPlaca] = useState('')
@@ -120,7 +126,6 @@ export default function CaminhaoPage() {
   async function fetchFrotas() { const { data } = await supabase.from('frotas').select('*').order('nome'); if (data) setFrotas(data) }
   async function fetchCarretas() { const { data } = await supabase.from('carretas').select('*').order('placa'); if (data) setCarretas(data) }
   async function fetchHistoricoMan() { const { data } = await supabase.from('manutencoes').select('*').order('data_entrada', { ascending: false }); if (data) setHistoricoMan(data) }
-  async function fetchManutencoes(caminhaoId: string) { const { data } = await supabase.from('manutencoes').select('*').eq('caminhao_id', caminhaoId).order('data_entrada', { ascending: false }); if (data) setManutencoes(data) }
   async function fetchLicencas(caminhaoId: string) { const { data } = await supabase.from('licencas').select('*').eq('caminhao_id', caminhaoId).order('estado', { ascending: true }); if (data) setLicencas(data) }
 
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
@@ -137,7 +142,7 @@ export default function CaminhaoPage() {
     setEditModelo(c.modelo||''); setEditAno(c.ano||''); setEditStatus(c.status||'rodando')
     setEditMotivo(c.motivo_parado||''); setEditDtParado(c.dt_parado||'')
     setEditMotorista(c.motorista_atual||''); setEditFrota(c.frota||''); setEditObs(c.obs_documentos||'')
-    setAba('info'); fetchManutencoes(c.id); fetchLicencas(c.id)
+    setAba('info'); fetchLicencas(c.id)
   }
 
   async function salvar() {
@@ -162,6 +167,20 @@ export default function CaminhaoPage() {
       motorista_atual: cadMotorista, obs_documentos: cadObs 
     })
     await fetch_(); setLoading(false); setMostraCad(false); showMsg('✅ Cadastrado!')
+  }
+
+  async function adicionarLicenca() {
+    if (!sel || !novaLicEstado || !novaLicVencimento) return; setLoading(true)
+    const { error } = await supabase.from('licencas').insert({ caminhao_id: sel.id, estado: novaLicEstado, vencimento: novaLicVencimento })
+    if (!error) {
+      fetchLicencas(sel.id); setNovaLicEstado(''); setNovaLicVencimento(''); showMsg('✅ Licença adicionada!')
+    }
+    setLoading(false)
+  }
+
+  async function excluirLicenca(id: string) {
+    const { error } = await supabase.from('licencas').delete().eq('id', id)
+    if (!error && sel) fetchLicencas(sel.id)
   }
 
   // ── CARRETAS handlers ──
@@ -257,20 +276,82 @@ export default function CaminhaoPage() {
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-4xl mx-auto">
               <div className="flex items-center justify-between mb-8"><h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase">Novo Caminhão</h2><button onClick={() => setMostraCad(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="space-y-1"><label className={LC}>Placa</label><input value={cadPlaca} onChange={e => setCadPlaca(e.target.value)} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Placa</label><input value={cadPlaca} onChange={e => setCadPlaca(e.target.value.toUpperCase())} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={cadPlacaCarreta} onChange={e => setCadPlacaCarreta(e.target.value.toUpperCase())} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={cadModelo} onChange={e => setCadModelo(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Ano</label><input value={cadAno} onChange={e => setCadAno(e.target.value)} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Frota</label><select value={cadFrota} onChange={e => setCadFrota(e.target.value)} className={IC}><option value="">Selecione...</option>{frotas.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}</select></div>
+                <div className="space-y-1"><label className={LC}>Motorista</label><select value={cadMotorista} onChange={e => setCadMotorista(e.target.value)} className={IC}><option value="">Selecione...</option>{motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}</select></div>
               </div>
               <button onClick={cadastrar} className="w-full bg-red-600 hover:bg-red-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-red-100">Cadastrar Veículo</button>
             </div>
           ) : (
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-5xl mx-auto">
-              <div className="flex items-center justify-between mb-8"><button onClick={() => setSel(null)} className="flex items-center gap-2 text-gray-400 hover:text-red-600 font-black text-xs uppercase tracking-widest"><ArrowLeft size={16}/> Voltar</button><button onClick={salvar} className="bg-red-600 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"><Save size={16}/> Salvar</button></div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-1"><label className={LC}>Placa</label><input value={editPlaca} onChange={e => setEditPlaca(e.target.value)} className={IC} /></div>
-                <div className="space-y-1"><label className={LC}>Modelo</label><input value={editModelo} onChange={e => setEditModelo(e.target.value)} className={IC} /></div>
-                <div className="space-y-1"><label className={LC}>Status</label><select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={IC}><option value="rodando">Rodando</option><option value="manutencao">Manutenção</option><option value="parado">Parado</option></select></div>
+              <div className="flex items-center justify-between mb-8">
+                <button onClick={() => setSel(null)} className="flex items-center gap-2 text-gray-400 hover:text-red-600 font-black text-xs uppercase tracking-widest"><ArrowLeft size={16}/> Voltar</button>
+                <div className="flex gap-2">
+                  <button onClick={() => setAba('info')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${aba === 'info' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-400'}`}>Informações</button>
+                  <button onClick={() => setAba('licencas')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${aba === 'licencas' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-400'}`}>Licenças</button>
+                  <button onClick={salvar} className="bg-gray-900 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"><Save size={16}/> Salvar</button>
+                </div>
               </div>
+
+              {aba === 'info' ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-1"><label className={LC}>Placa</label><input value={editPlaca} onChange={e => setEditPlaca(e.target.value.toUpperCase())} className={IC} /></div>
+                  <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={editPlacaCarreta} onChange={e => setEditPlacaCarreta(e.target.value.toUpperCase())} className={IC} /></div>
+                  <div className="space-y-1"><label className={LC}>Modelo</label><input value={editModelo} onChange={e => setEditModelo(e.target.value)} className={IC} /></div>
+                  <div className="space-y-1"><label className={LC}>Ano</label><input value={editAno} onChange={e => setEditAno(e.target.value)} className={IC} /></div>
+                  <div className="space-y-1"><label className={LC}>Frota</label><select value={editFrota} onChange={e => setEditFrota(e.target.value)} className={IC}><option value="">Selecione...</option>{frotas.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}</select></div>
+                  <div className="space-y-1"><label className={LC}>Motorista</label><select value={editMotorista} onChange={e => setEditMotorista(e.target.value)} className={IC}><option value="">Selecione...</option>{motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}</select></div>
+                  <div className="space-y-1"><label className={LC}>Status</label><select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={IC}><option value="rodando">Rodando</option><option value="manutencao">Manutenção</option><option value="parado">Parado</option></select></div>
+                  {editStatus !== 'rodando' && (
+                    <>
+                      <div className="space-y-1"><label className={LC}>Motivo</label><input value={editMotivo} onChange={e => setEditMotivo(e.target.value)} className={IC} /></div>
+                      <div className="space-y-1"><label className={LC}>Data Início</label><input type="date" value={editDtParado} onChange={e => setEditDtParado(e.target.value)} className={IC} /></div>
+                    </>
+                  )}
+                  <div className="md:col-span-3 space-y-1"><label className={LC}>Observações</label><textarea value={editObs} onChange={e => setEditObs(e.target.value)} rows={3} className={IC} /></div>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest mb-4 flex items-center gap-2"><Plus size={16} className="text-red-600"/> Adicionar Nova Licença</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                      <div className="space-y-1"><label className={LC}>Estado</label><select value={novaLicEstado} onChange={e => setNovaLicEstado(e.target.value)} className={IC}><option value="">Selecione...</option>{ESTADOS.map(uf => <option key={uf} value={uf}>{uf}</option>)}</select></div>
+                      <div className="space-y-1"><label className={LC}>Vencimento</label><input type="date" value={novaLicVencimento} onChange={e => setNovaLicVencimento(e.target.value)} className={IC} /></div>
+                      <button onClick={adicionarLicenca} disabled={loading || !novaLicEstado || !novaLicVencimento} className="bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-red-100">Adicionar Licença</button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {licencas.length === 0 ? (
+                      <div className="col-span-full py-12 text-center bg-gray-50 rounded-3xl border-2 border-dashed border-gray-100">
+                        <FileText size={32} className="mx-auto text-gray-200 mb-2" />
+                        <p className="text-xs font-bold text-gray-400 uppercase">Nenhuma licença cadastrada</p>
+                      </div>
+                    ) : (
+                      licencas.map(l => {
+                        const dias = diasParaVencer(l.vencimento)
+                        const vencido = dias !== null && dias < 0
+                        const critico = dias !== null && dias >= 0 && dias <= 30
+                        return (
+                          <div key={l.id} className={`p-5 rounded-3xl border-2 transition-all ${vencido ? 'bg-red-50 border-red-100' : critico ? 'bg-yellow-50 border-yellow-100' : 'bg-green-50 border-green-100'}`}>
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="text-xl font-black text-gray-800">{l.estado}</span>
+                              <button onClick={() => excluirLicenca(l.id)} className="text-gray-300 hover:text-red-600 transition-all"><Trash2 size={16}/></button>
+                            </div>
+                            <p className="text-[10px] font-black text-gray-400 uppercase mb-3 flex items-center gap-1.5"><Calendar size={12}/> Vencimento: {fmtData(l.vencimento)}</p>
+                            <div className={`py-1.5 px-3 rounded-lg text-center text-[9px] font-black uppercase tracking-widest ${vencido ? 'bg-red-600 text-white' : critico ? 'bg-yellow-500 text-white' : 'bg-green-600 text-white'}`}>
+                              {vencido ? `Vencido há ${Math.abs(dias!)} dias` : `${dias} dias restantes`}
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -304,7 +385,7 @@ export default function CaminhaoPage() {
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-4xl mx-auto">
               <div className="flex items-center justify-between mb-8"><h2 className="text-2xl font-black text-gray-900 tracking-tighter uppercase">Nova Carreta</h2><button onClick={() => setMostraCadCarreta(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="space-y-1"><label className={LC}>Placa</label><input value={cadCPlaca} onChange={e => setCadCPlaca(e.target.value)} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Placa</label><input value={cadCPlaca} onChange={e => setCadCPlaca(e.target.value.toUpperCase())} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={cadCModelo} onChange={e => setCadCModelo(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Ano</label><input value={cadCAno} onChange={e => setCadCAno(e.target.value)} className={IC} /></div>
               </div>
@@ -314,7 +395,7 @@ export default function CaminhaoPage() {
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-4xl mx-auto">
               <div className="flex items-center justify-between mb-8"><button onClick={() => setSelCarreta(null)} className="flex items-center gap-2 text-gray-400 hover:text-red-600 font-black text-xs uppercase tracking-widest"><ArrowLeft size={16}/> Voltar</button><button onClick={salvarCarreta} className="bg-red-600 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"><Save size={16}/> Salvar</button></div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-1"><label className={LC}>Placa</label><input value={editCPlaca} onChange={e => setEditCPlaca(e.target.value)} className={IC} /></div>
+                <div className="space-y-1"><label className={LC}>Placa</label><input value={editCPlaca} onChange={e => setEditCPlaca(e.target.value.toUpperCase())} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={editCModelo} onChange={e => setEditCModelo(e.target.value)} className={IC} /></div>
                 <div className="space-y-1"><label className={LC}>Status</label><select value={editCStatus} onChange={e => setEditCStatus(e.target.value)} className={IC}><option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option><option value="viagem">Em Viagem</option></select></div>
               </div>
