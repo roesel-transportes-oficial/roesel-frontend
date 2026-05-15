@@ -2,7 +2,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motoristasAPI } from '../services/api'
 import { supabase } from '../services/supabase'
-import { contratosAPI } from '../services/api'
 import { useAuth } from '../services/auth'
 import { Search, Save, Trash2, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle, Loader2 } from 'lucide-react'
 
@@ -56,7 +55,6 @@ export default function ContratosPage() {
   const [editAdiantamentoPago, setEditAdiantamentoPago] = useState(false)
   const [editDtPagamento, setEditDtPagamento] = useState('')
 
-  // ─── Carrega lista direto no Supabase (sem passar pelo Render) ───
   async function fetch_() {
     setLoadingLista(true)
     try {
@@ -86,7 +84,6 @@ export default function ContratosPage() {
   }
 
   useEffect(() => {
-    // Tudo em paralelo, sem esperar um pelo outro
     Promise.all([
       fetch_(),
       motoristasAPI.listar().then(setMotoristas),
@@ -155,34 +152,38 @@ export default function ContratosPage() {
     setLoading(true)
     try {
       if (perm !== 'demo') {
-        await contratosAPI.atualizar(sel.id, {
-          contrato: sel.contrato,
-          data: editData,
-          cliente: editCliente,
-          cliente_nome_completo: editCliente,
-          cnpj: editCnpj.replace(/\D/g, ''),
-          motorista: editMotorista,
-          cpf_motorista: sel.cpf_motorista || '',
-          placa: editPlaca,
-          placa_carreta: editPlacaCarreta,
-          frota: editFrota,
-          origem: editOrigem,
-          destino: editDestino,
-          fat_bruto: parseFloat(editFatBruto) || 0,
-          qtd_veiculos: parseInt(editQtdVeiculos) || 0,
-          chapa: parseInt(editChapa) || 0,
-          status: editStatus,
-          obs: editObs,
-          adiantamento_pago: editAdiantamentoPago,
-          dt_pagamento: editDtPagamento || null,
-        })
+        // Direto no Supabase — sem passar pelo FastAPI
+        const { error } = await supabase
+          .from('contratos')
+          .update({
+            data: editData,
+            cliente: editCliente,
+            cliente_nome_completo: editCliente,
+            cnpj: editCnpj.replace(/\D/g, ''),
+            motorista: editMotorista,
+            placa: editPlaca,
+            placa_carreta: editPlacaCarreta,
+            frota: editFrota,
+            origem: editOrigem,
+            destino: editDestino,
+            fat_bruto: parseFloat(editFatBruto) || 0,
+            qtd_veiculos: parseInt(editQtdVeiculos) || 0,
+            chapa: parseInt(editChapa) || null,
+            status: editStatus,
+            obs: editObs,
+            adiantamento_pago: editAdiantamentoPago,
+            dt_pagamento: editDtPagamento || null,
+          })
+          .eq('id', sel.id)
+
+        if (error) throw error
       }
       await fetch_()
       showMsg('✅ Atualizado!')
       voltar()
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
-      showMsg('❌ Erro ao salvar')
+      showMsg('❌ Erro ao salvar: ' + (error?.message || ''))
     } finally {
       setLoading(false)
     }
@@ -192,12 +193,15 @@ export default function ContratosPage() {
     if (!sel) return
     setLoading(true)
     try {
-      if (perm !== 'demo') await contratosAPI.excluir(sel.id)
+      if (perm !== 'demo') {
+        const { error } = await supabase.from('contratos').delete().eq('id', sel.id)
+        if (error) throw error
+      }
       await fetch_()
       showMsg('Contrato excluído.')
       voltar()
-    } catch (error) {
-      showMsg('❌ Erro ao excluir')
+    } catch (error: any) {
+      showMsg('❌ Erro ao excluir: ' + (error?.message || ''))
     } finally {
       setLoading(false)
     }
@@ -394,7 +398,7 @@ export default function ContratosPage() {
             </div>
 
             {confirmExcluir && (
-              <div className="m-8 p-6 bg-red-50 border-2 border-red-100 rounded-3xl animate-in fade-in zoom-in duration-200">
+              <div className="m-8 p-6 bg-red-50 border-2 border-red-100 rounded-3xl">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600">
                     <AlertCircle size={24} />
