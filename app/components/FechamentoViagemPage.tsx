@@ -22,6 +22,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [motoristaId, setMotoristaId]             = useState('')
   const [motoristaNome, setMotoristaNome]         = useState('')
   const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
+  const [caminhaoBase, setCaminhaoBase]           = useState<Caminhao | null>(null)
   const [isSubstituto, setIsSubstituto]           = useState(false)
   const [dataInicio, setDataInicio]               = useState('')
   const [dataFim, setDataFim]                     = useState('')
@@ -47,6 +48,49 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [visualizando, setVisualizando] = useState<Fechamento | null>(null)
   const [editando, setEditando]       = useState<Fechamento | null>(null)
 
+  // ─── Funções auxiliares ───────────────────────────────────────────────────
+
+  async function buscarKmInicial(camId: string) {
+    const [{ data: ultimoFech }, { data: abasts }] = await Promise.all([
+      supabase.from('fechamento_viagens').select('km_final')
+        .eq('caminhao_id', camId)
+        .order('data_fim', { ascending: false })
+        .limit(1).maybeSingle(),
+      supabase.from('abastecimentos').select('km, data')
+        .eq('caminhao_id', camId)
+        .not('km', 'is', null).gt('km', 0)
+        .order('data', { ascending: true })
+    ])
+
+    if (ultimoFech?.km_final) {
+      setKmInicial(String(ultimoFech.km_final))
+      setKmFinal('')
+      return
+    }
+    if (abasts && abasts.length > 0) {
+      const validos = abasts.filter(a => a.km && a.km > 0)
+      if (validos.length > 0) {
+        setKmInicial(String(validos[0].km))
+        if (validos.length > 1) setKmFinal(String(validos[validos.length - 1].km))
+        else setKmFinal('')
+      }
+    }
+  }
+
+  async function fetchContratos() {
+    const [{ data: todos }, { data: jaUsados }] = await Promise.all([
+      supabase.from('contratos')
+        .select('id, contrato, fat_bruto, cliente, origem, destino')
+        .order('created_at', { ascending: false }).limit(200),
+      supabase.from('fechamento_contratos').select('contrato_id')
+    ])
+    if (!todos) return
+    const idsUsados = new Set(jaUsados?.map(u => u.contrato_id) || [])
+    setContratosDisponiveis(todos.filter(c => !idsUsados.has(c.id)))
+  }
+
+  // ─── Effects ─────────────────────────────────────────────────────────────
+
   useEffect(() => {
     supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
       .then(({ data }) => data && setMotoristas(data))
@@ -56,114 +100,67 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     if (abaAtiva === 'historico') fetchHistorico()
   }, [abaAtiva])
 
-  // ✅ Re-verifica manutenção quando muda motorista OU data de início
+  // Effect 1: quando motorista muda → busca caminhão, KM e contratos
   useEffect(() => {
     if (!motoristaId) {
-      setCaminhao(null); setContratosDisponiveis([]); setMotoristaNome('')
-      setKmInicial(''); setKmFinal(''); setIsSubstituto(false); return
+      setCaminhao(null); setCaminhaoBase(null)
+      setContratosDisponiveis([]); setMotoristaNome('')
+      setKmInicial(''); setKmFinal(''); setIsSubstituto(false)
+      return
     }
     const mot = motoristas.find(m => m.id === motoristaId)
     if (!mot) return
     setMotoristaNome(mot.nome)
 
-    async function vincularCaminhao() {
-      setIsSubstituto(false)
-
-      // 1. Acha o caminhão principal do motorista
+    async function init() {
       let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
       if (mot!.caminhao_id) {
         q = supabase.from('caminhoes').select('id, placa')
           .or(`id.eq.${mot!.caminhao_id},motorista_atual.eq.${motoristaId}`)
       }
-      const { data: camPrincipal } = await q.maybeSingle()
-      if (!camPrincipal) return
+      const { data: cam } = await q.maybeSingle()
+      if (!cam) return
 
-      // 2. ✅ Se tem data de início, verifica manutenção ativa com substituto nesse período
-      if (dataInicio && camPrincipal.id) {
-        const { data: manutencao } = await supabase
-          .from('manutencoes')
-          .select('caminhao_substituto_id, caminhao_substituto_placa, data_saida')
-          .eq('caminhao_id', camPrincipal.id)
-          .eq('status', 'EM ANDAMENTO')
-          .lte('data_entrada', dataInicio)
-          .not('caminhao_substituto_id', 'is', null)
-          .maybeSingle()
-
-        if (manutencao?.caminhao_substituto_id) {
-          const camSub = {
-            id: manutencao.caminhao_substituto_id,
-            placa: manutencao.caminhao_substituto_placa || ''
-          }
-          setCaminhao(camSub)
-          setIsSubstituto(true)
-          await buscarKmInicial(camSub.id)
-          await fetchContratos()
-          return
-        }
-      }
-
-      // 3. Sem manutenção ativa → usa caminhão normal
-      setCaminhao(camPrincipal)
+      setCaminhao(cam)
+      setCaminhaoBase(cam)
       setIsSubstituto(false)
-      await buscarKmInicial(camPrincipal.id)
-      await fetchContratos()
+
+      await Promise.all([buscarKmInicial(cam.id), fetchContratos()])
     }
 
-    async function buscarKmInicial(camId: string) {
-  // 1. Tenta km_final do último fechamento deste caminhão
-  const { data: ultimoFech } = await supabase
-    .from('fechamento_viagens')
-    .select('km_final')
-    .eq('caminhao_id', camId)
-    .order('data_fim', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    init()
+  }, [motoristaId, motoristas])
 
-  if (ultimoFech?.km_final) {
-    setKmInicial(String(ultimoFech.km_final))
-    setKmFinal('')
-    return
-  }
+  // Effect 2: só checa manutenção quando data de início muda
+  useEffect(() => {
+    if (!caminhaoBase) return
+    if (!dataInicio) {
+      setCaminhao(caminhaoBase); setIsSubstituto(false); return
+    }
 
-  // 2. Sem fechamento anterior → usa KM dos abastecimentos ordenados por data
-  //    data mais antiga = KM inicial | data mais recente = KM final
-  const { data: abasts } = await supabase
-    .from('abastecimentos')
-    .select('km, data')
-    .eq('caminhao_id', camId)
-    .not('km', 'is', null)
-    .gt('km', 0)
-    .order('data', { ascending: true }) // mais antigo primeiro
+    async function checkManutencao() {
+      const { data: manut } = await supabase
+        .from('manutencoes')
+        .select('caminhao_substituto_id, caminhao_substituto_placa, data_saida')
+        .eq('caminhao_id', caminhaoBase!.id)
+        .eq('status', 'EM ANDAMENTO')
+        .lte('data_entrada', dataInicio)
+        .not('caminhao_substituto_id', 'is', null)
+        .maybeSingle()
 
-  if (abasts && abasts.length > 0) {
-    const validos = abasts.filter(a => a.km && a.km > 0)
-    if (validos.length > 0) {
-      // Menor data → KM inicial
-      setKmInicial(String(validos[0].km))
-
-      // Maior data → KM final (se tiver mais de um)
-      if (validos.length > 1) {
-        setKmFinal(String(validos[validos.length - 1].km))
+      if (manut?.caminhao_substituto_id) {
+        setCaminhao({ id: manut.caminhao_substituto_id, placa: manut.caminhao_substituto_placa || '' })
+        setIsSubstituto(true)
       } else {
-        setKmFinal('')
+        setCaminhao(caminhaoBase)
+        setIsSubstituto(false)
       }
     }
-  }
-}
 
-    async function fetchContratos() {
-      const { data: todos } = await supabase.from('contratos')
-        .select('id, contrato, fat_bruto, cliente, origem, destino')
-        .order('created_at', { ascending: false }).limit(200)
-      if (!todos) return
-      const { data: jaUsados } = await supabase.from('fechamento_contratos').select('contrato_id')
-      const idsUsados = new Set(jaUsados?.map(u => u.contrato_id) || [])
-      setContratosDisponiveis(todos.filter(c => !idsUsados.has(c.id)))
-    }
+    checkManutencao()
+  }, [dataInicio, caminhaoBase])
 
-    vincularCaminhao()
-  }, [motoristaId, motoristas, dataInicio]) // ✅ dataInicio na dependência
-
+  // Effect 3: abastecimentos por período
   useEffect(() => {
     if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
       setAbastecimentos([]); setAbastSelecionados(new Set()); return
@@ -183,13 +180,15 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       })
   }, [caminhao?.id, abastDataInicio, abastDataFim])
 
-  // ✅ KM final automático dos abastecimentos
+  // Effect 4: KM final automático dos abastecimentos selecionados
   useEffect(() => {
     if (abastAtivos.length > 0) {
       const kms = abastAtivos.map(a => a.km).filter((k): k is number => !!k && k > 0)
       if (kms.length > 0) setKmFinal(String(Math.max(...kms)))
     }
   }, [abastecimentos, abastSelecionados])
+
+  // ─── Handlers ────────────────────────────────────────────────────────────
 
   function adicionarContrato(c: Contrato) { setSelecionados(prev => [...prev, c]); setBuscaContrato('') }
   function removerContrato(id: string) { setSelecionados(prev => prev.filter(c => c.id !== id)) }
@@ -317,7 +316,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       setSucesso(true)
       setTimeout(() => {
         setSucesso(false); setAbaAtiva('historico')
-        setMotoristaId(''); setCaminhao(null); setSelecionados([])
+        setMotoristaId(''); setCaminhao(null); setCaminhaoBase(null); setSelecionados([])
         setAbastecimentos([]); setAbastSelecionados(new Set())
         setDataInicio(''); setDataFim(''); setKmInicial(''); setKmFinal(''); setDataVencimento('')
       }, 1500)
@@ -329,8 +328,10 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   }
 
   async function excluir(id: string) {
-    await supabase.from('fechamento_contratos').delete().eq('fechamento_id', id)
-    await supabase.from('fechamento_abastecimentos').delete().eq('fechamento_id', id)
+    await Promise.all([
+      supabase.from('fechamento_contratos').delete().eq('fechamento_id', id),
+      supabase.from('fechamento_abastecimentos').delete().eq('fechamento_id', id)
+    ])
     const { error } = await supabase.from('fechamento_viagens').delete().eq('id', id)
     if (error) setErro('Erro ao excluir: ' + error.message)
     else { setExcluindoId(null); fetchHistorico() }
@@ -369,6 +370,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     link.setAttribute('download', `fechamentos_${new Date().toISOString().split('T')[0]}.csv`)
     link.click()
   }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen">
@@ -434,7 +437,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                       onChange={e => {
                         setMotoristaId(e.target.value)
                         setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set())
-                        setKmInicial(''); setKmFinal('')
+                        setKmInicial(''); setKmFinal(''); setDataInicio('')
                       }}
                       className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm font-bold focus:border-red-500 focus:bg-white outline-none transition-all">
                       <option value="">Selecione o motorista</option>
