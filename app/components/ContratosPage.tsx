@@ -1,9 +1,10 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { contratosAPI, motoristasAPI } from '../services/api'
+import { motoristasAPI } from '../services/api'
 import { supabase } from '../services/supabase'
+import { contratosAPI } from '../services/api'
 import { useAuth } from '../services/auth'
-import { Search, Save, Trash2, ChevronRight, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle } from 'lucide-react'
+import { Search, Save, Trash2, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle, Loader2 } from 'lucide-react'
 
 interface Contrato {
   id: string; contrato: string; data: string; cliente: string
@@ -31,6 +32,7 @@ export default function ContratosPage() {
   const [carretas, setCarretas] = useState<Carreta[]>([])
   const [sel, setSel] = useState<Contrato | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadingLista, setLoadingLista] = useState(false)
   const [msg, setMsg] = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
   const [busca, setBusca] = useState('')
@@ -54,17 +56,44 @@ export default function ContratosPage() {
   const [editAdiantamentoPago, setEditAdiantamentoPago] = useState(false)
   const [editDtPagamento, setEditDtPagamento] = useState('')
 
-  useEffect(() => {
-    fetch_()
-    motoristasAPI.listar().then(setMotoristas)
-    supabase.from('clientes').select('id, nome, cnpj').order('nome').then(({ data }) => data && setClientes(data))
-    supabase.from('carretas').select('id, placa').order('placa').then(({ data }) => data && setCarretas(data))
-  }, [filtroMes, filtroAno])
-
+  // ─── Carrega lista direto no Supabase (sem passar pelo Render) ───
   async function fetch_() {
-    const data = await contratosAPI.listar({ mes: filtroMes || undefined, ano: filtroAno || undefined })
-    setContratos(data)
+    setLoadingLista(true)
+    try {
+      let query = supabase
+        .from('contratos')
+        .select('id, contrato, data, cliente, cliente_nome_completo, cnpj, motorista, cpf_motorista, placa, placa_carreta, frota, origem, destino, fat_bruto, qtd_veiculos, chapa, status, obs, adiantamento_pago, dt_pagamento')
+        .order('data', { ascending: false })
+
+      if (filtroAno) {
+        query = query
+          .gte('data', `${filtroAno}-01-01`)
+          .lte('data', `${filtroAno}-12-31`)
+      }
+      if (filtroMes) {
+        const mesStr = String(filtroMes).padStart(2, '0')
+        const ultimoDia = new Date(filtroAno, filtroMes, 0).getDate()
+        query = query
+          .gte('data', `${filtroAno}-${mesStr}-01`)
+          .lte('data', `${filtroAno}-${mesStr}-${ultimoDia}`)
+      }
+
+      const { data } = await query
+      if (data) setContratos(data as Contrato[])
+    } finally {
+      setLoadingLista(false)
+    }
   }
+
+  useEffect(() => {
+    // Tudo em paralelo, sem esperar um pelo outro
+    Promise.all([
+      fetch_(),
+      motoristasAPI.listar().then(setMotoristas),
+      supabase.from('clientes').select('id, nome, cnpj').order('nome').then(({ data }) => data && setClientes(data)),
+      supabase.from('carretas').select('id, placa').order('placa').then(({ data }) => data && setCarretas(data))
+    ])
+  }, [filtroMes, filtroAno])
 
   function handleSelectCliente(id: string) {
     const clienteEncontrado = clientes.find(c => c.id === id)
@@ -197,7 +226,11 @@ export default function ContratosPage() {
 
   return (
     <div className="p-6 max-w-full bg-gray-50 min-h-screen">
-      {msg && <div className="fixed top-6 right-6 z-50 p-4 bg-green-600 text-white rounded-2xl shadow-2xl font-black text-xs uppercase tracking-widest animate-bounce"> {msg} </div>}
+      {msg && (
+        <div className="fixed top-6 right-6 z-50 p-4 bg-green-600 text-white rounded-2xl shadow-2xl font-black text-xs uppercase tracking-widest animate-bounce">
+          {msg}
+        </div>
+      )}
 
       {sel ? (
         <div className="max-w-4xl mx-auto">
@@ -444,8 +477,21 @@ export default function ContratosPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filtrados.length === 0 ? (
-                    <tr><td colSpan={5} className="px-8 py-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest">Nenhum contrato encontrado</td></tr>
+                  {loadingLista ? (
+                    <tr>
+                      <td colSpan={5} className="px-8 py-20 text-center">
+                        <div className="flex flex-col items-center gap-3 text-gray-400">
+                          <Loader2 size={28} className="animate-spin text-red-400" />
+                          <p className="text-xs font-black uppercase tracking-widest">Carregando contratos...</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filtrados.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-8 py-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest">
+                        Nenhum contrato encontrado
+                      </td>
+                    </tr>
                   ) : filtrados.map(c => (
                     <tr key={c.id} onClick={() => selecionar(c)} className="hover:bg-red-50/30 transition-colors cursor-pointer group">
                       <td className="px-8 py-5">
