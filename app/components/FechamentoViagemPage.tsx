@@ -160,24 +160,29 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     checkManutencao()
   }, [dataInicio, caminhaoBase])
 
-  // Effect 3: abastecimentos por período
+  // Effect 3: abastecimentos por período — filtra os já usados em fechamentos anteriores
   useEffect(() => {
     if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
       setAbastecimentos([]); setAbastSelecionados(new Set()); return
     }
     setCarregandoAbast(true); setErro('')
-    supabase.from('abastecimentos')
-      .select('id, data, posto, litros_combustivel, litros_arla, total, km')
-      .eq('caminhao_id', caminhao.id)
-      .gte('data', abastDataInicio).lte('data', abastDataFim)
-      .order('data')
-      .then(({ data, error }) => {
-        setCarregandoAbast(false)
-        if (error) { setErro('Erro: ' + error.message); return }
-        const lista = data || []
-        setAbastecimentos(lista)
-        setAbastSelecionados(new Set(lista.map(a => a.id)))
-      })
+
+    Promise.all([
+      supabase.from('abastecimentos')
+        .select('id, data, posto, litros_combustivel, litros_arla, total, km')
+        .eq('caminhao_id', caminhao.id)
+        .gte('data', abastDataInicio)
+        .lte('data', abastDataFim)
+        .order('data'),
+      supabase.from('fechamento_abastecimentos').select('abastecimento_id')
+    ]).then(([{ data, error }, { data: jaUsados }]) => {
+      setCarregandoAbast(false)
+      if (error) { setErro('Erro: ' + error.message); return }
+      const idsUsados = new Set(jaUsados?.map(u => u.abastecimento_id) || [])
+      const lista = (data || []).filter(a => !idsUsados.has(a.id))
+      setAbastecimentos(lista)
+      setAbastSelecionados(new Set(lista.map(a => a.id)))
+    })
   }, [caminhao?.id, abastDataInicio, abastDataFim])
 
   // Effect 4: KM final automático dos abastecimentos selecionados
@@ -453,17 +458,13 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                       <div className="flex items-center gap-2">
                         {caminhao ? caminhao.placa : 'Aguardando...'}
                         {isSubstituto && (
-                          <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase">
-                            Substituto
-                          </span>
+                          <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase">Substituto</span>
                         )}
                       </div>
                       {caminhao && <CheckCircle2 size={16} className={isSubstituto ? 'text-blue-500' : 'text-red-500'}/>}
                     </div>
                     {isSubstituto && (
-                      <p className="text-[10px] text-blue-500 font-bold">
-                        🔧 Caminhão em manutenção — usando substituto automaticamente
-                      </p>
+                      <p className="text-[10px] text-blue-500 font-bold">🔧 Caminhão em manutenção — usando substituto automaticamente</p>
                     )}
                   </div>
                 </div>
@@ -553,7 +554,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                   ) : abastecimentos.length === 0 ? (
                     <div className="text-center py-10">
                       <Fuel size={28} className="mx-auto text-gray-200 mb-2"/>
-                      <p className="text-sm text-gray-400">Nenhum abastecimento no período.</p>
+                      <p className="text-sm text-gray-400">Nenhum abastecimento disponível no período.</p>
+                      <p className="text-xs text-gray-300 mt-1">Abastecimentos já utilizados em fechamentos anteriores não são exibidos.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
