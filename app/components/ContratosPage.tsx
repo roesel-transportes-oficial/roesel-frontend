@@ -37,7 +37,6 @@ export default function ContratosPage() {
   const [filtroMes, setFiltroMes] = useState(0)
   const [filtroAno, setFiltroAno] = useState(new Date().getFullYear())
 
-  // Estados de Edição
   const [editData, setEditData] = useState('')
   const [editCliente, setEditCliente] = useState('')
   const [editCnpj, setEditCnpj] = useState('')
@@ -59,7 +58,6 @@ export default function ContratosPage() {
     fetch_()
     motoristasAPI.listar().then(setMotoristas)
     supabase.from('clientes').select('id, nome, cnpj').order('nome').then(({ data }) => data && setClientes(data))
-    // Carregar carretas para a seleção
     supabase.from('carretas').select('id, placa').order('placa').then(({ data }) => data && setCarretas(data))
   }, [filtroMes, filtroAno])
 
@@ -129,10 +127,11 @@ export default function ContratosPage() {
     try {
       if (perm !== 'demo') {
         await contratosAPI.atualizar(sel.id, {
+          contrato: sel.contrato,
           data: editData,
           cliente: editCliente,
           cliente_nome_completo: editCliente,
-          cnpj: editCnpj.replace(/\D/g, ''), // Salva apenas números
+          cnpj: editCnpj.replace(/\D/g, ''),
           motorista: editMotorista,
           cpf_motorista: sel.cpf_motorista || '',
           placa: editPlaca,
@@ -246,9 +245,9 @@ export default function ContratosPage() {
 
                 <div className="space-y-1">
                   <label className={LabelClass}><Building2 size={12}/> Cliente</label>
-                  <select 
-                    value={clientes.find(c => c.nome === editCliente && (c.cnpj || '').replace(/\D/g, '') === editCnpj.replace(/\D/g, ''))?.id || ""} 
-                    onChange={e => handleSelectCliente(e.target.value)} 
+                  <select
+                    value={clientes.find(c => c.nome === editCliente && (c.cnpj || '').replace(/\D/g, '') === editCnpj.replace(/\D/g, ''))?.id || ""}
+                    onChange={e => handleSelectCliente(e.target.value)}
                     className={InputClass}
                   >
                     <option value="">Selecione o cliente...</option>
@@ -262,11 +261,11 @@ export default function ContratosPage() {
 
                 <div className="space-y-1">
                   <label className={LabelClass}>CNPJ do Cliente</label>
-                  <input 
-                    value={editCnpj} 
-                    onChange={e => setEditCnpj(fmtCNPJ(e.target.value))} 
-                    className={InputClass} 
-                    placeholder="00.000.000/0000-00" 
+                  <input
+                    value={editCnpj}
+                    onChange={e => setEditCnpj(fmtCNPJ(e.target.value))}
+                    className={InputClass}
+                    placeholder="00.000.000/0000-00"
                   />
                 </div>
 
@@ -432,7 +431,7 @@ export default function ContratosPage() {
               </div>
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">{filtrados.length} registros encontrados</p>
             </div>
-            
+
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
