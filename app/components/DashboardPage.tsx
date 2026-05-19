@@ -1,10 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { contratosAPI, motoristasAPI, caminhoesAPI } from '../services/api'
-import { AlertTriangle, FileText, DollarSign, Users, Truck, Clock, TrendingUp } from 'lucide-react'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
+import { supabase } from '../services/supabase'
+import { AlertTriangle, FileText, DollarSign, Users, Truck, TrendingUp } from 'lucide-react'
 
 function diasParaVencer(data: string) {
   if (!data) return null
@@ -35,32 +32,34 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function carregar() {
-      const [c, m, cam] = await Promise.all([
-        contratosAPI.listar({ mes, ano }),
-        motoristasAPI.listar(),
-        caminhoesAPI.listar(),
+      const mesStr = String(mes).padStart(2, '0')
+      const ultimoDia = new Date(ano, mes, 0).getDate()
+
+      const [{ data: c }, { data: m }, { data: cam }] = await Promise.all([
+        supabase.from('contratos').select('*')
+          .gte('data', `${ano}-${mesStr}-01`)
+          .lte('data', `${ano}-${mesStr}-${ultimoDia}`)
+          .order('data', { ascending: false }),
+        supabase.from('motoristas').select('*').order('nome'),
+        supabase.from('caminhoes').select('*').order('placa'),
       ])
-      setContratos(c)
-      setMotoristas(m)
-      setCaminhoes(cam)
+
+      setContratos(c || [])
+      setMotoristas(m || [])
+      setCaminhoes(cam || [])
       setLoading(false)
     }
     carregar()
   }, [])
 
-  // Contratos do mês
   const totalContratos = contratos.length
   const totalFat = contratos.reduce((s: number, c: any) => s + (c.fat_bruto || 0), 0)
   const contratosAbertos = contratos.filter((c: any) => c.status === 'ABERTO').length
   const contratosPagos = contratos.filter((c: any) => c.status === 'PAGO').length
 
-  // Motoristas de férias
   const deFerias = motoristas.filter((m: any) => m.de_ferias)
-
-  // Caminhões parados
   const parados = caminhoes.filter((c: any) => c.status !== 'rodando')
 
-  // Alertas de vencimento
   const alertasVenc: { nome: string; campo: string; dias: number; status: string }[] = []
   motoristas.filter((m: any) => m.ativo).forEach((m: any) => {
     const campos = [
@@ -97,7 +96,6 @@ export default function DashboardPage() {
         <p className="text-sm text-gray-400 mt-1 capitalize">{nomeMes} de {ano}</p>
       </div>
 
-      {/* Cards principais */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center gap-3 mb-2">
@@ -148,7 +146,6 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        {/* Alertas de vencimento */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <AlertTriangle size={16} className="text-amber-500" />
@@ -185,7 +182,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Motoristas de férias */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-base">🏖️</span>
@@ -211,7 +207,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Caminhões parados */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <Truck size={16} className="text-orange-500" />
@@ -240,7 +235,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Últimos contratos */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={16} className="text-gray-500" />

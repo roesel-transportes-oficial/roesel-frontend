@@ -40,21 +40,27 @@ export default function Home() {
     <div className="flex min-h-screen">
       <Sidebar aba={aba} setAba={setAba} />
       <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
-        {aba === 'dashboard'      && <DashboardPage />}
-        {aba === 'novo'           && <NovoContratoPage setAba={setAba} />}
-        {aba === 'contratos'      && <ContratosPage />}
-        {aba === 'viagens'        && <ViagemPage />}
-        {aba === 'fechamento' && <FechamentoViagemPage setAba={setAba} />}
-        {aba === 'motorista'      && <MotoristaPage />}
-        {aba === 'ferias'         && <FeriasPage />}
-        {aba === 'caminhao'       && <CaminhaoPage />}
-        {aba === 'clientes'       && <ClientePage />}
-        {aba === 'abastecimento'  && <AbastecimentoPage />}
-        {aba === 'fornecedor'     && <FornecedorPage />}
-        {aba === 'comissoes'      && <ComissoesPage />}
-        {aba === 'multas'         && <MultasPage />}
-        {aba === 'avarias'        && <AvariasPage />}
-        {aba === 'premios'        && <PremiosPage />}
+
+        {/* Páginas sempre montadas, só ocultadas visualmente */}
+        <div style={{ display: aba === 'dashboard'     ? 'block' : 'none' }}><DashboardPage /></div>
+        <div style={{ display: aba === 'contratos'     ? 'block' : 'none' }}><ContratosPage /></div>
+        <div style={{ display: aba === 'motorista'     ? 'block' : 'none' }}><MotoristaPage /></div>
+        <div style={{ display: aba === 'caminhao'      ? 'block' : 'none' }}><CaminhaoPage /></div>
+        <div style={{ display: aba === 'viagens'       ? 'block' : 'none' }}><ViagemPage /></div>
+        <div style={{ display: aba === 'fechamento'    ? 'block' : 'none' }}><FechamentoViagemPage setAba={setAba} /></div>
+        <div style={{ display: aba === 'ferias'        ? 'block' : 'none' }}><FeriasPage /></div>
+        <div style={{ display: aba === 'clientes'      ? 'block' : 'none' }}><ClientePage /></div>
+        <div style={{ display: aba === 'abastecimento' ? 'block' : 'none' }}><AbastecimentoPage /></div>
+        <div style={{ display: aba === 'fornecedor'    ? 'block' : 'none' }}><FornecedorPage /></div>
+        <div style={{ display: aba === 'comissoes'     ? 'block' : 'none' }}><ComissoesPage /></div>
+        <div style={{ display: aba === 'multas'        ? 'block' : 'none' }}><MultasPage /></div>
+        <div style={{ display: aba === 'avarias'       ? 'block' : 'none' }}><AvariasPage /></div>
+        <div style={{ display: aba === 'premios'       ? 'block' : 'none' }}><PremiosPage /></div>
+
+        {/* Novo contrato desmonta ao sair (intencional — resetar formulário) */}
+        {aba === 'novo' && <NovoContratoPage setAba={setAba} />}
+
+        {/* Placeholders */}
         {aba === 'usuarios'       && <Placeholder title="Usuários" icon="👥" />}
         {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar" icon="📉" />}
         {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
