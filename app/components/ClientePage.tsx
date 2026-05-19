@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../services/auth'
-import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, UserCircle, Upload, Loader2 } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, UserCircle, Upload, Loader2, AlertCircle, MapPin, Phone, FileText } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -11,8 +11,6 @@ interface Cliente {
   cidade: string; estado: string; telefone: string; ie: string
 }
 
-const InputClass = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
-const LabelClass = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 export default function ClientePage() {
@@ -231,225 +229,348 @@ export default function ClientePage() {
     showMsg('✅ Cliente cadastrado!')
   }
 
-  if (mostraCad) return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <button onClick={() => { setMostraCad(false); resetCad() }} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
-        <ArrowLeft size={16}/> Voltar
-      </button>
-      {msg && (
-        <div className={`mb-4 p-3 rounded-xl text-sm border ${msg.startsWith('⚠️') ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
-          {msg}
-        </div>
-      )}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <h3 className="font-bold text-gray-800 mb-4 text-lg">Novo Cliente</h3>
-
-        <div className="mb-5 p-4 bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-2xl">
-          <p className="text-sm font-semibold text-gray-700">📎 Importar do contrato</p>
-          <p className="text-xs text-gray-500 mt-0.5 mb-3">Envie uma imagem ou PDF do contrato e a IA preencherá os dados automaticamente</p>
-          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) lerContratoComIA(f) }} />
-          <button onClick={() => fileInputRef.current?.click()} disabled={loadingIA}
-            className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-red-200 hover:border-red-400 bg-white hover:bg-red-50 text-red-600 rounded-xl py-3 text-sm font-medium transition disabled:opacity-60">
-            {loadingIA ? <><Loader2 size={16} className="animate-spin" /> Lendo contrato com IA...</> : <><Upload size={16} /> Selecionar imagem ou PDF</>}
+  if (mostraCad) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+        <div className="max-w-2xl mx-auto">
+          <button onClick={() => { setMostraCad(false); resetCad() }} className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-8 font-medium transition-colors group">
+            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" /> Voltar
           </button>
+
+          {msg && (
+            <div className={`mb-6 p-4 rounded-lg text-sm font-semibold border ${msg.startsWith('⚠️') ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
+              {msg}
+            </div>
+          )}
+
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-8">
+              <h2 className="text-white font-black text-3xl tracking-tight">Novo Cliente</h2>
+              <p className="text-blue-100 text-sm font-medium mt-2">Preencha os dados abaixo ou importe de um contrato</p>
+            </div>
+
+            <div className="p-8 space-y-8">
+              {/* Seção de Importação IA */}
+              <div className="p-6 bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-dashed border-blue-200 rounded-xl">
+                <div className="flex items-start gap-3 mb-4">
+                  <FileText size={20} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-blue-900">Importar do Contrato</p>
+                    <p className="text-sm text-blue-700 mt-1">Envie uma imagem ou PDF do contrato e a IA preencherá os dados automaticamente</p>
+                  </div>
+                </div>
+                <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; if (f) lerContratoComIA(f) }} />
+                <button onClick={() => fileInputRef.current?.click()} disabled={loadingIA}
+                  className="w-full flex items-center justify-center gap-2 border-2 border-blue-300 hover:border-blue-400 bg-white hover:bg-blue-50 text-blue-600 hover:text-blue-700 rounded-lg py-3 text-sm font-semibold transition disabled:opacity-50">
+                  {loadingIA ? <><Loader2 size={16} className="animate-spin" /> Lendo contrato com IA...</> : <><Upload size={16} /> Selecionar imagem ou PDF</>}
+                </button>
+              </div>
+
+              {/* Formulário */}
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Nome / Razão Social *</label>
+                  <input value={cadNome} onChange={e => setCadNome(e.target.value)} placeholder="Nome da empresa" 
+                    className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">CNPJ</label>
+                    <input value={fmtCnpj(cadCnpj)} onChange={e => setCadCnpj(e.target.value.replace(/\D/g,''))}
+                      placeholder="00.000.000/0000-00" maxLength={18} 
+                      className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">IE</label>
+                    <input value={cadIe} onChange={e => setCadIe(e.target.value)} placeholder="Inscrição Estadual" 
+                      className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Endereço</label>
+                  <input value={cadEndereco} onChange={e => setCadEndereco(e.target.value)} placeholder="Rua, número, bairro" 
+                    className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">CEP</label>
+                    <input value={fmtCep(cadCep)} onChange={e => setCadCep(e.target.value.replace(/\D/g,''))}
+                      placeholder="00000-000" maxLength={9} 
+                      className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Telefone</label>
+                    <input value={cadTelefone} onChange={e => setCadTelefone(e.target.value)} placeholder="(00) 00000-0000" 
+                      className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Cidade</label>
+                    <input value={cadCidade} onChange={e => setCadCidade(e.target.value.toUpperCase())} placeholder="Nome da cidade" 
+                      className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Estado (UF)</label>
+                    <select value={cadEstado} onChange={e => setCadEstado(e.target.value)} 
+                      className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all">
+                      <option value="">Selecione...</option>
+                      {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botões */}
+              <div className="flex gap-3 pt-4">
+                <button onClick={cadastrar} disabled={loading || !cadNome}
+                  className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg py-3 text-sm font-semibold transition">
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  Cadastrar Cliente
+                </button>
+                <button onClick={() => { setMostraCad(false); resetCad() }}
+                  className="flex-1 border border-slate-300 text-slate-700 rounded-lg py-3 text-sm font-semibold hover:bg-slate-50 transition">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-3">
-          <div>
-            <label className={LabelClass}>Nome / Razão Social *</label>
-            <input value={cadNome} onChange={e => setCadNome(e.target.value)} placeholder="Nome da empresa" className={InputClass} />
+        {msg && (
+          <div className="fixed bottom-6 right-6 p-4 rounded-lg shadow-lg font-semibold text-sm animate-bounce"
+            style={{
+              backgroundColor: msg.startsWith('✅') ? '#10b981' : '#f59e0b',
+              color: 'white'
+            }}>
+            {msg}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>CNPJ</label>
-              <input value={fmtCnpj(cadCnpj)} onChange={e => setCadCnpj(e.target.value.replace(/\D/g,''))}
-                placeholder="00.000.000/0000-00" maxLength={18} className={InputClass} />
-            </div>
-            <div>
-              <label className={LabelClass}>IE</label>
-              <input value={cadIe} onChange={e => setCadIe(e.target.value)} placeholder="Inscrição Estadual" className={InputClass} />
-            </div>
-          </div>
-          <div>
-            <label className={LabelClass}>Endereço</label>
-            <input value={cadEndereco} onChange={e => setCadEndereco(e.target.value)} placeholder="Rua, número, bairro" className={InputClass} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>CEP</label>
-              <input value={fmtCep(cadCep)} onChange={e => setCadCep(e.target.value.replace(/\D/g,''))}
-                placeholder="00000-000" maxLength={9} className={InputClass} />
-            </div>
-            <div>
-              <label className={LabelClass}>Telefone</label>
-              <input value={cadTelefone} onChange={e => setCadTelefone(e.target.value)} placeholder="(00) 00000-0000" className={InputClass} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>Cidade</label>
-              <input value={cadCidade} onChange={e => setCadCidade(e.target.value.toUpperCase())} placeholder="Nome da cidade" className={InputClass} />
-            </div>
-            <div>
-              <label className={LabelClass}>Estado (UF)</label>
-              <select value={cadEstado} onChange={e => setCadEstado(e.target.value)} className={InputClass}>
-                <option value="">Selecione...</option>
-                {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button onClick={cadastrar} disabled={loading || !cadNome}
-              className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition">
-              Cadastrar cliente
-            </button>
-            <button onClick={() => { setMostraCad(false); resetCad() }}
-              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition">
-              Cancelar
-            </button>
-          </div>
-        </div>
+        )}
       </div>
-    </div>
-  )
+    )
+  }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      {msg && (
-        <div className={`mb-4 p-3 rounded-xl text-sm border ${msg.startsWith('⚠️') ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
-          {msg}
-        </div>
-      )}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      <div className="max-w-5xl mx-auto">
+        {sel ? (
+          <div>
+            <button onClick={voltar} className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-8 font-medium transition-colors group">
+              <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" /> Voltar
+            </button>
 
-      {sel ? (
-        <div>
-          <button onClick={voltar} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
-            <ArrowLeft size={16}/> Voltar
-          </button>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-5 bg-gradient-to-r from-red-600 to-red-700">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white">
-                  <UserCircle size={24} />
-                </div>
-                <div>
-                  <h2 className="text-white font-bold text-xl">{sel.nome}</h2>
-                  <p className="text-white/80 text-sm">{sel.cidade}{sel.estado && ` - ${sel.estado}`}</p>
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-red-600 to-red-700 px-8 py-8">
+                <div className="flex items-center gap-5">
+                  <div className="w-16 h-16 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white shadow-lg">
+                    <UserCircle size={32} />
+                  </div>
+                  <div>
+                    <h2 className="text-white font-black text-3xl tracking-tight">{sel.nome}</h2>
+                    <p className="text-red-100 text-sm font-medium mt-1">{sel.cidade}{sel.estado && ` - ${sel.estado}`}</p>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className={LabelClass}>Nome / Razão Social</label>
-                <input value={editNome} onChange={e => setEditNome(e.target.value)} className={InputClass} />
+
+              {/* Conteúdo */}
+              <div className="p-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Coluna Esquerda */}
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Nome / Razão Social</label>
+                      <input value={editNome} onChange={e => setEditNome(e.target.value)} 
+                        className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">CNPJ</label>
+                        <input value={fmtCnpj(editCnpj)} onChange={e => setEditCnpj(e.target.value.replace(/\D/g,''))}
+                          placeholder="00.000.000/0000-00" maxLength={18} 
+                          className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">IE</label>
+                        <input value={editIe} onChange={e => setEditIe(e.target.value)} 
+                          className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Endereço</label>
+                      <input value={editEndereco} onChange={e => setEditEndereco(e.target.value)} 
+                        className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">CEP</label>
+                        <input value={fmtCep(editCep)} onChange={e => setEditCep(e.target.value.replace(/\D/g,''))}
+                          placeholder="00000-000" maxLength={9} 
+                          className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Telefone</label>
+                        <input value={editTelefone} onChange={e => setEditTelefone(e.target.value)} 
+                          className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Coluna Direita */}
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Cidade</label>
+                        <input value={editCidade} onChange={e => setEditCidade(e.target.value.toUpperCase())} 
+                          className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Estado (UF)</label>
+                        <select value={editEstado} onChange={e => setEditEstado(e.target.value)} 
+                          className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all">
+                          <option value="">Selecione...</option>
+                          {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Informações adicionais */}
+                    <div className="p-5 bg-slate-50 rounded-lg border border-slate-200 space-y-4">
+                      <h3 className="font-bold text-slate-900 text-sm">Informações do Cliente</h3>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex items-center gap-3">
+                          <FileText size={16} className="text-slate-400" />
+                          <span className="text-slate-600">ID: <span className="font-mono font-semibold text-slate-900">{sel.id.slice(0, 8)}...</span></span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <MapPin size={16} className="text-slate-400" />
+                          <span className="text-slate-600">Localização: <span className="font-semibold text-slate-900">{editCidade} - {editEstado}</span></span>
+                        </div>
+                        {editTelefone && (
+                          <div className="flex items-center gap-3">
+                            <Phone size={16} className="text-slate-400" />
+                            <span className="text-slate-600">Telefone: <span className="font-semibold text-slate-900">{editTelefone}</span></span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>CNPJ</label>
-                  <input value={fmtCnpj(editCnpj)} onChange={e => setEditCnpj(e.target.value.replace(/\D/g,''))}
-                    placeholder="00.000.000/0000-00" maxLength={18} className={InputClass} />
-                </div>
-                <div>
-                  <label className={LabelClass}>IE</label>
-                  <input value={editIe} onChange={e => setEditIe(e.target.value)} className={InputClass} />
-                </div>
-              </div>
-              <div>
-                <label className={LabelClass}>Endereço</label>
-                <input value={editEndereco} onChange={e => setEditEndereco(e.target.value)} className={InputClass} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>CEP</label>
-                  <input value={fmtCep(editCep)} onChange={e => setEditCep(e.target.value.replace(/\D/g,''))}
-                    placeholder="00000-000" maxLength={9} className={InputClass} />
-                </div>
-                <div>
-                  <label className={LabelClass}>Telefone</label>
-                  <input value={editTelefone} onChange={e => setEditTelefone(e.target.value)} className={InputClass} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LabelClass}>Cidade</label>
-                  <input value={editCidade} onChange={e => setEditCidade(e.target.value.toUpperCase())} className={InputClass} />
-                </div>
-                <div>
-                  <label className={LabelClass}>Estado (UF)</label>
-                  <select value={editEstado} onChange={e => setEditEstado(e.target.value)} className={InputClass}>
-                    <option value="">Selecione...</option>
-                    {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button onClick={salvar} disabled={loading}
-                  className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
-                  <Save size={15}/> Salvar alterações
+
+              {/* Footer */}
+              <div className="px-8 py-6 bg-slate-50 border-t border-slate-200 flex gap-3 justify-end">
+                <button onClick={voltar}
+                  className="px-6 py-2.5 rounded-lg font-semibold text-sm text-slate-700 border border-slate-300 hover:bg-slate-100 transition-colors">
+                  Cancelar
                 </button>
                 <button onClick={() => setConfirmExcluir(true)}
-                  className="flex items-center gap-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl px-4 py-2.5 text-sm transition">
-                  <Trash2 size={15}/>
+                  className="px-6 py-2.5 rounded-lg font-semibold text-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors flex items-center gap-2">
+                  <Trash2 size={16} /> Excluir
+                </button>
+                <button onClick={salvar} disabled={loading}
+                  className="px-6 py-2.5 rounded-lg font-semibold text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-2">
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  Salvar Alterações
                 </button>
               </div>
+
               {confirmExcluir && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-                  <p className="text-sm text-red-700 font-medium mb-3">⚠️ Excluir este cliente?</p>
-                  <div className="flex gap-2">
-                    <button onClick={excluir} className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium">Confirmar</button>
-                    <button onClick={() => setConfirmExcluir(false)} className="flex-1 border border-gray-300 rounded-lg py-2 text-sm">Cancelar</button>
+                <div className="px-8 py-6 bg-red-50 border-t border-red-200 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <AlertCircle size={20} className="text-red-600" />
+                    <p className="font-semibold text-red-700">Tem certeza que deseja excluir este cliente?</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button onClick={() => setConfirmExcluir(false)}
+                      className="px-4 py-2 rounded-lg font-semibold text-sm border border-red-300 text-red-700 hover:bg-red-100 transition-colors">
+                      Cancelar
+                    </button>
+                    <button onClick={excluir} disabled={loading}
+                      className="px-4 py-2 rounded-lg font-semibold text-sm bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors">
+                      {loading ? 'Excluindo...' : 'Confirmar Exclusão'}
+                    </button>
                   </div>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between mb-5">
-            <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-            {perm !== 'view' && (
-              <button onClick={() => setMostraCad(true)}
-                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition shadow-sm">
-                <Plus size={16}/> Cadastrar
-              </button>
+        ) : (
+          <div>
+            {/* Header */}
+            <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Clientes</h1>
+                <p className="text-slate-600 font-medium">Gerencie todos os clientes da sua operação</p>
+              </div>
+              {perm !== 'view' && (
+                <button onClick={() => setMostraCad(true)}
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors shadow-lg">
+                  <Plus size={18} /> Novo Cliente
+                </button>
+              )}
+            </div>
+
+            {/* Busca */}
+            <div className="mb-8">
+              <div className="relative">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input value={busca} onChange={e => setBusca(e.target.value)}
+                  placeholder="Buscar por nome, CNPJ ou cidade..."
+                  className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm font-medium" />
+              </div>
+            </div>
+
+            {/* Lista de Clientes */}
+            {filtrados.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+                <UserCircle size={48} className="mx-auto text-slate-300 mb-4" />
+                <p className="text-slate-600 font-semibold">Nenhum cliente cadastrado</p>
+                <p className="text-slate-500 text-sm mt-2">Comece adicionando um novo cliente</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filtrados.map(c => (
+                  <button key={c.id} onClick={() => selecionar(c)}
+                    className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg hover:border-slate-300 transition-all text-left group">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center flex-shrink-0 text-blue-600 group-hover:scale-110 transition-transform">
+                        <UserCircle size={24} />
+                      </div>
+                      <ChevronRight size={18} className="text-slate-300 group-hover:text-slate-500 transition-colors" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors mb-2">{c.nome}</h3>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-slate-600">{c.cnpj ? fmtCnpj(c.cnpj) : 'CNPJ não informado'}</p>
+                      <p className="text-slate-500 flex items-center gap-1">
+                        <MapPin size={14} />
+                        {c.cidade}{c.estado && ` - ${c.estado}`}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
+        )}
+      </div>
 
-          <div className="relative mb-4">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input value={busca} onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar por nome, CNPJ ou cidade..."
-              className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white shadow-sm" />
-          </div>
-
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Clientes</p>
-              <p className="text-xs text-gray-400">{filtrados.length} registro(s)</p>
-            </div>
-            {filtrados.length === 0 ? (
-              <div className="p-10 text-center">
-                <UserCircle size={32} className="mx-auto text-gray-200 mb-2" />
-                <p className="text-sm text-gray-400">Nenhum cliente cadastrado</p>
-              </div>
-            ) : filtrados.map(c => (
-              <button key={c.id} onClick={() => selecionar(c)}
-                className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition border-b border-gray-50 last:border-0 text-left">
-                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 text-red-600">
-                  <UserCircle size={18} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-gray-900">{c.nome}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{c.cnpj ? fmtCnpj(c.cnpj) : 'CNPJ não informado'}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{c.cidade}{c.estado && ` - ${c.estado}`}</p>
-                </div>
-                <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
-              </button>
-            ))}
-          </div>
-        </>
+      {msg && (
+        <div className="fixed bottom-6 right-6 p-4 rounded-lg shadow-lg font-semibold text-sm animate-bounce"
+          style={{
+            backgroundColor: msg.startsWith('✅') ? '#10b981' : '#f59e0b',
+            color: 'white'
+          }}>
+          {msg}
+        </div>
       )}
     </div>
   )
