@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { caminhoesAPI, motoristasAPI } from '../services/api'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Truck, Wrench, X } from 'lucide-react'
@@ -107,16 +106,23 @@ export default function CaminhaoPage() {
   const [manSubstitutoId, setManSubstitutoId] = useState('')
 
   useEffect(() => {
-    fetch_()
-    motoristasAPI.listar().then(setMotoristas).catch(() => {})
-    fetchFrotas()
-    fetchCarretas()
-    fetchHistoricoMan()
+    Promise.all([
+      fetch_(),
+      fetchMotoristas(),
+      fetchFrotas(),
+      fetchCarretas(),
+      fetchHistoricoMan()
+    ])
   }, [])
 
   async function fetch_() {
-    const data = await caminhoesAPI.listar()
-    setCaminhoes(data)
+    const { data } = await supabase.from('caminhoes').select('*').order('placa')
+    if (data) setCaminhoes(data)
+  }
+
+  async function fetchMotoristas() {
+    const { data } = await supabase.from('motoristas').select('id, nome, ativo').order('nome')
+    if (data) setMotoristas(data)
   }
 
   async function fetchFrotas() {
@@ -164,13 +170,13 @@ export default function CaminhaoPage() {
   async function salvar() {
     if (!sel) return
     setLoading(true)
-    await caminhoesAPI.atualizar(sel.id, {
+    await supabase.from('caminhoes').update({
       placa: editPlaca.toUpperCase(), placa_carreta: editPlacaCarreta.toUpperCase(),
       modelo: editModelo, ano: editAno, status: editStatus, frota: editFrota,
       motivo_parado: editStatus !== 'rodando' ? editMotivo : '',
       dt_parado: editStatus !== 'rodando' ? editDtParado : null,
       motorista_atual: editMotorista, obs_documentos: editObs,
-    })
+    }).eq('id', sel.id)
     await fetch_()
     setLoading(false); setSel(null); showMsg('✅ Atualizado!')
   }
@@ -178,7 +184,7 @@ export default function CaminhaoPage() {
   async function cadastrar() {
     if (!cadPlaca.trim()) return
     setLoading(true)
-    await caminhoesAPI.criar({
+    await supabase.from('caminhoes').insert({
       placa: cadPlaca.toUpperCase(), placa_carreta: cadPlacaCarreta.toUpperCase(),
       modelo: cadModelo, ano: cadAno, status: cadStatus, frota: cadFrota,
       motivo_parado: '', dt_parado: null, motorista_atual: cadMotorista, obs_documentos: cadObs
@@ -277,7 +283,6 @@ export default function CaminhaoPage() {
       }
 
       if (saveError) {
-        console.error('Supabase error:', saveError)
         showMsg('❌ ' + (saveError.message || 'Erro ao salvar'))
         setLoading(false); return
       }
@@ -307,7 +312,6 @@ export default function CaminhaoPage() {
       setMostraNovaMan(false); setEditandoMan(null)
       await fetchHistoricoMan(); await fetch_()
     } catch (e: any) {
-      console.error('Erro:', e)
       showMsg('❌ Erro: ' + (e.message || 'Erro desconhecido'))
     } finally {
       setLoading(false)
@@ -373,7 +377,6 @@ export default function CaminhaoPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filtrados.map(c => {
-                  // ✅ Busca manutenção ativa com substituto para este caminhão
                   const manAtiva = historicoMan.find(m =>
                     m.caminhao_id === c.id &&
                     m.status === 'EM ANDAMENTO' &&
@@ -393,15 +396,12 @@ export default function CaminhaoPage() {
                       </div>
                       <h3 className="text-xl font-black text-gray-900 tracking-tighter mb-1">{c.placa}</h3>
                       <p className="text-xs font-bold text-gray-400 uppercase mb-3">{c.modelo} • {c.ano}</p>
-
-                      {/* ✅ Mostra substituto quando em manutenção */}
                       {manAtiva?.caminhao_substituto_placa && (
                         <div className="mb-3 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 flex items-center gap-2">
                           <span className="text-[10px] font-black text-blue-400 uppercase">Substituído por</span>
                           <span className="text-xs font-black text-blue-700">🚛 {manAtiva.caminhao_substituto_placa}</span>
                         </div>
                       )}
-
                       <div className="pt-3 border-t border-gray-50 flex items-center justify-between">
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
                           Motorista: <span className="text-gray-900">{c.motorista_atual || '—'}</span>

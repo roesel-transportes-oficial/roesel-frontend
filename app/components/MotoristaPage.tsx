@@ -1,11 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { motoristasAPI, caminhoesAPI } from '../services/api'
+import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, User, AlertTriangle, Clock, History } from 'lucide-react'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 
 interface Motorista {
   id: string; nome: string; cpf: string; rg: string
@@ -131,45 +128,38 @@ export default function MotoristaPage() {
   const [cadPeriodico, setCadPeriodico] = useState('')
 
   useEffect(() => {
-    fetch_()
-    caminhoesAPI.listar().then(setCaminhoes).catch(() => {})
+    Promise.all([fetch_(), fetchCaminhoes()])
   }, [])
 
   async function fetch_() {
-    const data = await motoristasAPI.listar()
-    setMotoristas(data)
+    const { data } = await supabase.from('motoristas').select('*').order('nome')
+    if (data) setMotoristas(data)
+  }
+
+  async function fetchCaminhoes() {
+    const { data } = await supabase.from('caminhoes').select('id, placa, modelo, motorista_atual').order('placa')
+    if (data) setCaminhoes(data)
   }
 
   async function fetchHistorico(motoristaId: string) {
-    try {
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/historico_ferias?motorista_id=eq.${motoristaId}&order=created_at.desc`,
-        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
-      )
-      const data = await res.json()
-      setHistorico(Array.isArray(data) ? data : [])
-    } catch {}
+    const { data } = await supabase
+      .from('historico_ferias')
+      .select('*')
+      .eq('motorista_id', motoristaId)
+      .order('created_at', { ascending: false })
+    setHistorico(data || [])
   }
 
   async function registrarHistorico(motorista: Motorista, substitutoNome: string, caminhaoPlaca: string) {
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/historico_ferias`, {
-        method: 'POST',
-        headers: {
-          apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json', Prefer: 'return=minimal'
-        },
-        body: JSON.stringify({
-          motorista_id: motorista.id,
-          motorista_nome: motorista.nome,
-          substituto_id: editSubstitutoId || null,
-          substituto_nome: substitutoNome,
-          caminhao_placa: caminhaoPlaca,
-          ferias_inicio: editFeriasInicio || null,
-          ferias_fim: editFeriasFim || null,
-        })
-      })
-    } catch {}
+    await supabase.from('historico_ferias').insert({
+      motorista_id: motorista.id,
+      motorista_nome: motorista.nome,
+      substituto_id: editSubstitutoId || null,
+      substituto_nome: substitutoNome,
+      caminhao_placa: caminhaoPlaca,
+      ferias_inicio: editFeriasInicio || null,
+      ferias_fim: editFeriasFim || null,
+    })
   }
 
   const alertasGerais = motoristas.filter(m => m.ativo !== false).filter(m =>
@@ -217,23 +207,17 @@ export default function MotoristaPage() {
 
     if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeFerias) {
       if (sel.caminhao_id) {
-        const camAntigo = caminhoes.find(c => c.id === sel.caminhao_id)
-        if (camAntigo) await caminhoesAPI.atualizar(sel.caminhao_id, { ...camAntigo, motorista_atual: '' } as any)
+        await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', sel.caminhao_id)
       }
-      const cam = caminhoes.find(c => c.id === editCaminhaoId)
-      if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: editNome.toUpperCase() } as any)
+      await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
     }
 
     if (editDeFerias && editSubstitutoId && editCaminhaoId) {
       const substituto = motoristas.find(m => m.id === editSubstitutoId)
       if (substituto) {
-        await motoristasAPI.atualizar(editSubstitutoId, {
-          nome: substituto.nome, caminhao_temp_id: editCaminhaoId,
-        } as any)
+        await supabase.from('motoristas').update({ caminhao_temp_id: editCaminhaoId }).eq('id', editSubstitutoId)
+        await supabase.from('caminhoes').update({ motorista_atual: substituto.nome }).eq('id', editCaminhaoId)
         const cam = caminhoes.find(c => c.id === editCaminhaoId)
-        if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: substituto.nome } as any)
-
-        // Registra no histórico quando férias é ativado
         if (feriasFoiAtivado) {
           await registrarHistorico(sel, substituto.nome, cam?.placa || '')
         }
@@ -243,49 +227,51 @@ export default function MotoristaPage() {
     if (!editDeFerias && sel.de_ferias && sel.substituto_id && editCaminhaoId) {
       const substituto = motoristas.find(m => m.id === sel.substituto_id)
       if (substituto) {
-        await motoristasAPI.atualizar(sel.substituto_id, {
-          nome: substituto.nome, caminhao_temp_id: null,
-        } as any)
-        const cam = caminhoes.find(c => c.id === editCaminhaoId)
-        if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: editNome.toUpperCase() } as any)
+        await supabase.from('motoristas').update({ caminhao_temp_id: null }).eq('id', sel.substituto_id)
+        await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
       }
     }
 
-    if (perm !== 'demo') await motoristasAPI.atualizar(sel.id, {
-      nome: editNome.toUpperCase(), cpf: editCpf, rg: editRg,
-      tipo: editTipo, ativo: editAtivo, adiantamento: editAdiantamento,
-      dt_desligamento: editDtDesligamento || null,
-      vencimento_cnh: editCnh || null,
-      vencimento_permisso: editPermisso || null,
-      vencimento_toxicologico: editToxico || null,
-      vencimento_periodico: editPeriodico || null,
-      caminhao_id: editCaminhaoId || null,
-      de_ferias: editDeFerias,
-      ferias_inicio: editDeFerias ? editFeriasInicio || null : null,
-      ferias_fim: editDeFerias ? editFeriasFim || null : null,
-      substituto_id: editDeFerias ? editSubstitutoId || null : null,
-    })
+    if (perm !== 'demo') {
+      await supabase.from('motoristas').update({
+        nome: editNome.toUpperCase(), cpf: editCpf, rg: editRg,
+        tipo: editTipo, ativo: editAtivo, adiantamento: editAdiantamento,
+        dt_desligamento: editDtDesligamento || null,
+        vencimento_cnh: editCnh || null,
+        vencimento_permisso: editPermisso || null,
+        vencimento_toxicologico: editToxico || null,
+        vencimento_periodico: editPeriodico || null,
+        caminhao_id: editCaminhaoId || null,
+        de_ferias: editDeFerias,
+        ferias_inicio: editDeFerias ? editFeriasInicio || null : null,
+        ferias_fim: editDeFerias ? editFeriasFim || null : null,
+        substituto_id: editDeFerias ? editSubstitutoId || null : null,
+      }).eq('id', sel.id)
+    }
+
     await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
   }
 
   async function excluir() {
     if (!sel) return
     setLoading(true)
-    if (perm !== 'demo') await motoristasAPI.excluir(sel.id)
+    if (perm !== 'demo') await supabase.from('motoristas').delete().eq('id', sel.id)
     await fetch_(); setLoading(false); voltar(); showMsg('Motorista excluído.')
   }
 
   async function cadastrar() {
     if (!cadNome.trim()) return
     setLoading(true)
-    if (perm !== 'demo') await motoristasAPI.criar({
-      nome: cadNome.toUpperCase(), cpf: cadCpf, rg: cadRg,
-      tipo: cadTipo, ativo: true, adiantamento: true,
-      vencimento_cnh: cadCnh || null,
-      vencimento_permisso: cadPermisso || null,
-      vencimento_toxicologico: cadToxico || null,
-      vencimento_periodico: cadPeriodico || null,
-    })
+    if (perm !== 'demo') {
+      await supabase.from('motoristas').insert({
+        nome: cadNome.toUpperCase(), cpf: cadCpf, rg: cadRg,
+        tipo: cadTipo, ativo: true, adiantamento: true,
+        vencimento_cnh: cadCnh || null,
+        vencimento_permisso: cadPermisso || null,
+        vencimento_toxicologico: cadToxico || null,
+        vencimento_periodico: cadPeriodico || null,
+      })
+    }
     await fetch_(); setLoading(false)
     setCadNome(''); setCadCpf(''); setCadRg(''); setCadTipo('Com adiantamento')
     setCadCnh(''); setCadPermisso(''); setCadToxico(''); setCadPeriodico('')
@@ -450,7 +436,6 @@ export default function MotoristaPage() {
                     </div>
                   </div>
                 </div>
-                {/* Botão histórico */}
                 <button
                   onClick={() => setMostraHistorico(!mostraHistorico)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${mostraHistorico ? 'bg-white/30 text-white' : 'bg-white/20 text-white/80 hover:bg-white/30'}`}>
@@ -460,7 +445,6 @@ export default function MotoristaPage() {
               </div>
             </div>
 
-            {/* Histórico de férias */}
             {mostraHistorico && (
               <div className="border-b border-gray-100 p-5">
                 <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
