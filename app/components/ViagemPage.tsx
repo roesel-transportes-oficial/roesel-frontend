@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
-import { Search, Plus, Save, Trash2, MapPin, X, Palmtree, ArrowLeft, AlertCircle, Loader2, Truck, DollarSign, Users, Calendar } from 'lucide-react'
+import { Search, Plus, Save, Trash2, MapPin, X, Palmtree, ArrowLeft, AlertCircle, Loader2, Truck, DollarSign, Users, ChevronRight } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -476,7 +476,7 @@ export default function ViagemPage() {
 
               <div className="p-6 rounded-lg border" style={{ backgroundColor: `${COLORS.primary}08`, borderColor: COLORS.secondary }}>
                 <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: COLORS.secondary }}>Dados da Carga</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.secondary }}>Empresa</label>
                     <input value={cadEmpresa} onChange={e => setCadEmpresa(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
@@ -485,8 +485,6 @@ export default function ViagemPage() {
                     <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.secondary }}>Qtd. Veículos</label>
                     <input type="number" value={cadQtdVeiculos} onChange={e => setCadQtdVeiculos(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mt-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: COLORS.secondary }}>
                       <MapPin size={14} /> Origem
@@ -499,18 +497,18 @@ export default function ViagemPage() {
                     </label>
                     <input value={cadDestino} onChange={e => setCadDestino(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
                   </div>
-                </div>
-                <div className="space-y-2 mt-4">
-                  <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                    <DollarSign size={14} /> Valor do Contrato (R$)
-                  </label>
-                  <input type="number" step="0.01" value={cadValorContrato} onChange={e => setCadValorContrato(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: COLORS.secondary }}>
+                      <DollarSign size={14} /> Valor do Contrato (R$)
+                    </label>
+                    <input type="number" step="0.01" value={cadValorContrato} onChange={e => setCadValorContrato(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
+                  </div>
                 </div>
               </div>
 
               <div className="p-6 rounded-lg border" style={{ backgroundColor: `${COLORS.primary}08`, borderColor: COLORS.primary }}>
                 <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: COLORS.primary }}>Valores Financeiros</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
                   <div className="space-y-2">
                     <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.primary }}>Adiantamento (R$)</label>
                     <input type="number" step="0.01" value={cadValorAdiantamento} onChange={e => setCadValorAdiantamento(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.primary, '--tw-ring-color': COLORS.primary } as any} />
@@ -553,7 +551,7 @@ export default function ViagemPage() {
 
   return (
     <div className="min-h-screen p-6" style={{ backgroundColor: COLORS.neutral }}>
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-4xl font-black tracking-tight mb-2" style={{ color: COLORS.primary }}>Viagens</h1>
@@ -582,36 +580,43 @@ export default function ViagemPage() {
             <p className="font-semibold" style={{ color: COLORS.secondary }}>Nenhuma viagem registrada</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="space-y-3">
             {filtrados.map(v => {
               const motFerias = motoristas.find(m => m.nome === v.motorista)?.ferias
               return (
                 <button key={v.id} onClick={() => selecionar(v)}
-                  className="bg-white rounded-xl border overflow-hidden hover:shadow-lg hover:border-opacity-100 transition-all text-left group" style={{ borderColor: COLORS.secondary }}>
-                  <div className="px-5 py-4 text-white" style={{ background: `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryDark} 100%)` }}>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-bold text-sm flex items-center gap-2">
-                        {v.motorista}
-                        {motFerias && <span className="text-[10px] bg-orange-400 px-1.5 py-0.5 rounded-full">🌴</span>}
-                      </p>
-                      <span className="text-xs font-semibold opacity-90">{v.status}</span>
+                  className="w-full bg-white rounded-lg border p-5 hover:shadow-md transition-all text-left flex items-center justify-between group" style={{ borderColor: COLORS.secondary }}>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold" style={{ backgroundColor: COLORS.primary }}>
+                        <Truck size={20} />
+                      </div>
+                      <div>
+                        <p className="font-bold" style={{ color: COLORS.primary }}>{v.motorista}</p>
+                        <p className="text-sm" style={{ color: COLORS.secondary }}>{v.caminhao_placa}</p>
+                      </div>
                     </div>
-                    <p className="text-sm opacity-90">{v.caminhao_placa}</p>
+                    <div className="flex items-center gap-4 mt-3 text-sm">
+                      {v.empresa && <span style={{ color: COLORS.secondary }}>{v.empresa}</span>}
+                      {(v.origem || v.destino) && (
+                        <div className="flex items-center gap-1" style={{ color: COLORS.secondary }}>
+                          <MapPin size={14} />
+                          <span>{v.origem} → {v.destino}</span>
+                        </div>
+                      )}
+                      {v.valor_contrato > 0 && (
+                        <span className="font-semibold" style={{ color: COLORS.primary }}>
+                          {v.valor_contrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="p-5 space-y-3">
-                    {v.empresa && <p className="text-sm font-semibold" style={{ color: COLORS.secondary }}>{v.empresa}</p>}
-                    {(v.origem || v.destino) && (
-                      <div className="flex items-center gap-2 text-xs" style={{ color: COLORS.secondary }}>
-                        <MapPin size={14} />
-                        <span>{v.origem} → {v.destino}</span>
-                      </div>
-                    )}
-                    {v.valor_contrato > 0 && (
-                      <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: COLORS.neutral }}>
-                        <span className="text-xs" style={{ color: COLORS.secondary }}>Contrato:</span>
-                        <span className="font-bold" style={{ color: COLORS.primary }}>{v.valor_contrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                      </div>
-                    )}
+                  <div className="flex items-center gap-3 ml-4">
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: `${COLORS.primary}15`, color: COLORS.primary }}>
+                      {v.status}
+                    </span>
+                    {motFerias && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">🌴</span>}
+                    <ChevronRight size={18} style={{ color: COLORS.secondary }} className="group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
               )
