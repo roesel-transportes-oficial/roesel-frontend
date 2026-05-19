@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
-import { Search, Plus, Save, Trash2, MapPin, X, Palmtree } from 'lucide-react'
+import { Search, Plus, Save, Trash2, MapPin, X, Palmtree, ArrowLeft, AlertCircle, Loader2, Truck, DollarSign, Users, Calendar } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -19,9 +19,6 @@ interface Contrato  {
   qtd_veiculos: number; fat_bruto: number
 }
 
-const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
-const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
-
 function ContratoSelector({ selecionados, todos, onChange, nomeMotorista, setCampos, calcularAdiantamento, aplicarDadosContratos }:
   { selecionados: Contrato[]; todos: Contrato[]; onChange: (c: Contrato[]) => void; nomeMotorista: string; setCampos: (d: any) => void; calcularAdiantamento: (n: string, v: number) => string; aplicarDadosContratos: (l: Contrato[], n: string) => any }
 ) {
@@ -31,15 +28,15 @@ function ContratoSelector({ selecionados, todos, onChange, nomeMotorista, setCam
     : todos
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
-      <div className="p-2 bg-gray-50 border-b border-gray-100">
+    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+      <div className="p-3 bg-slate-50 border-b border-slate-200">
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar contrato..."
-          className="w-full text-xs px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-500 bg-white" />
+          className="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white" />
       </div>
       {selecionados.length > 0 && (
-        <div className="p-2 flex flex-wrap gap-1 border-b border-gray-100 bg-blue-50">
+        <div className="p-3 flex flex-wrap gap-2 border-b border-slate-200 bg-purple-50">
           {selecionados.map(c => (
-            <span key={c.id} className="flex items-center gap-1 text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">
+            <span key={c.id} className="inline-flex items-center gap-2 text-xs bg-purple-600 text-white px-3 py-1.5 rounded-full font-medium">
               #{c.contrato} · {c.cliente}
               <button onClick={() => {
                 const nova = selecionados.filter(s => s.id !== c.id)
@@ -47,23 +44,23 @@ function ContratoSelector({ selecionados, todos, onChange, nomeMotorista, setCam
                 const dados = aplicarDadosContratos(nova, nomeMotorista)
                 if (dados) setCampos(dados)
                 else setCampos({ empresa: '', valorContrato: '', qtdVeiculos: '', origem: '', destino: '', adiantamento: '0' })
-              }}><X size={10} /></button>
+              }} className="hover:opacity-75 transition"><X size={12} /></button>
             </span>
           ))}
         </div>
       )}
-      <div className="max-h-40 overflow-y-auto">
+      <div className="max-h-48 overflow-y-auto">
         {filtrados.filter(c => !selecionados.find(s => s.id === c.id)).map(c => (
           <button key={c.id} onClick={() => {
             const nova = [...selecionados, c]
             onChange(nova)
             const dados = aplicarDadosContratos(nova, nomeMotorista)
             if (dados) setCampos(dados)
-          }} className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 border-b border-gray-50 last:border-0">
-            <span className="font-semibold text-gray-700">#{c.contrato}</span>
-            <span className="text-gray-500 ml-2">{c.cliente}</span>
-            {c.origem && <span className="text-gray-400 ml-1">· {c.origem} → {c.destino}</span>}
-            {c.fat_bruto > 0 && <span className="text-green-600 ml-1">· R$ {c.fat_bruto?.toLocaleString('pt-BR')}</span>}
+          }} className="w-full text-left px-4 py-3 text-xs hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors">
+            <span className="font-semibold text-slate-900">#{c.contrato}</span>
+            <span className="text-slate-600 ml-2">{c.cliente}</span>
+            {c.origem && <span className="text-slate-500 ml-2">· {c.origem} → {c.destino}</span>}
+            {c.fat_bruto > 0 && <span className="text-emerald-600 ml-2 font-medium">· R$ {c.fat_bruto?.toLocaleString('pt-BR')}</span>}
           </button>
         ))}
       </div>
@@ -182,10 +179,8 @@ export default function ViagemPage() {
     } catch {}
   }
 
-  // ✅ Busca caminhão do motorista respeitando férias/substituto
   async function buscarCaminhaoPorMotorista(nomeMotorista: string): Promise<{ id: string; placa: string } | null> {
     try {
-      // 1. Busca o motorista pelo nome para pegar o ID
       const resM = await fetch(
         `${SUPABASE_URL}/rest/v1/motoristas?nome=eq.${encodeURIComponent(nomeMotorista)}&limit=1`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
@@ -196,7 +191,6 @@ export default function ViagemPage() {
       const motId = motData[0].id
       const emFerias = motData[0].ferias === true
 
-      // 2. Busca o caminhão onde motorista_atual = motId
       const resC = await fetch(
         `${SUPABASE_URL}/rest/v1/caminhoes?motorista_atual=eq.${motId}&limit=1`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
@@ -204,7 +198,6 @@ export default function ViagemPage() {
       const camData = await resC.json()
       if (Array.isArray(camData) && camData[0]) return { id: camData[0].id, placa: camData[0].placa }
 
-      // 3. Se está de férias e tem caminhao_temp_id, usa esse
       if (emFerias && motData[0].caminhao_temp_id) {
         const resCT = await fetch(
           `${SUPABASE_URL}/rest/v1/caminhoes?id=eq.${motData[0].caminhao_temp_id}&limit=1`,
@@ -218,7 +211,6 @@ export default function ViagemPage() {
     } catch { return null }
   }
 
-  // ✅ Busca caminhão por placa (fallback para viagens migradas)
   async function buscarCaminhaoPorPlaca(placa: string): Promise<{ id: string; placa: string } | null> {
     try {
       const res = await fetch(
@@ -262,7 +254,6 @@ export default function ViagemPage() {
       )
     : viagens
 
-  // ✅ Ao abrir viagem: resolve caminhão + calcula adiantamento automaticamente
   async function selecionar(v: Viagem) {
     setSel(v)
     setEditMotorista(v.motorista || '')
@@ -276,7 +267,6 @@ export default function ViagemPage() {
     setEditValorChapa(String(v.valor_chapa || ''))
     setConfirmExcluir(false)
 
-    // Resolve caminhão: tenta por ID, depois por placa, depois pelo motorista
     let caminhaoResolvido: { id: string; placa: string } | null = null
 
     if (v.caminhao_id) {
@@ -291,7 +281,6 @@ export default function ViagemPage() {
     setEditCaminhaoId(caminhaoResolvido?.id || '')
     setEditCaminhaoPlaca(caminhaoResolvido?.placa || v.caminhao_placa || '')
 
-    // Calcula adiantamento se não estiver definido
     const valorContrato = v.valor_contrato || 0
     if (v.valor_adiantamento) {
       setEditValorAdiantamento(String(v.valor_adiantamento))
@@ -304,7 +293,6 @@ export default function ViagemPage() {
     await fetchContratosViagem(v.id)
   }
 
-  // ✅ Ao selecionar motorista no formulário: auto-preenche caminhão
   async function onMotoristaChange(nome: string, setCaminhaoId: (id: string) => void, setCaminhaoPlaca: (p: string) => void) {
     if (!nome) { setCaminhaoId(''); setCaminhaoPlaca(''); return }
     const cam = await buscarCaminhaoPorMotorista(nome)
@@ -317,29 +305,12 @@ export default function ViagemPage() {
       method: 'DELETE',
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
     })
-    for (const c of lista) {
+    if (lista.length > 0) {
       await fetch(`${SUPABASE_URL}/rest/v1/viagem_contratos`, {
         method: 'POST',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify({ viagem_id: viagemId, contrato_id: c.id, contrato_numero: c.contrato })
+        body: JSON.stringify(lista.map(c => ({ viagem_id: viagemId, contrato_id: c.id })))
       })
-    }
-  }
-
-  function buildPayload(p: any) {
-    return {
-      motorista:          p.motorista,
-      caminhao_id:        p.caminhaoId || null,
-      caminhao_placa:     p.caminhaoPlaca,
-      status:             p.status,
-      obs:                p.obs,
-      qtd_veiculos:       parseInt(p.qtdVeiculos) || null,
-      empresa:            p.empresa,
-      valor_contrato:     parseFloat(p.valorContrato) || null,
-      origem:             p.origem,
-      destino:            p.destino,
-      valor_adiantamento: parseFloat(p.valorAdiantamento) || null,
-      valor_chapa:        parseFloat(p.valorChapa) || null,
     }
   }
 
@@ -350,16 +321,17 @@ export default function ViagemPage() {
       await fetch(`${SUPABASE_URL}/rest/v1/viagens?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-        body: JSON.stringify(buildPayload({
-          motorista: editMotorista, caminhaoId: editCaminhaoId, caminhaoPlaca: editCaminhaoPlaca,
-          status: editStatus, obs: editObs, qtdVeiculos: editQtdVeiculos, empresa: editEmpresa,
-          valorContrato: editValorContrato, origem: editOrigem, destino: editDestino,
-          valorAdiantamento: editValorAdiantamento, valorChapa: editValorChapa,
-        }))
+        body: JSON.stringify({
+          motorista: editMotorista, caminhao_id: editCaminhaoId, caminhao_placa: editCaminhaoPlaca,
+          status: editStatus, obs: editObs, qtd_veiculos: parseInt(editQtdVeiculos) || 0,
+          empresa: editEmpresa, valor_contrato: parseFloat(editValorContrato) || 0,
+          origem: editOrigem, destino: editDestino,
+          valor_adiantamento: parseFloat(editValorAdiantamento) || 0, valor_chapa: parseFloat(editValorChapa) || 0
+        })
       })
       await salvarContratosViagem(sel.id, editContratos)
     }
-    await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
+    await fetch_(); setLoading(false); voltar(); showMsg('✅ Viagem atualizada!')
   }
 
   async function excluir() {
@@ -381,361 +353,277 @@ export default function ViagemPage() {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/viagens`, {
         method: 'POST',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
-        body: JSON.stringify(buildPayload({
-          motorista: cadMotorista, caminhaoId: cadCaminhaoId, caminhaoPlaca: cadCaminhaoPlaca,
-          status: cadStatus, obs: cadObs, qtdVeiculos: cadQtdVeiculos, empresa: cadEmpresa,
-          valorContrato: cadValorContrato, origem: cadOrigem, destino: cadDestino,
-          valorAdiantamento: cadValorAdiantamento, valorChapa: cadValorChapa,
-        }))
+        body: JSON.stringify({
+          motorista: cadMotorista, caminhao_id: cadCaminhaoId, caminhao_placa: cadCaminhaoPlaca,
+          status: cadStatus, obs: cadObs, qtd_veiculos: parseInt(cadQtdVeiculos) || 0,
+          empresa: cadEmpresa, valor_contrato: parseFloat(cadValorContrato) || 0,
+          origem: cadOrigem, destino: cadDestino,
+          valor_adiantamento: parseFloat(cadValorAdiantamento) || 0, valor_chapa: parseFloat(cadValorChapa) || 0
+        })
       })
       const data = await res.json()
-      if (Array.isArray(data) && data[0]?.id) await salvarContratosViagem(data[0].id, cadContratos)
+      if (Array.isArray(data) && data[0]) {
+        await salvarContratosViagem(data[0].id, cadContratos)
+      }
     }
-    await fetch_(); setLoading(false)
-    setCadMotorista(''); setCadCaminhaoId(''); setCadCaminhaoPlaca('')
-    setCadStatus('EM ANDAMENTO'); setCadObs(''); setCadContratos([])
-    setCadQtdVeiculos(''); setCadEmpresa(''); setCadValorContrato('')
-    setCadOrigem(''); setCadDestino(''); setCadValorAdiantamento(''); setCadValorChapa('')
-    setMostraCad(false); showMsg('✅ Viagem registrada!')
-    fetchContratos()
+    await fetch_(); setLoading(false); setMostraCad(false)
+    setCadMotorista(''); setCadCaminhaoId(''); setCadCaminhaoPlaca(''); setCadStatus('EM ANDAMENTO'); setCadObs('')
+    setCadContratos([]); setCadQtdVeiculos(''); setCadEmpresa(''); setCadValorContrato(''); setCadOrigem(''); setCadDestino('')
+    setCadValorAdiantamento(''); setCadValorChapa('')
+    showMsg('✅ Viagem registrada!')
   }
 
-  const cadTemAdiantamento  = motoristas.find(m => m.nome === cadMotorista)?.adiantamento
+  const cadTemAdiantamento = motoristas.find(m => m.nome === cadMotorista)?.adiantamento
   const editTemAdiantamento = motoristas.find(m => m.nome === editMotorista)?.adiantamento
-  const editEmFerias        = motoristas.find(m => m.nome === editMotorista)?.ferias
-  const cadEmFerias         = motoristas.find(m => m.nome === cadMotorista)?.ferias
+  const editEmFerias = motoristas.find(m => m.nome === editMotorista)?.ferias
 
-  if (mostraCad) return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <button onClick={() => setMostraCad(false)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
-        ← Voltar
-      </button>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-        <h3 className="font-bold text-gray-800 mb-4 text-lg">Nova Viagem</h3>
-        <div className="space-y-3">
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LC}>Motorista *</label>
-              <select value={cadMotorista} onChange={async e => {
-                const nome = e.target.value
-                setCadMotorista(nome)
-                // Auto-preenche caminhão
-                await onMotoristaChange(nome, setCadCaminhaoId, setCadCaminhaoPlaca)
-                // Recalcula adiantamento
-                const totalValor = cadContratos.reduce((s, c) => s + (c.fat_bruto || 0), 0)
-                if (totalValor > 0) setCadValorAdiantamento(calcularAdiantamento(nome, totalValor))
-              }} className={IC}>
-                <option value="">Selecione...</option>
-                {motoristas.map(m => (
-                  <option key={m.id} value={m.nome}>
-                    {m.nome} {m.adiantamento ? '· 💰' : ''}{m.ferias ? ' · 🌴' : ''}
-                  </option>
-                ))}
-              </select>
-              {cadMotorista && (
-                <div className="flex flex-col gap-0.5 mt-1">
-                  {cadTemAdiantamento
-                    ? <span className="text-xs text-green-600 font-medium">✅ Com adiantamento (5% do frete)</span>
-                    : <span className="text-xs text-gray-400">❌ Sem adiantamento</span>}
-                  {cadEmFerias && <span className="text-xs text-orange-500 font-medium">🌴 Motorista em férias</span>}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className={LC}>Caminhão *</label>
-              <select value={cadCaminhaoId} onChange={e => {
-                const cam = caminhoes.find(c => c.id === e.target.value)
-                setCadCaminhaoId(e.target.value); setCadCaminhaoPlaca(cam?.placa || '')
-              }} className={IC}>
-                <option value="">Selecione...</option>
-                {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
-              </select>
-              {cadCaminhaoPlaca && (
-                <p className="text-xs text-green-600 mt-1">✅ {cadCaminhaoPlaca} vinculado automaticamente</p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className={LC}>Status</label>
-            <select value={cadStatus} onChange={e => setCadStatus(e.target.value)} className={IC}>
-              <option value="EM ANDAMENTO">EM ANDAMENTO</option>
-              <option value="FINALIZADA">FINALIZADA</option>
-              <option value="CANCELADA">CANCELADA</option>
-            </select>
-          </div>
-
-          <div>
-            <label className={LC}>Contratos vinculados</label>
-            <p className="text-xs text-gray-400 mb-1">Apenas contratos sem viagem vinculada aparecem aqui</p>
-            <ContratoSelector
-              selecionados={cadContratos} todos={contratos} onChange={setCadContratos}
-              nomeMotorista={cadMotorista}
-              setCampos={(dados) => { setCadEmpresa(dados.empresa); setCadValorContrato(dados.valorContrato); setCadQtdVeiculos(dados.qtdVeiculos); setCadOrigem(dados.origem); setCadDestino(dados.destino); setCadValorAdiantamento(dados.adiantamento) }}
-              calcularAdiantamento={calcularAdiantamento}
-              aplicarDadosContratos={aplicarDadosContratos}
-            />
-          </div>
-
-          <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
-            <p className="text-xs font-bold text-gray-500 uppercase">Dados da carga</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className={LC}>Empresa</label><input value={cadEmpresa} onChange={e => setCadEmpresa(e.target.value)} className={IC} /></div>
-              <div><label className={LC}>Qtd Veículos</label><input type="number" value={cadQtdVeiculos} onChange={e => setCadQtdVeiculos(e.target.value)} className={IC} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className={LC}>Origem</label><input value={cadOrigem} onChange={e => setCadOrigem(e.target.value)} className={IC} /></div>
-              <div><label className={LC}>Destino</label><input value={cadDestino} onChange={e => setCadDestino(e.target.value)} className={IC} /></div>
-            </div>
-            <div>
-              <label className={LC}>Valor do Contrato (R$)</label>
-              <input type="number" step="0.01" value={cadValorContrato} onChange={e => {
-                setCadValorContrato(e.target.value)
-                setCadValorAdiantamento(calcularAdiantamento(cadMotorista, parseFloat(e.target.value) || 0))
-              }} className={IC} />
-            </div>
-          </div>
-
-          <div className="p-3 bg-green-50 rounded-xl border border-green-100 space-y-3">
-            <p className="text-xs font-bold text-green-700 uppercase">Valores financeiros</p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={LC}>Adiantamento (R$)</label>
-                <input type="number" step="0.01" value={cadValorAdiantamento} onChange={e => setCadValorAdiantamento(e.target.value)} className={IC} />
-                <p className="text-xs text-gray-400 mt-0.5">{cadTemAdiantamento ? '5% do frete — editável' : 'Motorista sem adiantamento'}</p>
-              </div>
-              <div><label className={LC}>Chapa (R$)</label><input type="number" step="0.01" value={cadValorChapa} onChange={e => setCadValorChapa(e.target.value)} placeholder="250,00" className={IC} /></div>
-            </div>
-          </div>
-
-          <div><label className={LC}>Observações</label><textarea value={cadObs} onChange={e => setCadObs(e.target.value)} rows={2} className={IC} /></div>
-        </div>
-
-        <div className="flex gap-2 pt-4">
-          <button onClick={cadastrar} disabled={loading || !cadMotorista || !cadCaminhaoId}
-            className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-2.5 text-sm font-medium transition">
-            Registrar viagem
+  if (mostraCad) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+        <div className="max-w-3xl mx-auto">
+          <button onClick={() => setMostraCad(false)} className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 mb-8 font-medium transition-colors group">
+            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" /> Voltar
           </button>
-          <button onClick={() => setMostraCad(false)} className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition">
-            Cancelar
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 
-  return (
-    <div className="p-6 max-w-2xl mx-auto">
-      {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
+          {msg && (
+            <div className={`mb-6 p-4 rounded-lg text-sm font-semibold border ${msg.startsWith('✅') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+              {msg}
+            </div>
+          )}
 
-      {sel ? (
-        <div>
-          <button onClick={voltar} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
-            ← Voltar
-          </button>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-5 bg-gradient-to-r from-red-600 to-red-700">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white">
-                  <MapPin size={24} />
-                </div>
-                <div>
-                  <h2 className="text-white font-bold text-xl flex items-center gap-2">
-                    {sel.motorista}
-                    {editEmFerias && <span className="text-xs bg-orange-400 px-2 py-0.5 rounded-full flex items-center gap-1"><Palmtree size={10} /> Férias</span>}
-                  </h2>
-                  <p className="text-white/80 text-sm">
-                    {editCaminhaoPlaca || sel.caminhao_placa} · {sel.status}{sel.empresa && ` · ${sel.empresa}`}
-                  </p>
-                </div>
-              </div>
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-8 py-8">
+              <h2 className="text-white font-black text-3xl tracking-tight">Registrar Viagem</h2>
+              <p className="text-purple-100 text-sm font-medium mt-2">Preencha os dados da viagem e selecione os contratos</p>
             </div>
 
-            <div className="p-5 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={LC}>Motorista *</label>
-                  <select value={editMotorista} onChange={async e => {
+            <div className="p-8 space-y-8">
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                    <Users size={14} /> Motorista *
+                  </label>
+                  <select value={cadMotorista} onChange={async e => {
                     const nome = e.target.value
-                    setEditMotorista(nome)
-                    // Auto-preenche caminhão
-                    await onMotoristaChange(nome, setEditCaminhaoId, setEditCaminhaoPlaca)
-                    // Recalcula adiantamento
-                    const totalValor = editContratos.reduce((s, c) => s + (c.fat_bruto || 0), 0)
-                    if (totalValor > 0) setEditValorAdiantamento(calcularAdiantamento(nome, totalValor))
-                  }} className={IC}>
+                    setCadMotorista(nome)
+                    await onMotoristaChange(nome, setCadCaminhaoId, setCadCaminhaoPlaca)
+                  }} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all">
                     <option value="">Selecione...</option>
                     {motoristas.map(m => (
                       <option key={m.id} value={m.nome}>
-                        {m.nome} {m.adiantamento ? '· 💰' : ''}{m.ferias ? ' · 🌴' : ''}
+                        {m.nome} {m.adiantamento ? '💰' : ''}{m.ferias ? ' 🌴' : ''}
                       </option>
                     ))}
                   </select>
-                  {editMotorista && (
-                    <div className="flex flex-col gap-0.5 mt-1">
-                      {editTemAdiantamento
-                        ? <span className="text-xs text-green-600 font-medium">✅ Com adiantamento (5% do frete)</span>
-                        : <span className="text-xs text-gray-400">❌ Sem adiantamento</span>}
-                      {editEmFerias && <span className="text-xs text-orange-500 font-medium">🌴 Motorista em férias</span>}
+                  {cadMotorista && (
+                    <div className="flex flex-col gap-1 mt-2 text-xs">
+                      {cadTemAdiantamento
+                        ? <span className="text-emerald-600 font-medium">✅ Com adiantamento (5% do frete)</span>
+                        : <span className="text-slate-500">❌ Sem adiantamento</span>}
                     </div>
                   )}
                 </div>
-                <div>
-                  <label className={LC}>Caminhão *</label>
-                  <select value={editCaminhaoId} onChange={e => {
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                    <Truck size={14} /> Caminhão *
+                  </label>
+                  <select value={cadCaminhaoId} onChange={e => {
                     const cam = caminhoes.find(c => c.id === e.target.value)
-                    setEditCaminhaoId(e.target.value); setEditCaminhaoPlaca(cam?.placa || '')
-                  }} className={IC}>
+                    setCadCaminhaoId(e.target.value); setCadCaminhaoPlaca(cam?.placa || '')
+                  }} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all">
                     <option value="">Selecione...</option>
                     {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
                   </select>
-                  {editCaminhaoPlaca && (
-                    <p className="text-xs text-green-600 mt-1">✅ {editCaminhaoPlaca}</p>
+                  {cadCaminhaoPlaca && (
+                    <p className="text-xs text-emerald-600 mt-2 font-medium">✅ {cadCaminhaoPlaca}</p>
                   )}
                 </div>
               </div>
 
-              <div>
-                <label className={LC}>Status</label>
-                <select value={editStatus} onChange={e => setEditStatus(e.target.value)} className={IC}>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Status</label>
+                <select value={cadStatus} onChange={e => setCadStatus(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all">
                   <option value="EM ANDAMENTO">EM ANDAMENTO</option>
                   <option value="FINALIZADA">FINALIZADA</option>
                   <option value="CANCELADA">CANCELADA</option>
                 </select>
               </div>
 
-              <div>
-                <label className={LC}>Contratos vinculados</label>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Contratos Vinculados</label>
                 <ContratoSelector
-                  selecionados={editContratos}
-                  todos={[...contratos, ...editContratos.filter(ec => !contratos.find(c => c.id === ec.id))]}
-                  onChange={setEditContratos}
-                  nomeMotorista={editMotorista}
-                  setCampos={(dados) => { setEditEmpresa(dados.empresa); setEditValorContrato(dados.valorContrato); setEditQtdVeiculos(dados.qtdVeiculos); setEditOrigem(dados.origem); setEditDestino(dados.destino); setEditValorAdiantamento(dados.adiantamento) }}
+                  selecionados={cadContratos}
+                  todos={[...contratos, ...cadContratos.filter(ec => !contratos.find(c => c.id === ec.id))]}
+                  onChange={setCadContratos}
+                  nomeMotorista={cadMotorista}
+                  setCampos={(dados) => { setCadEmpresa(dados.empresa); setCadValorContrato(dados.valorContrato); setCadQtdVeiculos(dados.qtdVeiculos); setCadOrigem(dados.origem); setCadDestino(dados.destino); setCadValorAdiantamento(dados.adiantamento) }}
                   calcularAdiantamento={calcularAdiantamento}
                   aplicarDadosContratos={aplicarDadosContratos}
                 />
               </div>
 
-              <div className="p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-3">
-                <p className="text-xs font-bold text-gray-500 uppercase">Dados da carga</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className={LC}>Empresa</label><input value={editEmpresa} onChange={e => setEditEmpresa(e.target.value)} className={IC} /></div>
-                  <div><label className={LC}>Qtd Veículos</label><input type="number" value={editQtdVeiculos} onChange={e => setEditQtdVeiculos(e.target.value)} className={IC} /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className={LC}>Origem</label><input value={editOrigem} onChange={e => setEditOrigem(e.target.value)} className={IC} /></div>
-                  <div><label className={LC}>Destino</label><input value={editDestino} onChange={e => setEditDestino(e.target.value)} className={IC} /></div>
-                </div>
-                <div>
-                  <label className={LC}>Valor do Contrato (R$)</label>
-                  <input type="number" step="0.01" value={editValorContrato} onChange={e => {
-                    setEditValorContrato(e.target.value)
-                    setEditValorAdiantamento(calcularAdiantamento(editMotorista, parseFloat(e.target.value) || 0))
-                  }} className={IC} />
-                </div>
-              </div>
-
-              <div className="p-3 bg-green-50 rounded-xl border border-green-100 space-y-3">
-                <p className="text-xs font-bold text-green-700 uppercase">Valores financeiros</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={LC}>Adiantamento (R$)</label>
-                    <input type="number" step="0.01" value={editValorAdiantamento} onChange={e => setEditValorAdiantamento(e.target.value)} className={IC} />
-                    <p className="text-xs text-gray-400 mt-0.5">{editTemAdiantamento ? '5% do frete — editável' : 'Motorista sem adiantamento'}</p>
+              <div className="p-6 bg-slate-50 rounded-lg border border-slate-200 space-y-4">
+                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Dados da Carga</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Empresa</label>
+                    <input value={cadEmpresa} onChange={e => setCadEmpresa(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all" />
                   </div>
-                  <div><label className={LC}>Chapa (R$)</label><input type="number" step="0.01" value={editValorChapa} onChange={e => setEditValorChapa(e.target.value)} placeholder="250,00" className={IC} /></div>
-                </div>
-              </div>
-
-              <div><label className={LC}>Observações</label><textarea value={editObs} onChange={e => setEditObs(e.target.value)} rows={2} className={IC} /></div>
-
-              <div className="flex gap-2 pt-4">
-                <button onClick={salvar} disabled={loading}
-                  className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
-                  <Save size={15} /> Salvar alterações
-                </button>
-                <button onClick={() => setConfirmExcluir(true)}
-                  className="flex items-center gap-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl px-4 py-2.5 text-sm transition">
-                  <Trash2 size={15} />
-                </button>
-              </div>
-
-              {confirmExcluir && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl mt-3">
-                  <p className="text-sm text-red-700 font-medium mb-3">⚠️ Excluir esta viagem?</p>
-                  <div className="flex gap-2">
-                    <button onClick={excluir} className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium">Confirmar</button>
-                    <button onClick={() => setConfirmExcluir(false)} className="flex-1 border border-gray-300 rounded-lg py-2 text-sm">Cancelar</button>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Qtd. Veículos</label>
+                    <input type="number" value={cadQtdVeiculos} onChange={e => setCadQtdVeiculos(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all" />
                   </div>
                 </div>
-              )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                      <MapPin size={14} /> Origem
+                    </label>
+                    <input value={cadOrigem} onChange={e => setCadOrigem(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                      <MapPin size={14} /> Destino
+                    </label>
+                    <input value={cadDestino} onChange={e => setCadDestino(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                    <DollarSign size={14} /> Valor do Contrato (R$)
+                  </label>
+                  <input type="number" step="0.01" value={cadValorContrato} onChange={e => setCadValorContrato(e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all" />
+                </div>
+              </div>
+
+              <div className="p-6 bg-emerald-50 rounded-lg border border-emerald-200 space-y-4">
+                <h3 className="text-sm font-bold text-emerald-900 uppercase tracking-wider">Valores Financeiros</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Adiantamento (R$)</label>
+                    <input type="number" step="0.01" value={cadValorAdiantamento} onChange={e => setCadValorAdiantamento(e.target.value)} className="w-full px-4 py-3 border border-emerald-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all" />
+                    <p className="text-xs text-emerald-600 mt-1">{cadTemAdiantamento ? '5% do frete — editável' : 'Motorista sem adiantamento'}</p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Chapa (R$)</label>
+                    <input type="number" step="0.01" value={cadValorChapa} onChange={e => setCadValorChapa(e.target.value)} placeholder="250,00" className="w-full px-4 py-3 border border-emerald-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Observações</label>
+                <textarea value={cadObs} onChange={e => setCadObs(e.target.value)} rows={3} className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all resize-none" />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button onClick={cadastrar} disabled={loading || !cadMotorista || !cadCaminhaoId}
+                  className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg py-3 text-sm font-semibold transition">
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  Registrar Viagem
+                </button>
+                <button onClick={() => setMostraCad(false)} className="flex-1 border border-slate-300 text-slate-700 rounded-lg py-3 text-sm font-semibold hover:bg-slate-50 transition">
+                  Cancelar
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between mb-5">
-            <h1 className="text-2xl font-bold text-gray-900">Viagens</h1>
-            {perm !== 'view' && (
-              <button onClick={() => setMostraCad(true)}
-                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition shadow-sm">
-                <Plus size={16} /> Registrar
-              </button>
-            )}
+
+        {msg && (
+          <div className="fixed bottom-6 right-6 p-4 rounded-lg shadow-lg font-semibold text-sm animate-bounce"
+            style={{
+              backgroundColor: msg.startsWith('✅') ? '#10b981' : '#f59e0b',
+              color: 'white'
+            }}>
+            {msg}
           </div>
-          <div className="relative mb-4">
-            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Viagens</h1>
+            <p className="text-slate-600 font-medium">Gerencie todas as viagens registradas</p>
+          </div>
+          {perm !== 'view' && (
+            <button onClick={() => setMostraCad(true)}
+              className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors shadow-lg">
+              <Plus size={18} /> Registrar Viagem
+            </button>
+          )}
+        </div>
+
+        <div className="mb-8">
+          <div className="relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={busca} onChange={e => setBusca(e.target.value)}
               placeholder="Buscar por motorista ou placa..."
-              className="w-full pl-11 pr-4 py-3 border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white shadow-sm" />
+              className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm font-medium" />
           </div>
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Viagens</p>
-              <p className="text-xs text-gray-400">{filtrados.length} registro(s)</p>
-            </div>
-            {filtrados.length === 0 ? (
-              <div className="p-10 text-center">
-                <MapPin size={32} className="mx-auto text-gray-200 mb-2" />
-                <p className="text-sm text-gray-400">Nenhuma viagem registrada</p>
-              </div>
-            ) : filtrados.map(v => {
+        </div>
+
+        {filtrados.length === 0 ? (
+          <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+            <MapPin size={48} className="mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-600 font-semibold">Nenhuma viagem registrada</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtrados.map(v => {
               const motFerias = motoristas.find(m => m.nome === v.motorista)?.ferias
+              const statusColor = v.status === 'FINALIZADA' ? 'from-emerald-600 to-emerald-700' :
+                                 v.status === 'CANCELADA' ? 'from-slate-600 to-slate-700' :
+                                 'from-blue-600 to-blue-700'
               return (
                 <button key={v.id} onClick={() => selecionar(v)}
-                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition border-b border-gray-50 last:border-0 text-left">
-                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 text-red-600">
-                    {motFerias ? <Palmtree size={18} /> : <MapPin size={18} />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                      {v.motorista}
-                      {motFerias && <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full font-semibold">Férias</span>}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {v.caminhao_placa}{v.empresa && ` · ${v.empresa}`}
-                      {v.origem && ` · ${v.origem} → ${v.destino}`}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    {v.valor_contrato > 0 && (
-                      <p className="text-xs font-semibold text-gray-700 mb-1">
-                        {v.valor_contrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  className="bg-white rounded-xl border border-slate-200 overflow-hidden hover:shadow-lg hover:border-slate-300 transition-all text-left group">
+                  <div className={`bg-gradient-to-r ${statusColor} px-5 py-4 text-white`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-bold text-sm flex items-center gap-2">
+                        {v.motorista}
+                        {motFerias && <span className="text-[10px] bg-orange-400 px-1.5 py-0.5 rounded-full">🌴</span>}
                       </p>
+                      <span className="text-xs font-semibold opacity-90">{v.status}</span>
+                    </div>
+                    <p className="text-sm opacity-90">{v.caminhao_placa}</p>
+                  </div>
+                  <div className="p-5 space-y-3">
+                    {v.empresa && <p className="text-sm font-semibold text-slate-900">{v.empresa}</p>}
+                    {(v.origem || v.destino) && (
+                      <div className="flex items-center gap-2 text-xs text-slate-600">
+                        <MapPin size={14} />
+                        <span>{v.origem} → {v.destino}</span>
+                      </div>
                     )}
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      v.status === 'FINALIZADA' ? 'bg-green-100 text-green-700' :
-                      v.status === 'CANCELADA'  ? 'bg-red-100 text-red-700' :
-                      'bg-blue-100 text-blue-700'
-                    }`}>{v.status}</span>
+                    {v.valor_contrato > 0 && (
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                        <span className="text-xs text-slate-600">Contrato:</span>
+                        <span className="font-bold text-emerald-600">{v.valor_contrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                      </div>
+                    )}
                   </div>
                 </button>
               )
             })}
           </div>
-        </>
+        )}
+      </div>
+
+      {msg && (
+        <div className="fixed bottom-6 right-6 p-4 rounded-lg shadow-lg font-semibold text-sm animate-bounce"
+          style={{
+            backgroundColor: msg.startsWith('✅') ? '#10b981' : '#f59e0b',
+            color: 'white'
+          }}>
+          {msg}
+        </div>
       )}
     </div>
   )
