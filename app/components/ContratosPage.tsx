@@ -75,21 +75,43 @@ export default function ContratosPage() {
           .lte('data', `${filtroAno}-${mesStr}-${ultimoDia}`)
       }
 
-      const { data } = await query
+      const { data, error } = await query
+      if (error) {
+        console.error('Erro ao buscar contratos:', error)
+        return
+      }
       if (data) setContratos(data as Contrato[])
+    } catch (error) {
+      console.error('Erro ao buscar contratos:', error)
     } finally {
       setLoadingLista(false)
     }
   }
 
+  // Carrega dados estáticos (motoristas, clientes, carretas) apenas uma vez na montagem do componente
   useEffect(() => {
-    Promise.all([
-      fetch_(),
-      // CORREÇÃO: Buscar motoristas diretamente do Supabase ao invés de usar motoristasAPI
-      supabase.from('motoristas').select('id, nome, cpf, caminhao_id').order('nome').then(({ data }) => data && setMotoristas(data)),
-      supabase.from('clientes').select('id, nome, cnpj').order('nome').then(({ data }) => data && setClientes(data)),
-      supabase.from('carretas').select('id, placa').order('placa').then(({ data }) => data && setCarretas(data))
-    ])
+    const carregarDadosEstaticos = async () => {
+      try {
+        const [motoristasRes, clientesRes, carretasRes] = await Promise.all([
+          supabase.from('motoristas').select('id, nome, cpf, caminhao_id').order('nome'),
+          supabase.from('clientes').select('id, nome, cnpj').order('nome'),
+          supabase.from('carretas').select('id, placa').order('placa')
+        ])
+
+        if (motoristasRes.data) setMotoristas(motoristasRes.data)
+        if (clientesRes.data) setClientes(clientesRes.data)
+        if (carretasRes.data) setCarretas(carretasRes.data)
+      } catch (error) {
+        console.error('Erro ao carregar dados estáticos:', error)
+      }
+    }
+
+    carregarDadosEstaticos()
+  }, []) // Sem dependências - carrega apenas uma vez
+
+  // Carrega contratos quando os filtros mudam
+  useEffect(() => {
+    fetch_()
   }, [filtroMes, filtroAno])
 
   function handleSelectCliente(id: string) {
