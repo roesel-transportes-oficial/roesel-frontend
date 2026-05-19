@@ -530,7 +530,7 @@ export default function ViagemPage() {
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
           <div>
             <h1 className="text-5xl font-black tracking-tighter mb-3" style={{ color: COLORS.textMain }}>Viagens</h1>
-            <p className="text-sm font-medium" style={{ color: COLORS.textSub }}>Gestão operacional da Roesel Transportes</p>
+            
           </div>
           <button onClick={() => setMostraCad(true)}
             className="flex items-center gap-2 text-white px-8 py-3.5 rounded-xl text-sm font-black shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]" style={{ backgroundColor: COLORS.brand }}>
@@ -612,9 +612,7 @@ export default function ViagemPage() {
           )}
         </div>
         
-        <div className="mt-8 text-center">
-          <p className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: COLORS.textSub }}>Roesel Transportes © 2024</p>
-        </div>
+        
       </div>
 
       {msg && (
