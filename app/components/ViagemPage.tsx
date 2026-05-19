@@ -1,19 +1,19 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
-import { Search, Plus, Save, Trash2, MapPin, X, Palmtree, ArrowLeft, AlertCircle, Loader2, Truck, DollarSign, Users, ChevronRight } from 'lucide-react'
+import { Search, Plus, Save, Trash2, MapPin, X, Palmtree, ArrowLeft, AlertCircle, Loader2, Truck, DollarSign, Users, ChevronRight, Filter, MoreHorizontal } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 
-// Cores da Roesel Transportes
+// Paleta Premium Roesel
 const COLORS = {
-  primary: '#A41E34',    // Vermelho Bordô
-  primaryDark: '#8B1A2D', // Vermelho mais escuro
-  primaryLight: '#C92A42', // Vermelho mais claro
-  secondary: '#6B6B6B',  // Cinza escuro
-  secondaryLight: '#8B8B8B', // Cinza claro
-  neutral: '#F5F5F5',    // Cinza neutro para fundo
+  brand: '#A41E34',      // Vermelho Bordô (Acento)
+  textMain: '#1A1A1A',   // Quase preto para textos
+  textSub: '#666666',    // Cinza para subtextos
+  border: '#E5E5E5',     // Borda fina e clara
+  bg: '#F9FAFB',         // Fundo levemente acinzentado
+  white: '#FFFFFF'
 }
 
 interface Viagem {
@@ -38,16 +38,19 @@ function ContratoSelector({ selecionados, todos, onChange, nomeMotorista, setCam
     : todos
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-white" style={{ borderColor: COLORS.secondary }}>
-      <div className="p-3 border-b" style={{ backgroundColor: COLORS.neutral, borderColor: COLORS.secondary }}>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar contrato..."
-          className="w-full text-xs px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 bg-white"
-          style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
+    <div className="border rounded-xl overflow-hidden bg-white shadow-sm" style={{ borderColor: COLORS.border }}>
+      <div className="p-3 border-b bg-gray-50/50" style={{ borderColor: COLORS.border }}>
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar contrato..."
+            className="w-full text-sm pl-9 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-1 bg-white transition-all"
+            style={{ borderColor: COLORS.border, '--tw-ring-color': COLORS.brand } as any} />
+        </div>
       </div>
       {selecionados.length > 0 && (
-        <div className="p-3 flex flex-wrap gap-2 border-b" style={{ backgroundColor: `${COLORS.primary}15`, borderColor: COLORS.secondary }}>
+        <div className="p-3 flex flex-wrap gap-2 border-b bg-white" style={{ borderColor: COLORS.border }}>
           {selecionados.map(c => (
-            <span key={c.id} className="inline-flex items-center gap-2 text-xs text-white px-3 py-1.5 rounded-full font-medium" style={{ backgroundColor: COLORS.primary }}>
+            <span key={c.id} className="inline-flex items-center gap-2 text-[11px] text-white px-3 py-1 rounded-md font-bold uppercase tracking-wider" style={{ backgroundColor: COLORS.brand }}>
               #{c.contrato} · {c.cliente}
               <button onClick={() => {
                 const nova = selecionados.filter(s => s.id !== c.id)
@@ -60,18 +63,21 @@ function ContratoSelector({ selecionados, todos, onChange, nomeMotorista, setCam
           ))}
         </div>
       )}
-      <div className="max-h-48 overflow-y-auto">
+      <div className="max-h-40 overflow-y-auto">
         {filtrados.filter(c => !selecionados.find(s => s.id === c.id)).map(c => (
           <button key={c.id} onClick={() => {
             const nova = [...selecionados, c]
             onChange(nova)
             const dados = aplicarDadosContratos(nova, nomeMotorista)
             if (dados) setCampos(dados)
-          }} className="w-full text-left px-4 py-3 text-xs border-b last:border-0 transition-colors hover:bg-gray-50" style={{ borderColor: COLORS.secondary }}>
-            <span className="font-semibold" style={{ color: COLORS.primary }}>#{c.contrato}</span>
-            <span className="text-gray-600 ml-2">{c.cliente}</span>
-            {c.origem && <span className="text-gray-500 ml-2">· {c.origem} → {c.destino}</span>}
-            {c.fat_bruto > 0 && <span className="ml-2 font-medium" style={{ color: COLORS.secondary }}>· R$ {c.fat_bruto?.toLocaleString('pt-BR')}</span>}
+          }} className="w-full text-left px-4 py-3 text-xs border-b last:border-0 transition-colors hover:bg-gray-50" style={{ borderColor: COLORS.border }}>
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="font-bold" style={{ color: COLORS.textMain }}>#{c.contrato}</span>
+                <span className="ml-2" style={{ color: COLORS.textSub }}>{c.cliente}</span>
+              </div>
+              {c.fat_bruto > 0 && <span className="font-bold" style={{ color: COLORS.brand }}>R$ {c.fat_bruto?.toLocaleString('pt-BR')}</span>}
+            </div>
           </button>
         ))}
       </div>
@@ -384,85 +390,89 @@ export default function ViagemPage() {
     showMsg('✅ Viagem registrada!')
   }
 
-  const cadTemAdiantamento = motoristas.find(m => m.nome === cadMotorista)?.adiantamento
-  const editTemAdiantamento = motoristas.find(m => m.nome === editMotorista)?.adiantamento
-  const editEmFerias = motoristas.find(m => m.nome === editMotorista)?.ferias
-
-  // TELA DE CADASTRO OU EDIÇÃO
+  // TELA DE CADASTRO OU EDIÇÃO (MINIMALISTA)
   if (mostraCad || sel) {
     const isEdit = !!sel
     return (
-      <div className="min-h-screen p-6" style={{ backgroundColor: COLORS.neutral }}>
-        <div className="max-w-3xl mx-auto">
-          <button onClick={() => { if(isEdit) voltar(); else setMostraCad(false) }} className="inline-flex items-center gap-2 mb-8 font-medium transition-colors group" style={{ color: COLORS.secondary }}>
-            <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" /> Voltar
-          </button>
-
-          {msg && (
-            <div className={`mb-6 p-4 rounded-lg text-sm font-semibold border`} style={{ backgroundColor: msg.startsWith('✅') ? '#D4EDDA' : '#FFF3CD', borderColor: msg.startsWith('✅') ? '#28A745' : '#FFC107', color: msg.startsWith('✅') ? '#155724' : '#856404' }}>
-              {msg}
+      <div className="min-h-screen p-8" style={{ backgroundColor: COLORS.bg }}>
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-10">
+            <button onClick={() => { if(isEdit) voltar(); else setMostraCad(false) }} className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest transition-all hover:opacity-70" style={{ color: COLORS.textSub }}>
+              <ArrowLeft size={16} /> Voltar
+            </button>
+            <div className="flex items-center gap-3">
+              {isEdit && (
+                <button onClick={() => setConfirmExcluir(true)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                  <Trash2 size={18} />
+                </button>
+              )}
+              <button onClick={isEdit ? salvar : cadastrar} disabled={loading}
+                className="flex items-center gap-2 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm transition-all hover:brightness-110 disabled:opacity-50" style={{ backgroundColor: COLORS.brand }}>
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                {isEdit ? 'Salvar' : 'Registrar'}
+              </button>
             </div>
-          )}
+          </div>
 
-          <div className="bg-white rounded-2xl shadow-lg border" style={{ borderColor: COLORS.secondary }}>
-            <div className="px-8 py-8" style={{ background: `linear-gradient(135deg, ${COLORS.primary} 0%, ${COLORS.primaryDark} 100%)` }}>
-              <h2 className="text-white font-black text-3xl tracking-tight">{isEdit ? 'Editar Viagem' : 'Registrar Viagem'}</h2>
-              <p className="text-white opacity-90 text-sm font-medium mt-2">
-                {isEdit ? `Editando viagem de ${editMotorista}` : 'Preencha os dados da viagem e selecione os contratos'}
-              </p>
+          <div className="bg-white rounded-2xl border shadow-sm overflow-hidden" style={{ borderColor: COLORS.border }}>
+            <div className="p-10 border-b" style={{ borderColor: COLORS.border }}>
+              <h2 className="text-3xl font-black tracking-tight" style={{ color: COLORS.textMain }}>{isEdit ? 'Detalhes da Viagem' : 'Nova Viagem'}</h2>
+              <p className="text-sm mt-2" style={{ color: COLORS.textSub }}>{isEdit ? `ID: ${sel.id}` : 'Preencha as informações necessárias para o registro.'}</p>
             </div>
 
-            <div className="p-8 space-y-8">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                    <Users size={14} /> Motorista *
-                  </label>
-                  <select value={isEdit ? editMotorista : cadMotorista} onChange={async e => {
-                    const nome = e.target.value
-                    if(isEdit) {
-                      setEditMotorista(nome)
-                      await onMotoristaChange(nome, setEditCaminhaoId, setEditCaminhaoPlaca)
-                    } else {
-                      setCadMotorista(nome)
-                      await onMotoristaChange(nome, setCadCaminhaoId, setCadCaminhaoPlaca)
-                    }
-                  }} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any}>
-                    <option value="">Selecione...</option>
-                    {motoristas.map(m => (
-                      <option key={m.id} value={m.nome}>
-                        {m.nome} {m.adiantamento ? '💰' : ''}{m.ferias ? ' 🌴' : ''}
-                      </option>
-                    ))}
-                  </select>
+            <div className="p-10 space-y-12">
+              {/* Seção 1: Operacional */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                <div className="space-y-6">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em]" style={{ color: COLORS.brand }}>Operacional</h3>
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold" style={{ color: COLORS.textSub }}>Motorista</label>
+                      <select value={isEdit ? editMotorista : cadMotorista} onChange={async e => {
+                        const nome = e.target.value
+                        if(isEdit) { setEditMotorista(nome); await onMotoristaChange(nome, setEditCaminhaoId, setEditCaminhaoPlaca) }
+                        else { setCadMotorista(nome); await onMotoristaChange(nome, setCadCaminhaoId, setCadCaminhaoPlaca) }
+                      }} className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-1 transition-all text-sm font-medium" style={{ borderColor: COLORS.border, '--tw-ring-color': COLORS.brand } as any}>
+                        <option value="">Selecione...</option>
+                        {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold" style={{ color: COLORS.textSub }}>Caminhão</label>
+                      <select value={isEdit ? editCaminhaoId : cadCaminhaoId} onChange={e => {
+                        const cam = caminhoes.find(c => c.id === e.target.value)
+                        if(isEdit) { setEditCaminhaoId(e.target.value); setEditCaminhaoPlaca(cam?.placa || '') }
+                        else { setCadCaminhaoId(e.target.value); setCadCaminhaoPlaca(cam?.placa || '') }
+                      }} className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-1 transition-all text-sm font-medium" style={{ borderColor: COLORS.border, '--tw-ring-color': COLORS.brand } as any}>
+                        <option value="">Selecione...</option>
+                        {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                    <Truck size={14} /> Caminhão *
-                  </label>
-                  <select value={isEdit ? editCaminhaoId : cadCaminhaoId} onChange={e => {
-                    const cam = caminhoes.find(c => c.id === e.target.value)
-                    if(isEdit) { setEditCaminhaoId(e.target.value); setEditCaminhaoPlaca(cam?.placa || '') }
-                    else { setCadCaminhaoId(e.target.value); setCadCaminhaoPlaca(cam?.placa || '') }
-                  }} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any}>
-                    <option value="">Selecione...</option>
-                    {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>)}
-                  </select>
+                <div className="space-y-6">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.2em]" style={{ color: COLORS.brand }}>Status & Notas</h3>
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold" style={{ color: COLORS.textSub }}>Status Atual</label>
+                      <select value={isEdit ? editStatus : cadStatus} onChange={e => isEdit ? setEditStatus(e.target.value) : setCadStatus(e.target.value)} className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-1 transition-all text-sm font-medium" style={{ borderColor: COLORS.border, '--tw-ring-color': COLORS.brand } as any}>
+                        <option value="EM ANDAMENTO">EM ANDAMENTO</option>
+                        <option value="FINALIZADA">FINALIZADA</option>
+                        <option value="CANCELADA">CANCELADA</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold" style={{ color: COLORS.textSub }}>Observações</label>
+                      <textarea value={isEdit ? editObs : cadObs} onChange={e => isEdit ? setEditObs(e.target.value) : setCadObs(e.target.value)} rows={1} className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-1 transition-all text-sm font-medium resize-none" style={{ borderColor: COLORS.border, '--tw-ring-color': COLORS.brand } as any} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.secondary }}>Status</label>
-                <select value={isEdit ? editStatus : cadStatus} onChange={e => isEdit ? setEditStatus(e.target.value) : setCadStatus(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any}>
-                  <option value="EM ANDAMENTO">EM ANDAMENTO</option>
-                  <option value="FINALIZADA">FINALIZADA</option>
-                  <option value="CANCELADA">CANCELADA</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.secondary }}>Contratos Vinculados</label>
+              {/* Seção 2: Contratos */}
+              <div className="space-y-6">
+                <h3 className="text-[11px] font-black uppercase tracking-[0.2em]" style={{ color: COLORS.brand }}>Vínculo de Contratos</h3>
                 <ContratoSelector
                   selecionados={isEdit ? editContratos : cadContratos}
                   todos={[...contratos, ...(isEdit ? editContratos.filter(ec => !contratos.find(c => c.id === ec.id)) : cadContratos.filter(ec => !contratos.find(c => c.id === ec.id)))]}
@@ -477,160 +487,138 @@ export default function ViagemPage() {
                 />
               </div>
 
-              <div className="p-6 rounded-lg border" style={{ backgroundColor: `${COLORS.primary}08`, borderColor: COLORS.secondary }}>
-                <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: COLORS.secondary }}>Dados da Carga</h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.secondary }}>Empresa</label>
-                    <input value={isEdit ? editEmpresa : cadEmpresa} onChange={e => isEdit ? setEditEmpresa(e.target.value) : setCadEmpresa(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.secondary }}>Qtd. Veículos</label>
-                    <input type="number" value={isEdit ? editQtdVeiculos : cadQtdVeiculos} onChange={e => isEdit ? setEditQtdVeiculos(e.target.value) : setCadQtdVeiculos(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                      <MapPin size={14} /> Origem
-                    </label>
-                    <input value={isEdit ? editOrigem : cadOrigem} onChange={e => isEdit ? setEditOrigem(e.target.value) : setCadOrigem(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                      <MapPin size={14} /> Destino
-                    </label>
-                    <input value={isEdit ? editDestino : cadDestino} onChange={e => isEdit ? setEditDestino(e.target.value) : setCadDestino(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: COLORS.secondary }}>
-                      <DollarSign size={14} /> Valor do Contrato (R$)
-                    </label>
-                    <input type="number" step="0.01" value={isEdit ? editValorContrato : cadValorContrato} onChange={e => isEdit ? setEditValorContrato(e.target.value) : setCadValorContrato(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
-                  </div>
+              {/* Seção 3: Financeiro & Carga */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-8 rounded-2xl" style={{ backgroundColor: COLORS.bg }}>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: COLORS.textSub }}>Valor Frete</label>
+                  <input type="number" step="0.01" value={isEdit ? editValorContrato : cadValorContrato} onChange={e => isEdit ? setEditValorContrato(e.target.value) : setCadValorContrato(e.target.value)} className="w-full bg-transparent text-xl font-black focus:outline-none" style={{ color: COLORS.textMain }} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: COLORS.textSub }}>Adiantamento</label>
+                  <input type="number" step="0.01" value={isEdit ? editValorAdiantamento : cadValorAdiantamento} onChange={e => isEdit ? setEditValorAdiantamento(e.target.value) : setCadValorAdiantamento(e.target.value)} className="w-full bg-transparent text-xl font-black focus:outline-none" style={{ color: COLORS.brand }} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest" style={{ color: COLORS.textSub }}>Chapa</label>
+                  <input type="number" step="0.01" value={isEdit ? editValorChapa : cadValorChapa} onChange={e => isEdit ? setEditValorChapa(e.target.value) : setCadValorChapa(e.target.value)} className="w-full bg-transparent text-xl font-black focus:outline-none" style={{ color: COLORS.textMain }} />
                 </div>
               </div>
-
-              <div className="p-6 rounded-lg border" style={{ backgroundColor: `${COLORS.primary}08`, borderColor: COLORS.primary }}>
-                <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: COLORS.primary }}>Valores Financeiros</h3>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.primary }}>Adiantamento (R$)</label>
-                    <input type="number" step="0.01" value={isEdit ? editValorAdiantamento : cadValorAdiantamento} onChange={e => isEdit ? setEditValorAdiantamento(e.target.value) : setCadValorAdiantamento(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.primary, '--tw-ring-color': COLORS.primary } as any} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-wider" style={{ color: COLORS.primary }}>Chapa (R$)</label>
-                    <input type="number" step="0.01" value={isEdit ? editValorChapa : cadValorChapa} onChange={e => isEdit ? setEditValorChapa(e.target.value) : setCadValorChapa(e.target.value)} placeholder="250,00" className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all" style={{ borderColor: COLORS.primary, '--tw-ring-color': COLORS.primary } as any} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button onClick={isEdit ? salvar : cadastrar} disabled={loading}
-                  className="flex-1 flex items-center justify-center gap-2 text-white rounded-lg py-3 text-sm font-semibold transition disabled:opacity-50" style={{ backgroundColor: COLORS.primary }}>
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  {isEdit ? 'Salvar Alterações' : 'Registrar Viagem'}
-                </button>
-                {isEdit && (
-                  <button onClick={() => setConfirmExcluir(true)} className="px-4 border rounded-lg text-red-600 border-red-200 hover:bg-red-50 transition">
-                    <Trash2 size={18} />
-                  </button>
-                )}
-              </div>
-
-              {confirmExcluir && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl mt-3">
-                  <p className="text-sm text-red-700 font-medium mb-3">⚠️ Excluir esta viagem?</p>
-                  <div className="flex gap-2">
-                    <button onClick={excluir} className="flex-1 bg-red-600 text-white rounded-lg py-2 text-sm font-medium">Confirmar</button>
-                    <button onClick={() => setConfirmExcluir(false)} className="flex-1 border border-gray-300 rounded-lg py-2 text-sm">Cancelar</button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
+
+          {confirmExcluir && (
+            <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+              <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center">
+                <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
+                <h3 className="text-xl font-black mb-2">Confirmar Exclusão</h3>
+                <p className="text-sm text-gray-500 mb-8">Esta ação não pode ser desfeita. Deseja realmente excluir esta viagem?</p>
+                <div className="flex gap-3">
+                  <button onClick={excluir} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold text-sm">Excluir</button>
+                  <button onClick={() => setConfirmExcluir(false)} className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-bold text-sm">Cancelar</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
   }
 
-  // TELA DA LISTA (VERTICAL)
+  // TELA DA LISTA (PREMIUM MINIMALISTA)
   return (
-    <div className="min-h-screen p-6" style={{ backgroundColor: COLORS.neutral }}>
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+    <div className="min-h-screen p-10" style={{ backgroundColor: COLORS.bg }}>
+      <div className="max-w-5xl mx-auto">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
           <div>
-            <h1 className="text-4xl font-black tracking-tight mb-2" style={{ color: COLORS.primary }}>Viagens</h1>
-            <p className="font-medium" style={{ color: COLORS.secondary }}>Gerencie todas as viagens registradas</p>
+            <h1 className="text-5xl font-black tracking-tighter mb-3" style={{ color: COLORS.textMain }}>Viagens</h1>
+            <p className="text-sm font-medium" style={{ color: COLORS.textSub }}>Gestão operacional da Roesel Transportes</p>
           </div>
-          {perm !== 'view' && (
-            <button onClick={() => setMostraCad(true)}
-              className="inline-flex items-center gap-2 text-white px-6 py-3 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl" style={{ backgroundColor: COLORS.primary }}>
-              <Plus size={18} /> Registrar Viagem
-            </button>
-          )}
+          <button onClick={() => setMostraCad(true)}
+            className="flex items-center gap-2 text-white px-8 py-3.5 rounded-xl text-sm font-black shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]" style={{ backgroundColor: COLORS.brand }}>
+            <Plus size={18} /> Novo Registro
+          </button>
         </div>
 
-        <div className="mb-8">
-          <div className="relative">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: COLORS.secondary }} />
+        <div className="mb-8 flex gap-4">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={busca} onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar por motorista ou placa..."
-              className="w-full pl-12 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent transition-all text-sm font-medium bg-white" style={{ borderColor: COLORS.secondary, '--tw-ring-color': COLORS.primary } as any} />
+              placeholder="Pesquisar motorista, placa ou empresa..."
+              className="w-full pl-12 pr-4 py-4 border rounded-2xl focus:outline-none focus:ring-1 bg-white shadow-sm transition-all text-sm font-medium" style={{ borderColor: COLORS.border, '--tw-ring-color': COLORS.brand } as any} />
           </div>
+          <button className="p-4 bg-white border rounded-2xl shadow-sm hover:bg-gray-50 transition-colors" style={{ borderColor: COLORS.border }}>
+            <Filter size={18} style={{ color: COLORS.textSub }} />
+          </button>
         </div>
 
-        {filtrados.length === 0 ? (
-          <div className="bg-white rounded-xl border p-12 text-center" style={{ borderColor: COLORS.secondary }}>
-            <MapPin size={48} className="mx-auto mb-4" style={{ color: COLORS.secondary, opacity: 0.3 }} />
-            <p className="font-semibold" style={{ color: COLORS.secondary }}>Nenhuma viagem registrada</p>
+        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: COLORS.border }}>
+          <div className="grid grid-cols-12 px-8 py-4 border-b bg-gray-50/50 text-[10px] font-black uppercase tracking-[0.2em]" style={{ borderColor: COLORS.border, color: COLORS.textSub }}>
+            <div className="col-span-4">Motorista / Veículo</div>
+            <div className="col-span-4">Rota / Empresa</div>
+            <div className="col-span-2 text-right">Valor</div>
+            <div className="col-span-2 text-right">Status</div>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {filtrados.map(v => {
-              const motFerias = motoristas.find(m => m.nome === v.motorista)?.ferias
-              return (
+
+          {filtrados.length === 0 ? (
+            <div className="p-20 text-center">
+              <Truck size={40} className="mx-auto mb-4 opacity-10" />
+              <p className="text-sm font-bold" style={{ color: COLORS.textSub }}>Nenhum registro encontrado</p>
+            </div>
+          ) : (
+            <div className="divide-y" style={{ borderColor: COLORS.border }}>
+              {filtrados.map(v => (
                 <button key={v.id} onClick={() => selecionar(v)}
-                  className="w-full bg-white rounded-lg border p-5 hover:shadow-md transition-all text-left flex items-center justify-between group" style={{ borderColor: COLORS.secondary }}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold" style={{ backgroundColor: COLORS.primary }}>
-                        <Truck size={20} />
-                      </div>
-                      <div>
-                        <p className="font-bold" style={{ color: COLORS.primary }}>{v.motorista}</p>
-                        <p className="text-sm" style={{ color: COLORS.secondary }}>{v.caminhao_placa}</p>
-                      </div>
+                  className="w-full grid grid-cols-12 px-8 py-6 items-center hover:bg-gray-50/50 transition-all text-left group relative">
+                  {/* Acento de cor lateral */}
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 rounded-r-full opacity-0 group-hover:opacity-100 transition-all" style={{ backgroundColor: COLORS.brand }}></div>
+                  
+                  <div className="col-span-4 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-sm" style={{ backgroundColor: COLORS.textMain }}>
+                      {v.motorista.charAt(0)}
                     </div>
-                    <div className="flex items-center gap-4 mt-3 text-sm">
-                      {v.empresa && <span style={{ color: COLORS.secondary }}>{v.empresa}</span>}
-                      {(v.origem || v.destino) && (
-                        <div className="flex items-center gap-1" style={{ color: COLORS.secondary }}>
-                          <MapPin size={14} />
-                          <span>{v.origem} → {v.destino}</span>
-                        </div>
-                      )}
-                      {v.valor_contrato > 0 && (
-                        <span className="font-semibold" style={{ color: COLORS.primary }}>
-                          {v.valor_contrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </span>
-                      )}
+                    <div>
+                      <p className="font-black text-sm" style={{ color: COLORS.textMain }}>{v.motorista}</p>
+                      <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: COLORS.textSub }}>{v.caminhao_placa}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 ml-4">
-                    <span className="text-xs font-semibold px-3 py-1 rounded-full" style={{ backgroundColor: `${COLORS.primary}15`, color: COLORS.primary }}>
+
+                  <div className="col-span-4">
+                    <p className="text-xs font-bold truncate" style={{ color: COLORS.textMain }}>{v.empresa || '---'}</p>
+                    <div className="flex items-center gap-1 text-[10px] font-medium mt-1" style={{ color: COLORS.textSub }}>
+                      <MapPin size={10} />
+                      <span>{v.origem || '...'} → {v.destino || '...'}</span>
+                    </div>
+                  </div>
+
+                  <div className="col-span-2 text-right">
+                    <p className="text-sm font-black" style={{ color: COLORS.textMain }}>
+                      {v.valor_contrato > 0 ? v.valor_contrato.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '---'}
+                    </p>
+                  </div>
+
+                  <div className="col-span-2 flex items-center justify-end gap-3">
+                    <span className="text-[10px] font-black px-3 py-1 rounded-full border uppercase tracking-tighter" 
+                      style={{ 
+                        borderColor: v.status === 'FINALIZADA' ? '#D1FAE5' : v.status === 'CANCELADA' ? '#FEE2E2' : '#DBEAFE',
+                        backgroundColor: v.status === 'FINALIZADA' ? '#ECFDF5' : v.status === 'CANCELADA' ? '#FEF2F2' : '#EFF6FF',
+                        color: v.status === 'FINALIZADA' ? '#065F46' : v.status === 'CANCELADA' ? '#991B1B' : '#1E40AF'
+                      }}>
                       {v.status}
                     </span>
-                    {motFerias && <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded-full">🌴</span>}
-                    <ChevronRight size={18} style={{ color: COLORS.secondary }} className="group-hover:translate-x-1 transition-transform" />
+                    <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-all translate-x-[-4px] group-hover:translate-x-0" style={{ color: COLORS.textSub }} />
                   </div>
                 </button>
-              )
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
+        
+        <div className="mt-8 text-center">
+          <p className="text-[10px] font-bold uppercase tracking-[0.3em]" style={{ color: COLORS.textSub }}>Roesel Transportes © 2024</p>
+        </div>
       </div>
 
       {msg && (
-        <div className="fixed bottom-6 right-6 p-4 rounded-lg shadow-lg font-semibold text-sm animate-bounce text-white" style={{ backgroundColor: msg.startsWith('✅') ? '#28A745' : '#FFC107', color: msg.startsWith('✅') ? 'white' : '#333' }}>
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 px-6 py-3 rounded-2xl shadow-2xl text-white text-xs font-black uppercase tracking-widest animate-in fade-in slide-in-from-bottom-4" style={{ backgroundColor: COLORS.textMain }}>
           {msg}
         </div>
       )}
