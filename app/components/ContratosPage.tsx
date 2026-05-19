@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
-import { motoristasAPI } from '../services/api'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { Search, Save, Trash2, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle, Loader2 } from 'lucide-react'
@@ -86,7 +85,8 @@ export default function ContratosPage() {
   useEffect(() => {
     Promise.all([
       fetch_(),
-      motoristasAPI.listar().then(setMotoristas),
+      // CORREÇÃO: Buscar motoristas diretamente do Supabase ao invés de usar motoristasAPI
+      supabase.from('motoristas').select('id, nome, cpf, caminhao_id').order('nome').then(({ data }) => data && setMotoristas(data)),
       supabase.from('clientes').select('id, nome, cnpj').order('nome').then(({ data }) => data && setClientes(data)),
       supabase.from('carretas').select('id, placa').order('placa').then(({ data }) => data && setCarretas(data))
     ])
@@ -354,63 +354,81 @@ export default function ContratosPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className={LabelClass}><DollarSign size={12}/> Frete Contratado (R$)</label>
-                    <input type="number" value={editFatBruto} onChange={e => setEditFatBruto(e.target.value)} className={`${InputClass} text-red-600 font-black`} />
+                    <label className={LabelClass}><DollarSign size={12}/> Faturamento Bruto</label>
+                    <input type="number" step="0.01" value={editFatBruto} onChange={e => setEditFatBruto(e.target.value)} className={InputClass} />
                   </div>
                   <div className="space-y-1">
-                    <label className={LabelClass}>Chapa (R$)</label>
+                    <label className={LabelClass}>Chapa</label>
                     <input type="number" value={editChapa} onChange={e => setEditChapa(e.target.value)} className={InputClass} />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className={LabelClass}>Data Pagamento</label>
-                    <input type="date" value={editDtPagamento} onChange={e => setEditDtPagamento(e.target.value)} className={InputClass} />
-                  </div>
-                  <div className="flex items-center pt-6">
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                      <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${editAdiantamentoPago ? 'bg-red-600 border-red-600' : 'border-gray-200 group-hover:border-red-400'}`}>
-                        {editAdiantamentoPago && <CheckCircle size={14} className="text-white" />}
-                      </div>
-                      <input type="checkbox" checked={editAdiantamentoPago} onChange={e => setEditAdiantamentoPago(e.target.checked)} className="hidden" />
-                      <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Adiantamento Pago</span>
-                    </label>
-                  </div>
+                <div className="space-y-1">
+                  <label className={LabelClass}>Observações</label>
+                  <textarea value={editObs} onChange={e => setEditObs(e.target.value)} rows={3} className={InputClass} />
                 </div>
 
-                <div className="space-y-1">
-                  <label className={LabelClass}>Observações Internas</label>
-                  <textarea value={editObs} onChange={e => setEditObs(e.target.value)} className={`${InputClass} min-h-[100px] font-normal`} placeholder="Notas sobre o contrato..." />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-3 p-3 bg-gray-100 rounded-xl">
+                    <input
+                      type="checkbox"
+                      checked={editAdiantamentoPago}
+                      onChange={e => setEditAdiantamentoPago(e.target.checked)}
+                      className="w-5 h-5 rounded border-gray-300"
+                    />
+                    <label className={LabelClass + ' m-0'}>Adiantamento Pago</label>
+                  </div>
+                  <div className="space-y-1">
+                    <label className={LabelClass}>Data de Pagamento</label>
+                    <input type="date" value={editDtPagamento} onChange={e => setEditDtPagamento(e.target.value)} className={InputClass} />
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="p-8 bg-gray-50 border-t border-gray-100 flex flex-col md:flex-row gap-4">
-              <button onClick={salvar} disabled={loading}
-                className="flex-1 flex items-center justify-center gap-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl py-4 text-sm font-black uppercase tracking-widest transition-all shadow-lg shadow-red-100 active:scale-95">
-                <Save size={18}/> {loading ? 'Salvando...' : 'Salvar alterações'}
+            <div className="px-8 py-6 bg-gray-50 border-t border-gray-100 flex gap-4 justify-end">
+              <button
+                onClick={voltar}
+                className="px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest border border-gray-200 text-gray-600 hover:bg-gray-100 transition-all"
+              >
+                Cancelar
               </button>
-              <button onClick={() => setConfirmExcluir(true)}
-                className="flex items-center justify-center gap-2 border-2 border-red-100 text-red-500 hover:bg-red-50 rounded-2xl px-8 py-4 text-sm font-black uppercase tracking-widest transition-all">
-                <Trash2 size={18}/>
+              <button
+                onClick={() => setConfirmExcluir(true)}
+                className="px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest bg-red-100 text-red-600 hover:bg-red-200 transition-all flex items-center gap-2"
+              >
+                <Trash2 size={14} /> Excluir
+              </button>
+              <button
+                onClick={salvar}
+                disabled={loading}
+                className="px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest bg-red-600 text-white hover:bg-red-700 transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {loading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Salvar
               </button>
             </div>
 
             {confirmExcluir && (
-              <div className="m-8 p-6 bg-red-50 border-2 border-red-100 rounded-3xl">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600">
-                    <AlertCircle size={24} />
-                  </div>
-                  <div>
-                    <p className="text-red-900 font-black text-lg tracking-tight">Excluir Contrato?</p>
-                    <p className="text-red-600/70 text-xs font-bold uppercase tracking-widest">Esta ação não pode ser desfeita.</p>
-                  </div>
+              <div className="px-8 py-6 bg-red-50 border-t border-red-200 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <AlertCircle size={20} className="text-red-600" />
+                  <p className="text-sm font-bold text-red-700">Tem certeza que deseja excluir este contrato?</p>
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={excluir} className="flex-1 bg-red-600 text-white rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-red-700 transition-all">Sim, excluir agora</button>
-                  <button onClick={() => setConfirmExcluir(false)} className="flex-1 bg-white border border-gray-200 text-gray-500 rounded-xl py-3 text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all">Cancelar</button>
+                  <button
+                    onClick={() => setConfirmExcluir(false)}
+                    className="px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest border border-red-300 text-red-600 hover:bg-red-100 transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={excluir}
+                    disabled={loading}
+                    className="px-4 py-2 rounded-lg font-black text-xs uppercase tracking-widest bg-red-600 text-white hover:bg-red-700 transition-all disabled:opacity-50"
+                  >
+                    {loading ? 'Excluindo...' : 'Confirmar Exclusão'}
+                  </button>
                 </div>
               </div>
             )}
@@ -418,117 +436,124 @@ export default function ContratosPage() {
         </div>
       ) : (
         <>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-            <div>
-              <h1 className="text-3xl font-black text-gray-900 tracking-tighter">CONTRATOS</h1>
-              <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">Gestão e monitoramento de fretes</p>
-            </div>
-            <div className="flex gap-2">
-              <select value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))}
-                className="bg-white border border-gray-200 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-500 shadow-sm">
-                <option value={0}>Todos os meses</option>
-                {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-              </select>
-              <select value={filtroAno} onChange={e => setFiltroAno(Number(e.target.value))}
-                className="bg-white border border-gray-200 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-widest focus:outline-none focus:ring-2 focus:ring-red-500 shadow-sm">
-                <option value={2025}>2025</option>
-                <option value={2026}>2026</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest font-black mb-1">Total de Contratos</p>
-              <p className="text-3xl font-black text-gray-900 tracking-tighter">{filtrados.length}</p>
-            </div>
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest font-black mb-1">Faturamento Bruto</p>
-              <p className="text-xl font-black text-red-600 tracking-tighter">
-                {totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </p>
-            </div>
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-              <p className="text-[10px] text-yellow-600 uppercase tracking-widest font-black mb-1">Aguardando Pagto</p>
-              <p className="text-3xl font-black text-yellow-600 tracking-tighter">{abertos}</p>
-            </div>
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
-              <p className="text-[10px] text-green-600 uppercase tracking-widest font-black mb-1">Contratos Pagos</p>
-              <p className="text-3xl font-black text-green-600 tracking-tighter">{pagos}</p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl border border-gray-100 shadow-xl overflow-hidden">
-            <div className="px-8 py-6 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
-              <div className="relative flex-1 max-w-md">
-                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input value={busca} onChange={e => setBusca(e.target.value)}
-                  placeholder="Pesquisar contrato, motorista ou cliente..."
-                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-2xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white shadow-inner" />
+          <div className="max-w-full">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
+              <div>
+                <h1 className="text-4xl font-black text-gray-900 tracking-tighter mb-2">Contratos</h1>
+                <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Gerencie todos os contratos de fretes</p>
               </div>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">{filtrados.length} registros encontrados</p>
+              <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+                <div className="relative flex-1 md:flex-none">
+                  <Search size={16} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por motorista, cliente ou contrato..."
+                    value={busca}
+                    onChange={e => setBusca(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+                  />
+                </div>
+                <select
+                  value={filtroMes}
+                  onChange={e => setFiltroMes(parseInt(e.target.value))}
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+                >
+                  <option value={0}>Todos os meses</option>
+                  {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+                </select>
+                <select
+                  value={filtroAno}
+                  onChange={e => setFiltroAno(parseInt(e.target.value))}
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+                >
+                  {[2024, 2025, 2026].map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-gray-50/30 border-b border-gray-100">
-                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Contrato</th>
-                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Motorista / Cliente</th>
-                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Trajeto</th>
-                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Valor</th>
-                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {loadingLista ? (
-                    <tr>
-                      <td colSpan={5} className="px-8 py-20 text-center">
-                        <div className="flex flex-col items-center gap-3 text-gray-400">
-                          <Loader2 size={28} className="animate-spin text-red-400" />
-                          <p className="text-xs font-black uppercase tracking-widest">Carregando contratos...</p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : filtrados.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-8 py-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest">
-                        Nenhum contrato encontrado
-                      </td>
-                    </tr>
-                  ) : filtrados.map(c => (
-                    <tr key={c.id} onClick={() => selecionar(c)} className="hover:bg-red-50/30 transition-colors cursor-pointer group">
-                      <td className="px-8 py-5">
-                        <p className="text-sm font-black text-gray-900 group-hover:text-red-600 transition-colors">#{c.contrato}</p>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">{fmtData(c.data)}</p>
-                      </td>
-                      <td className="px-8 py-5">
-                        <p className="text-sm font-black text-gray-800">{c.motorista}</p>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase truncate max-w-[200px]">{c.cliente}</p>
-                      </td>
-                      <td className="px-8 py-5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black text-red-600 uppercase">{c.origem || '—'}</span>
-                          <ArrowLeft size={10} className="rotate-180 text-gray-300" />
-                          <span className="text-[10px] font-black text-red-600 uppercase">{c.destino || '—'}</span>
-                        </div>
-                        <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Placa: {c.placa}</p>
-                      </td>
-                      <td className="px-8 py-5">
-                        <p className="text-sm font-black text-gray-900">{(c.fat_bruto || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
-                      </td>
-                      <td className="px-8 py-5 text-right">
-                        <span className={`inline-block px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                          c.status === 'PAGO' ? 'bg-green-100 text-green-700' :
-                          c.status === 'CANCELADO' ? 'bg-gray-100 text-gray-600' :
-                          'bg-yellow-100 text-yellow-700'
-                        }`}>{c.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Faturamento Total</p>
+                    <p className="text-2xl font-black text-gray-900">{totalFat.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                  </div>
+                  <DollarSign size={32} className="text-red-200" />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Contratos Abertos</p>
+                    <p className="text-2xl font-black text-gray-900">{abertos}</p>
+                  </div>
+                  <Clock size={32} className="text-yellow-200" />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Contratos Pagos</p>
+                    <p className="text-2xl font-black text-gray-900">{pagos}</p>
+                  </div>
+                  <CheckCircle size={32} className="text-green-200" />
+                </div>
+              </div>
             </div>
+
+            {loadingLista ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={32} className="animate-spin text-red-600" />
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-100">
+                    <tr>
+                      <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Contrato</th>
+                      <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Motorista</th>
+                      <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Rota</th>
+                      <th className="px-8 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Faturamento</th>
+                      <th className="px-8 py-4 text-right text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filtrados.map(c => (
+                      <tr key={c.id} onClick={() => selecionar(c)} className="group hover:bg-red-50 cursor-pointer transition-colors">
+                        <td className="px-8 py-5">
+                          <p className="text-sm font-black text-gray-900 group-hover:text-red-600 transition-colors">#{c.contrato}</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">{fmtData(c.data)}</p>
+                        </td>
+                        <td className="px-8 py-5">
+                          <p className="text-sm font-black text-gray-800">{c.motorista}</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase truncate max-w-[200px]">{c.cliente}</p>
+                        </td>
+                        <td className="px-8 py-5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-red-600 uppercase">{c.origem || '—'}</span>
+                            <ArrowLeft size={10} className="rotate-180 text-gray-300" />
+                            <span className="text-[10px] font-black text-red-600 uppercase">{c.destino || '—'}</span>
+                          </div>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Placa: {c.placa}</p>
+                        </td>
+                        <td className="px-8 py-5">
+                          <p className="text-sm font-black text-gray-900">{(c.fat_bruto || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                        </td>
+                        <td className="px-8 py-5 text-right">
+                          <span className={`inline-block px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                            c.status === 'PAGO' ? 'bg-green-100 text-green-700' :
+                            c.status === 'CANCELADO' ? 'bg-gray-100 text-gray-600' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>{c.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}
