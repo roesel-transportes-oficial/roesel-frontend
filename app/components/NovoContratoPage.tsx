@@ -1,9 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { contratosAPI, motoristasAPI, caminhoesAPI } from '../services/api'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
+import { supabase } from '../services/supabase'
 
 export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => void }) {
   const [motoristas, setMotoristas] = useState<any[]>([])
@@ -15,10 +12,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const [erro, setErro]             = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [placaLidaIA, setPlacaLidaIA]           = useState('')
+  const [placaLidaIA, setPlacaLidaIA]               = useState('')
   const [placaCarretaLidaIA, setPlacaCarretaLidaIA] = useState('')
-  const [contratoLidoIA, setContratoLidoIA]     = useState(false)
-  const [camposIAAtivos, setCamposIAAtivos]     = useState(false)
+  const [contratoLidoIA, setContratoLidoIA]         = useState(false)
+  const [camposIAAtivos, setCamposIAAtivos]         = useState(false)
 
   const [form, setForm] = useState({
     motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
@@ -28,43 +25,81 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   })
 
   useEffect(() => {
-    motoristasAPI.listar().then(setMotoristas).catch(() => {})
-    fetchClientes()
-    caminhoesAPI.listar().then(setCaminhoes).catch(() => {})
-    fetchCarretas()
+    Promise.all([
+      fetchMotoristas(),
+      fetchClientes(),
+      fetchCaminhoes(),
+      fetchCarretas(),
+    ])
   }, [])
 
-  async function fetchClientes() {
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/clientes?order=nome.asc`, {
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-      })
-      const data = await res.json()
-      setClientes(Array.isArray(data) ? data : [])
-      return Array.isArray(data) ? data : []
-    } catch { return [] }
+  async function fetchMotoristas() {
+    const { data } = await supabase.from('motoristas').select('*').order('nome')
+    if (data) setMotoristas(data)
+  }
+
+  async function fetchClientes(): Promise<any[]> {
+    const { data } = await supabase.from('clientes').select('*').order('nome')
+    const lista = data || []
+    setClientes(lista)
+    return lista
+  }
+
+  async function fetchCaminhoes() {
+    const { data } = await supabase.from('caminhoes').select('*').order('placa')
+    if (data) setCaminhoes(data)
   }
 
   async function fetchCarretas() {
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/carretas?order=placa.asc`, {
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-      })
-      const data = await res.json()
-      setCarretas(Array.isArray(data) ? data : [])
-    } catch {}
+    const { data } = await supabase.from('carretas').select('*').order('placa')
+    if (data) setCarretas(data)
+  }
+
+  // ─── Regra do Chapa ──────────────────────────────────────────────────────
+  function calcularChapa(destino: string, cliente: string): string {
+    const d = destino.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const c = cliente.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+    const semChapa =
+      d.includes('IGARAPE') ||
+      d.includes('BETIM') ||
+      d.includes('GUARUJA') ||
+      d.includes('SANTOS') ||
+      (c.includes('AUTOPORT') && d.includes('JUIZ DE FORA'))
+
+    return semChapa ? '0' : '250'
   }
 
   function handle(e: any) {
     const { name, value, type, checked } = e.target
-    setForm(f => ({ ...f, [name]: type === 'checkbox' ? checked : value }))
+    const novo = type === 'checkbox' ? checked : value
+
+    setForm(f => {
+      const atualizado = { ...f, [name]: novo }
+      // Recalcula chapa automaticamente quando muda destino ou cliente
+      if (name === 'destino' || name === 'cliente') {
+        atualizado.chapa = calcularChapa(
+          name === 'destino' ? novo : f.destino,
+          name === 'cliente' ? novo : f.cliente
+        )
+      }
+      return atualizado
+    })
   }
 
   function selecionarCliente(valor: string) {
-    if (!valor) { setForm(f => ({ ...f, cliente: '', cnpj: '' })); return }
+    if (!valor) {
+      setForm(f => ({ ...f, cliente: '', cnpj: '', chapa: calcularChapa(f.destino, '') }))
+      return
+    }
     const [nome, cnpj] = valor.split('||')
     const cliente = clientes.find(c => c.nome === nome && (c.cnpj || '') === cnpj)
-    setForm(f => ({ ...f, cliente: nome, cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : '' }))
+    setForm(f => ({
+      ...f,
+      cliente: nome,
+      cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : '',
+      chapa: calcularChapa(f.destino, nome),
+    }))
   }
 
   function formatCnpj(v: string) {
@@ -238,16 +273,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     }
     const doisChar = lista.find(c => diffChars(normalizaPlaca(c.placa), placaNorm) <= 2)
     if (doisChar) return doisChar
-    if (placaNorm.length === 6) {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-      for (let i = 0; i <= 6; i++) {
-        for (const char of chars) {
-          const tentativa = normalizaPlaca(placaNorm.slice(0, i) + char + placaNorm.slice(i))
-          const found = lista.find(c => normalizaPlaca(c.placa) === tentativa)
-          if (found) return found
-        }
-      }
-    }
     if (placaNorm.length >= 5) {
       const prefixo = placaNorm.slice(0, 3); const sufixo2 = placaNorm.slice(-2)
       const porPS = lista.find(c => { const p = normalizaPlaca(c.placa); return p.startsWith(prefixo) && p.endsWith(sufixo2) })
@@ -298,6 +323,9 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       const caminhaoEncontrado = encontrarCaminhao(parsed.placa || '')
       const carretaEncontrada  = encontrarCarreta(parsed.placa_carreta || '')
 
+      const nomeCliente = clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || ''
+      const destino     = parsed.destino || ''
+
       setPlacaLidaIA(parsed.placa || '')
       setPlacaCarretaLidaIA(parsed.placa_carreta || '')
       if (parsed.contrato) setContratoLidoIA(true)
@@ -306,11 +334,13 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       setForm(f => ({
         ...f,
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
-        motorista:    motoristaEncontrado ? motoristaEncontrado.nome : '',
-        cliente:      clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || '',
-        cnpj:         parsed.cnpj ? formatCnpj(parsed.cnpj) : clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : '',
-        placa:        caminhaoEncontrado ? caminhaoEncontrado.placa : '',
+        motorista:     motoristaEncontrado ? motoristaEncontrado.nome : '',
+        cliente:       nomeCliente,
+        cnpj:          parsed.cnpj ? formatCnpj(parsed.cnpj) : clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : '',
+        placa:         caminhaoEncontrado ? caminhaoEncontrado.placa : '',
         placa_carreta: carretaEncontrada ? carretaEncontrada.placa : '',
+        // ← Calcula chapa automaticamente com os dados da IA
+        chapa: calcularChapa(destino, nomeCliente),
       }))
     } catch { setErro('Não foi possível ler o documento. Preencha manualmente.') }
     finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
@@ -327,7 +357,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       if (!payload.data) delete payload.data
       if (!payload.dt_pagamento) delete payload.dt_pagamento
 
-      // 1. Salva contrato
+      // 1. Salva contrato + comissão
       const res = await fetch('/api/contratos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -335,61 +365,42 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       })
       if (!res.ok) throw new Error(await res.text())
 
-      // 2. Busca o contrato recém criado pelo número
-      const contratoRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/contratos?contrato=eq.${encodeURIComponent(form.contrato)}&order=created_at.desc&limit=1`,
-        { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
-      )
-      const contratoData = await contratoRes.json()
-      const contratoId = Array.isArray(contratoData) ? contratoData[0]?.id : null
+      // 2. Busca contrato recém criado
+      const { data: contratoData } = await supabase
+        .from('contratos').select('id')
+        .eq('contrato', form.contrato)
+        .order('created_at', { ascending: false })
+        .limit(1).maybeSingle()
+      const contratoId = contratoData?.id || null
 
       if (contratoId) {
         // 3. Busca caminhão pela placa
         let caminhaoId: string | null = null
         if (form.placa) {
-          const camRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/caminhoes?placa=eq.${encodeURIComponent(form.placa)}&limit=1`,
-            { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
-          )
-          const camData = await camRes.json()
-          if (Array.isArray(camData) && camData[0]) caminhaoId = camData[0].id
+          const { data: camData } = await supabase
+            .from('caminhoes').select('id').eq('placa', form.placa).limit(1).maybeSingle()
+          if (camData) caminhaoId = camData.id
         }
 
         // 4. Cria viagem automaticamente
-        const viagemRes = await fetch(`${SUPABASE_URL}/rest/v1/viagens`, {
-          method: 'POST',
-          headers: {
-            apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
-            'Content-Type': 'application/json', Prefer: 'return=representation'
-          },
-          body: JSON.stringify({
-            motorista:      form.motorista,
-            caminhao_id:    caminhaoId,
-            caminhao_placa: form.placa || '',
-            empresa:        form.cliente,
-            origem:         form.origem,
-            destino:        form.destino,
-            valor_contrato: payload.fat_bruto,
-            status:         'EM ANDAMENTO',
-            obs:            `Gerado do contrato #${form.contrato}`
-          })
-        })
-        const viagemData = await viagemRes.json()
-        const viagemId = Array.isArray(viagemData) ? viagemData[0]?.id : null
+        const { data: viagemData } = await supabase.from('viagens').insert({
+          motorista:      form.motorista,
+          caminhao_id:    caminhaoId,
+          caminhao_placa: form.placa || '',
+          empresa:        form.cliente,
+          origem:         form.origem,
+          destino:        form.destino,
+          valor_contrato: payload.fat_bruto,
+          status:         'EM ANDAMENTO',
+          obs:            `Gerado do contrato #${form.contrato}`
+        }).select().maybeSingle()
 
         // 5. Vincula viagem ↔ contrato
-        if (viagemId) {
-          await fetch(`${SUPABASE_URL}/rest/v1/viagem_contratos`, {
-            method: 'POST',
-            headers: {
-              apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
-              'Content-Type': 'application/json', Prefer: 'return=minimal'
-            },
-            body: JSON.stringify({
-              viagem_id:       viagemId,
-              contrato_id:     contratoId,
-              contrato_numero: form.contrato
-            })
+        if (viagemData?.id) {
+          await supabase.from('viagem_contratos').insert({
+            viagem_id:       viagemData.id,
+            contrato_id:     contratoId,
+            contrato_numero: form.contrato
           })
         }
       }
@@ -406,10 +417,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     return ''
   }
 
-  const IC      = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
-  const ICwarn  = "w-full border border-orange-300 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+  const IC        = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+  const ICwarn    = "w-full border border-orange-300 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
   const ICconfirm = "w-full border-2 border-orange-400 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
-  const avisoIA = camposIAAtivos ? <span className="text-xs text-orange-500 font-medium ml-1">⚠️ Confira</span> : null
+  const avisoIA   = camposIAAtivos ? <span className="text-xs text-orange-500 font-medium ml-1">⚠️ Confira</span> : null
 
   return (
     <div className="p-6 max-w-4xl">
@@ -555,7 +566,15 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
             <input name="fat_bruto" type="number" step="0.01" value={form.fat_bruto} onChange={handle} className={IC} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Chapa (R$)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Chapa (R$)
+              {form.chapa === '0' && (
+                <span className="ml-2 text-xs text-green-600 font-medium">✅ sem chapa</span>
+              )}
+              {form.chapa === '250' && (
+                <span className="ml-2 text-xs text-blue-600 font-medium">🔧 R$ 250 calculado</span>
+              )}
+            </label>
             <input name="chapa" type="number" step="0.01" value={form.chapa} onChange={handle} className={IC} />
           </div>
         </div>
