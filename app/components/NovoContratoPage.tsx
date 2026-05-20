@@ -346,68 +346,77 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
   }
 
-  async function salvar(e: any) {
-    e.preventDefault(); setLoading(true); setErro('')
-    try {
-      const payload: any = { ...form }
-      payload.fat_bruto    = parseFloat(payload.fat_bruto) || 0
-      payload.chapa        = parseFloat(payload.chapa) || 0
-      payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
-      payload.placa_carreta = payload.placa_carreta || ''
-      if (!payload.data) delete payload.data
-      if (!payload.dt_pagamento) delete payload.dt_pagamento
+ async function salvar(e: any) {
+  e.preventDefault(); setLoading(true); setErro('')
+  try {
+    // ── Verifica se o número de contrato já existe ──
+    const { data: existente } = await supabase
+      .from('contratos')
+      .select('id')
+      .eq('contrato', form.contrato)
+      .limit(1)
+      .maybeSingle()
 
-      // 1. Salva contrato + comissão
-      const res = await fetch('/api/contratos', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) throw new Error(await res.text())
+    if (existente) {
+      setErro(`⚠️ Contrato #${form.contrato} já está cadastrado. Verifique o número.`)
+      setLoading(false)
+      return
+    }
 
-      // 2. Busca contrato recém criado
-      const { data: contratoData } = await supabase
-        .from('contratos').select('id')
-        .eq('contrato', form.contrato)
-        .order('created_at', { ascending: false })
-        .limit(1).maybeSingle()
-      const contratoId = contratoData?.id || null
+    const payload: any = { ...form }
+    payload.fat_bruto    = parseFloat(payload.fat_bruto) || 0
+    payload.chapa        = parseFloat(payload.chapa) || 0
+    payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
+    payload.placa_carreta = payload.placa_carreta || ''
+    if (!payload.data) delete payload.data
+    if (!payload.dt_pagamento) delete payload.dt_pagamento
 
-      if (contratoId) {
-        // 3. Busca caminhão pela placa
-        let caminhaoId: string | null = null
-        if (form.placa) {
-          const { data: camData } = await supabase
-            .from('caminhoes').select('id').eq('placa', form.placa).limit(1).maybeSingle()
-          if (camData) caminhaoId = camData.id
-        }
+    const res = await fetch('/api/contratos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) throw new Error(await res.text())
 
-        // 4. Cria viagem automaticamente
-        const { data: viagemData } = await supabase.from('viagens').insert({
-          motorista:      form.motorista,
-          caminhao_id:    caminhaoId,
-          caminhao_placa: form.placa || '',
-          empresa:        form.cliente,
-          origem:         form.origem,
-          destino:        form.destino,
-          valor_contrato: payload.fat_bruto,
-          status:         'EM ANDAMENTO',
-          obs:            `Gerado do contrato #${form.contrato}`
-        }).select().maybeSingle()
+    const { data: contratoData } = await supabase
+      .from('contratos').select('id')
+      .eq('contrato', form.contrato)
+      .order('created_at', { ascending: false })
+      .limit(1).maybeSingle()
+    const contratoId = contratoData?.id || null
 
-        // 5. Vincula viagem ↔ contrato
-        if (viagemData?.id) {
-          await supabase.from('viagem_contratos').insert({
-            viagem_id:       viagemData.id,
-            contrato_id:     contratoId,
-            contrato_numero: form.contrato
-          })
-        }
+    if (contratoId) {
+      let caminhaoId: string | null = null
+      if (form.placa) {
+        const { data: camData } = await supabase
+          .from('caminhoes').select('id').eq('placa', form.placa).limit(1).maybeSingle()
+        if (camData) caminhaoId = camData.id
       }
 
-      setAba('contratos')
-    } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
-  }
+      const { data: viagemData } = await supabase.from('viagens').insert({
+        motorista:      form.motorista,
+        caminhao_id:    caminhaoId,
+        caminhao_placa: form.placa || '',
+        empresa:        form.cliente,
+        origem:         form.origem,
+        destino:        form.destino,
+        valor_contrato: payload.fat_bruto,
+        status:         'EM ANDAMENTO',
+        obs:            `Gerado do contrato #${form.contrato}`
+      }).select().maybeSingle()
+
+      if (viagemData?.id) {
+        await supabase.from('viagem_contratos').insert({
+          viagem_id:       viagemData.id,
+          contrato_id:     contratoId,
+          contrato_numero: form.contrato
+        })
+      }
+    }
+
+    setAba('contratos')
+  } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
+}
 
   function clienteSelectValue() {
     const c = clientes.find(c => c.nome === form.cliente && formatCnpj(c.cnpj || '') === form.cnpj)
