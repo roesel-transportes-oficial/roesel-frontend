@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { caminhoesAPI } from '../services/api'
+import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter } from 'lucide-react'
 
@@ -92,9 +92,12 @@ export default function AbastecimentoPage() {
   const [cadDesconto, setCadDesconto]               = useState('')
 
   useEffect(() => {
-    fetch_()
-    caminhoesAPI.listar().then(setCaminhoes).catch(() => {})
-    fetchFornecedores()
+    Promise.all([
+      fetch_(),
+      supabase.from('caminhoes').select('id, placa, modelo, motorista_atual').order('placa')
+        .then(({ data }) => data && setCaminhoes(data)),
+      fetchFornecedores()
+    ])
   }, [])
 
   async function fetch_() {
@@ -538,8 +541,7 @@ export default function AbastecimentoPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtrados.map(a => (
-                <tr key={a.id} onClick={() => selecionar(a)}
-                  className="hover:bg-gray-50 transition-colors cursor-pointer">
+                <tr key={a.id} onClick={() => selecionar(a)} className="hover:bg-gray-50 transition-colors cursor-pointer">
                   <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{fmtData(a.data)}</td>
                   <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{a.caminhao_placa}</td>
                   <td className="px-4 py-3 text-sm text-gray-900 truncate max-w-0">{a.motorista}</td>
@@ -563,4 +565,3 @@ export default function AbastecimentoPage() {
     </div>
   )
 }
- 

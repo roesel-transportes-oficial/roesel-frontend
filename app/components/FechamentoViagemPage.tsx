@@ -113,12 +113,18 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     setMotoristaNome(mot.nome)
 
     async function init() {
-      let q = supabase.from('caminhoes').select('id, placa').eq('motorista_atual', motoristaId)
-      if (mot!.caminhao_id) {
-        q = supabase.from('caminhoes').select('id, placa')
-          .or(`id.eq.${mot!.caminhao_id},motorista_atual.eq.${motoristaId}`)
-      }
-      const { data: cam } = await q.maybeSingle()
+      // ✅ CORREÇÃO: motorista_atual guarda o NOME, não o ID
+      // Busca por caminhao_id do motorista OU pelo nome em motorista_atual
+      let { data: cam } = await supabase
+        .from('caminhoes')
+        .select('id, placa')
+        .or(
+          mot.caminhao_id
+            ? `id.eq.${mot.caminhao_id},motorista_atual.eq.${mot.nome}`
+            : `motorista_atual.eq.${mot.nome}`
+        )
+        .maybeSingle()
+
       if (!cam) return
 
       setCaminhao(cam)
@@ -376,8 +382,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     link.click()
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6 bg-gray-50 min-h-screen">
 
@@ -402,7 +406,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
       {abaAtiva === 'novo' ? (
         <>
-          {/* ── Painel escuro sticky ── */}
           <div className="sticky top-4 z-40">
             <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-2xl border border-gray-800 grid grid-cols-2 md:grid-cols-5 gap-6">
               <div>
@@ -430,8 +433,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-8 space-y-6">
-
-              {/* Motorista + Datas + KM */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
@@ -511,7 +512,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
                 )}
               </div>
 
-              {/* Abastecimentos */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="p-5 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between bg-gray-50/50 gap-4">
                   <div className="flex items-center gap-3">
@@ -595,7 +595,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
               </div>
             </div>
 
-            {/* Contratos */}
             <div className="lg:col-span-4">
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ maxHeight: '900px' }}>
                 <div className="p-5 border-b border-gray-100 bg-gray-50/50 space-y-4">
@@ -663,7 +662,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
             </div>
           </div>
 
-          {/* Salvar */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-6 pt-8 border-t border-gray-200">
             <div className="flex-1 text-sm font-bold">
               {erro    && <span className="text-red-600">⚠️ {erro}</span>}
@@ -677,7 +675,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
           </div>
         </>
       ) : (
-        /* ── HISTÓRICO ── */
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="relative flex-1 max-w-md">
@@ -765,7 +762,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         </div>
       )}
 
-      {/* ── MODAL VISUALIZAÇÃO ── */}
       {visualizando && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden">
@@ -864,7 +860,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         </div>
       )}
 
-      {/* ── MODAL EXCLUSÃO ── */}
       {excluindoId && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-8 text-center">
