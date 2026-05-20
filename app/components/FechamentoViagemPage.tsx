@@ -113,26 +113,26 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     setMotoristaNome(mot.nome)
 
     async function init() {
-      // ✅ CORREÇÃO: motorista_atual guarda o NOME, não o ID
-      // Busca por caminhao_id do motorista OU pelo nome em motorista_atual
-      let { data: cam } = await supabase
-        .from('caminhoes')
-        .select('id, placa')
-        .or(
-          mot.caminhao_id
-            ? `id.eq.${mot.caminhao_id},motorista_atual.eq.${mot.nome}`
-            : `motorista_atual.eq.${mot.nome}`
-        )
-        .maybeSingle()
+  if (!mot) return  // ← guard extra para o TypeScript
 
-      if (!cam) return
+  const orFilter = mot.caminhao_id
+    ? `id.eq.${mot.caminhao_id},motorista_atual.eq.${mot.nome}`
+    : `motorista_atual.eq.${mot.nome}`
 
-      setCaminhao(cam)
-      setCaminhaoBase(cam)
-      setIsSubstituto(false)
+  const { data: cam } = await supabase
+    .from('caminhoes')
+    .select('id, placa')
+    .or(orFilter)
+    .maybeSingle()
 
-      await Promise.all([buscarKmInicial(cam.id), fetchContratos()])
-    }
+  if (!cam) return
+
+  setCaminhao(cam)
+  setCaminhaoBase(cam)
+  setIsSubstituto(false)
+
+  await Promise.all([buscarKmInicial(cam.id), fetchContratos()])
+}
 
     init()
   }, [motoristaId, motoristas])
