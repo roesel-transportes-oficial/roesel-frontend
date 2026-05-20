@@ -166,30 +166,32 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     checkManutencao()
   }, [dataInicio, caminhaoBase])
 
-  // Effect 3: abastecimentos por período — filtra os já usados em fechamentos anteriores
-  useEffect(() => {
-    if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
-      setAbastecimentos([]); setAbastSelecionados(new Set()); return
-    }
-    setCarregandoAbast(true); setErro('')
+ // Effect 3: abastecimentos por período — filtra os já usados em fechamentos anteriores
+useEffect(() => {
+  if (!caminhao?.id || !abastDataInicio || !abastDataFim) {
+    setAbastecimentos([]); setAbastSelecionados(new Set()); return
+  }
+  setCarregandoAbast(true); setErro('')
 
-    Promise.all([
-      supabase.from('abastecimentos')
-        .select('id, data, posto, litros_combustivel, litros_arla, total, km')
-        .eq('caminhao_id', caminhao.id)
-        .gte('data', abastDataInicio)
-        .lte('data', abastDataFim)
-        .order('data'),
-      supabase.from('fechamento_abastecimentos').select('abastecimento_id')
-    ]).then(([{ data, error }, { data: jaUsados }]) => {
-      setCarregandoAbast(false)
+  Promise.all([
+    supabase.from('abastecimentos')
+      .select('id, data, posto, litros_combustivel, litros_arla, total, km')
+      .eq('caminhao_id', caminhao.id)
+      .gte('data', abastDataInicio)
+      .lte('data', abastDataFim)
+      .order('data'),
+    supabase.from('fechamento_abastecimentos').select('abastecimento_id')
+  ])
+    .then(([{ data, error }, { data: jaUsados }]) => {
       if (error) { setErro('Erro: ' + error.message); return }
       const idsUsados = new Set(jaUsados?.map(u => u.abastecimento_id) || [])
       const lista = (data || []).filter(a => !idsUsados.has(a.id))
       setAbastecimentos(lista)
       setAbastSelecionados(new Set(lista.map(a => a.id)))
     })
-  }, [caminhao?.id, abastDataInicio, abastDataFim])
+    .catch(e => setErro('Erro ao carregar abastecimentos: ' + e.message))
+    .finally(() => setCarregandoAbast(false)) // ← garante que o spinner sempre para
+}, [caminhao?.id, abastDataInicio, abastDataFim])
 
   // Effect 4: KM final automático dos abastecimentos selecionados
   useEffect(() => {
