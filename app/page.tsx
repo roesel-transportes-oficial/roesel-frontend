@@ -47,7 +47,6 @@ export default function Home() {
         <div style={{ display: aba === 'motorista'     ? 'block' : 'none' }}><MotoristaPage /></div>
         <div style={{ display: aba === 'caminhao'      ? 'block' : 'none' }}><CaminhaoPage /></div>
         <div style={{ display: aba === 'viagens'       ? 'block' : 'none' }}><ViagemPage /></div>
-        <div style={{ display: aba === 'fechamento'    ? 'block' : 'none' }}><FechamentoViagemPage setAba={setAba} /></div>
         <div style={{ display: aba === 'ferias'        ? 'block' : 'none' }}><FeriasPage /></div>
         <div style={{ display: aba === 'clientes'      ? 'block' : 'none' }}><ClientePage /></div>
         <div style={{ display: aba === 'abastecimento' ? 'block' : 'none' }}><AbastecimentoPage /></div>
@@ -57,8 +56,9 @@ export default function Home() {
         <div style={{ display: aba === 'avarias'       ? 'block' : 'none' }}><AvariasPage /></div>
         <div style={{ display: aba === 'premios'       ? 'block' : 'none' }}><PremiosPage /></div>
 
-        {/* Novo contrato desmonta ao sair (intencional — resetar formulário) */}
-        {aba === 'novo' && <NovoContratoPage setAba={setAba} />}
+        {/* Desmontam ao sair — comportamento intencional */}
+        {aba === 'novo'       && <NovoContratoPage setAba={setAba} />}
+        {aba === 'fechamento' && <FechamentoViagemPage setAba={setAba} />}
 
         {/* Placeholders */}
         {aba === 'usuarios'       && <Placeholder title="Usuários" icon="👥" />}
