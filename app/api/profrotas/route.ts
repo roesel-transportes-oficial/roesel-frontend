@@ -74,10 +74,14 @@ export async function POST(req: Request) {
     let ignorados  = 0
 
     for (const a of autorizados) {
-      const profrotasId  = a.identificador
-      const placaRaw     = a.veiculo?.placa || ''
-      const placaNorm    = placaRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase()
-      const dataTransacao = (a.dataTransacao || a.data || '').split('T')[0]
+      const profrotasId = a.identificador
+      const placaRaw    = a.veiculo?.placa || ''
+      const placaNorm   = placaRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+
+      // ✅ Extrai apenas YYYY-MM-DD do timestamp ISO
+      const dataTransacao = (a.dataTransacao || a.data || '')
+        .toString()
+        .substring(0, 10)
 
       // Verifica duplicata pelo id da Profrotas no campo obs
       const existentes: any[] = await sbGet(
@@ -101,34 +105,34 @@ export async function POST(req: Request) {
         (i.nome || '').toLowerCase().includes('arla')
       )
 
-      const litrosComb    = itemComb?.quantidade    || 0
+      const litrosComb     = itemComb?.quantidade    || 0
       const valorLitroComb = itemComb?.valorUnitario || 0
-      const litrosArla    = itemArla?.quantidade    || 0
+      const litrosArla     = itemArla?.quantidade    || 0
       const valorLitroArla = itemArla?.valorUnitario || 0
-      const total         = items.reduce((s: number, i: any) => s + (i.valorTotal || 0), 0)
+      const total          = items.reduce((s: number, i: any) => s + (i.valorTotal || 0), 0)
 
-      // CNPJ vem como inteiro na API
+      // CNPJ vem como inteiro na API — converte para string com 14 dígitos
       const cnpjStr = a.pontoVenda?.cnpj
         ? String(a.pontoVenda.cnpj).padStart(14, '0')
         : ''
 
       await sbPost('abastecimentos', {
-        data:                   dataTransacao,
-        caminhao_id:            caminhao?.id || null,
-        caminhao_placa:         placaRaw,
-        motorista:              a.motorista?.nome || '',
-        posto:                  a.pontoVenda?.razaoSocial || '',
-        cnpj_posto:             cnpjStr,
-        cidade:                 a.pontoVenda?.endereco?.municipio || '',
-        estado:                 a.pontoVenda?.endereco?.uf || '',
-        km:                     a.hodometro || null,
-        litros_combustivel:     litrosComb,
+        data:                    dataTransacao,
+        caminhao_id:             caminhao?.id || null,
+        caminhao_placa:          placaRaw,
+        motorista:               a.motorista?.nome || '',
+        posto:                   a.pontoVenda?.razaoSocial || '',
+        cnpj_posto:              cnpjStr,
+        cidade:                  a.pontoVenda?.endereco?.municipio || '',
+        estado:                  a.pontoVenda?.endereco?.uf || '',
+        km:                      a.hodometro || null,
+        litros_combustivel:      litrosComb,
         valor_litro_combustivel: valorLitroComb,
-        litros_arla:            litrosArla,
-        valor_litro_arla:       valorLitroArla,
+        litros_arla:             litrosArla,
+        valor_litro_arla:        valorLitroArla,
         total,
-        obs:                    `Profrotas #${profrotasId}`,
-        desconto:               0,
+        obs:                     `Profrotas #${profrotasId}`,
+        desconto:                0,
       })
 
       importados++
