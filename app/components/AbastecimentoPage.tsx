@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
-import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter } from 'lucide-react'
+import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download, X } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -50,6 +50,13 @@ export default function AbastecimentoPage() {
   const [confirmExcluir, setConfirmExcluir] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [viagensCaminhao, setViagensCaminhao] = useState<Viagem[]>([])
+
+  // ── Profrotas ─────────────────────────────────────────────────────────
+  const [mostraProfrotas, setMostraProfrotas]   = useState(false)
+  const [profrotasInicio, setProfrotasInicio]   = useState('')
+  const [profrotasFim, setProfrotasFim]         = useState('')
+  const [importando, setImportando]             = useState(false)
+  const [resultadoImport, setResultadoImport]   = useState<{ importados: number; ignorados: number; total: number } | null>(null)
 
   const [filtroMotorista, setFiltroMotorista] = useState('')
   const [filtroInicio, setFiltroInicio]       = useState('')
@@ -120,6 +127,34 @@ export default function AbastecimentoPage() {
       const data = await supaFetch(`viagens?caminhao_id=eq.${caminhaoId}&order=created_at.desc&limit=20`)
       setViagensCaminhao(Array.isArray(data) ? data : [])
     } catch { setViagensCaminhao([]) }
+  }
+
+  // ── Importar Profrotas ───────────────────────────────────────────────
+  async function importarProfrotas() {
+    if (!profrotasInicio || !profrotasFim) {
+      showMsg('⚠️ Informe o período para importar.')
+      return
+    }
+    setImportando(true)
+    setResultadoImport(null)
+    try {
+      const res = await fetch('/api/profrotas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataInicio: profrotasInicio, dataFim: profrotasFim }),
+      })
+      const json = await res.json()
+      if (!json.ok) {
+        showMsg('❌ ' + (json.error || 'Erro ao importar'))
+        return
+      }
+      setResultadoImport({ importados: json.importados, ignorados: json.ignorados, total: json.total })
+      await fetch_()
+    } catch (e: any) {
+      showMsg('❌ Erro: ' + e.message)
+    } finally {
+      setImportando(false)
+    }
   }
 
   function calcTotal(lc: string, vlc: string, la: string, vla: string, desc: string) {
@@ -300,17 +335,6 @@ export default function AbastecimentoPage() {
     </button>
   )
 
-  const ViagemSelector = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <div>
-      <label className={LC}>Viagem vinculada</label>
-      <select value={value} onChange={e => onChange(e.target.value)} className={IC}>
-        <option value="">Nenhuma</option>
-        {viagensCaminhao.map(v => <option key={v.id} value={v.id}>{labelViagem(v)}</option>)}
-      </select>
-      {viagensCaminhao.length === 0 && <p className="text-xs text-gray-400 mt-1">Nenhuma viagem para este caminhão</p>}
-    </div>
-  )
-
   const FornecedorOptions = () => (
     <>
       <option value="">Selecione...</option>
@@ -334,7 +358,6 @@ export default function AbastecimentoPage() {
     const arla      = modo === 'cad' ? usaArla : editUsaArla
     const desc      = modo === 'cad' ? cadDesconto : editDesconto
     const obs       = modo === 'cad' ? cadObs : editObs
-    const viagemId  = modo === 'cad' ? cadViagemId : editViagemId
 
     const setData      = modo === 'cad' ? setCadData      : setEditData
     const setKm        = modo === 'cad' ? setCadKm        : setEditKm
@@ -348,7 +371,6 @@ export default function AbastecimentoPage() {
     const setArla      = modo === 'cad' ? setUsaArla : setEditUsaArla
     const setDesc      = modo === 'cad' ? setCadDesconto : setEditDesconto
     const setObs       = modo === 'cad' ? setCadObs : setEditObs
-    const setViagemId  = modo === 'cad' ? setCadViagemId : setEditViagemId
 
     return (
       <>
@@ -389,7 +411,6 @@ export default function AbastecimentoPage() {
           </select>
         </div>
         {motorista && <div className="bg-blue-50 rounded-xl p-3"><p className="text-xs text-blue-600 font-medium">Motorista: <span className="text-blue-800">{motorista}</span></p></div>}
-        {camId && <ViagemSelector value={viagemId} onChange={setViagemId}/>}
         <div className="border-t border-gray-100 pt-3">
           <p className={LC + " mb-3"}>Combustível</p>
           <div className="grid grid-cols-2 gap-3">
@@ -486,12 +507,20 @@ export default function AbastecimentoPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto">
       {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
+
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-900">Abastecimentos</h1>
-        <button onClick={() => setMostraCad(true)}
-          className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase hover:bg-red-700 transition">
-          <Plus size={16}/> Novo Abastecimento
-        </button>
+        <div className="flex gap-2">
+          {/* ── Botão Profrotas ── */}
+          <button onClick={() => { setMostraProfrotas(true); setResultadoImport(null) }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition">
+            <Download size={16}/> Importar Profrotas
+          </button>
+          <button onClick={() => setMostraCad(true)}
+            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase hover:bg-red-700 transition">
+            <Plus size={16}/> Novo
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -559,6 +588,66 @@ export default function AbastecimentoPage() {
             <p className="text-sm font-bold text-gray-700">
               Total: <span className="text-red-600">R$ {totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL PROFROTAS ── */}
+      {mostraProfrotas && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-5 bg-blue-600 flex items-center justify-between">
+              <div>
+                <h2 className="text-white font-black text-lg uppercase tracking-tight">Importar Profrotas</h2>
+                <p className="text-blue-200 text-xs mt-0.5">Apenas transações autorizadas serão importadas</p>
+              </div>
+              <button onClick={() => { setMostraProfrotas(false); setResultadoImport(null) }}
+                className="text-white/80 hover:text-white">
+                <X size={24}/>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {!resultadoImport ? (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Data Início</label>
+                      <input type="date" value={profrotasInicio} onChange={e => setProfrotasInicio(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Data Fim</label>
+                      <input type="date" value={profrotasFim} onChange={e => setProfrotasFim(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"/>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400">⚠️ O período máximo permitido pela Profrotas é de 2 meses.</p>
+                  <button onClick={importarProfrotas} disabled={importando || !profrotasInicio || !profrotasFim}
+                    className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest transition disabled:opacity-50">
+                    {importando
+                      ? <><Loader2 size={16} className="animate-spin"/> Importando...</>
+                      : <><Download size={16}/> Importar Abastecimentos</>}
+                  </button>
+                </>
+              ) : (
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                    <span className="text-3xl">✅</span>
+                  </div>
+                  <div>
+                    <p className="text-xl font-black text-gray-900">{resultadoImport.importados} importados</p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      {resultadoImport.ignorados} já existiam · {resultadoImport.total} autorizados no período
+                    </p>
+                  </div>
+                  <button onClick={() => { setMostraProfrotas(false); setResultadoImport(null) }}
+                    className="w-full bg-gray-900 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-black transition">
+                    Fechar
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
