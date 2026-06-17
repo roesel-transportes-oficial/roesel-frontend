@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 1500,
       messages: [{
         role: 'user',
@@ -157,8 +157,22 @@ JSON de retorno (SOMENTE isso):
     })
   })
 
+  // ✅ Verifica se a chamada para a Claude API falhou
+  if (!response.ok) {
+    const errorBody = await response.text()
+    console.error('Erro Anthropic API:', response.status, errorBody)
+    return NextResponse.json({ _erro: `Erro ${response.status}: ${errorBody}` }, { status: 200 })
+  }
+
   const data = await response.json()
-  const text = data.content?.[0]?.text || '{}'
+
+  // ✅ Verifica se a resposta não tem o conteúdo esperado
+  if (!data.content || !data.content[0]?.text) {
+    console.error('Resposta inesperada da Anthropic:', JSON.stringify(data))
+    return NextResponse.json({ _erro: 'Resposta vazia da IA: ' + JSON.stringify(data) }, { status: 200 })
+  }
+
+  const text = data.content[0].text
 
   try {
     const parsed = JSON.parse(text.trim())
@@ -243,6 +257,7 @@ JSON de retorno (SOMENTE isso):
 
     return NextResponse.json(parsed)
   } catch {
+    console.error('Erro ao parsear JSON da IA:', text)
     return NextResponse.json({ _erro: text }, { status: 200 })
   }
 }
