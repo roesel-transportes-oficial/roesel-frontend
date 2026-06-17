@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { Search, Save, Trash2, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle, Loader2 } from 'lucide-react'
@@ -24,6 +24,7 @@ const LabelClass = "text-[10px] font-black text-gray-400 uppercase tracking-wide
 
 export default function ContratosPage() {
   const { perm } = useAuth()
+  const containerRef = useRef<HTMLDivElement>(null)
   const [contratos, setContratos] = useState<Contrato[]>([])
   const [motoristas, setMotoristas] = useState<Motorista[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
@@ -113,6 +114,22 @@ export default function ContratosPage() {
   useEffect(() => {
     fetch_()
   }, [filtroMes, filtroAno])
+
+  // ✅ Detecta quando a aba volta a ficar visível (saiu do display:none no page.tsx)
+  // e recarrega a lista — resolve o "contrato novo não aparece na lista"
+  useEffect(() => {
+    const container = containerRef.current
+    const parent = container?.parentElement
+    if (!parent) return
+
+    const observer = new MutationObserver(() => {
+      if (parent.style.display !== 'none') {
+        fetch_()
+      }
+    })
+    observer.observe(parent, { attributes: true, attributeFilter: ['style'] })
+    return () => observer.disconnect()
+  }, [])
 
   function handleSelectCliente(id: string) {
     const clienteEncontrado = clientes.find(c => c.id === id)
@@ -251,7 +268,7 @@ export default function ContratosPage() {
   }
 
   return (
-    <div className="p-6 max-w-full bg-gray-50 min-h-screen">
+    <div ref={containerRef} className="p-6 max-w-full bg-gray-50 min-h-screen">
       {msg && (
         <div className="fixed top-6 right-6 z-50 p-4 bg-green-600 text-white rounded-2xl shadow-2xl font-black text-xs uppercase tracking-widest animate-bounce">
           {msg}
