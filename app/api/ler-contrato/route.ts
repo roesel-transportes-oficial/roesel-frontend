@@ -175,7 +175,15 @@ JSON de retorno (SOMENTE isso):
   const text = data.content[0].text
 
   try {
-    const parsed = JSON.parse(text.trim())
+    // ✅ Remove blocos markdown (```json ... ```) antes de parsear
+    const textLimpo = text
+      .trim()
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/, '')
+      .replace(/```\s*$/, '')
+      .trim()
+
+    const parsed = JSON.parse(textLimpo)
 
     // ── FROTA ──────────────────────────────────────────────────────────────
     if (parsed.frota) {
