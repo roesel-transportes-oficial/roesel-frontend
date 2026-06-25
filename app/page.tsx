@@ -14,6 +14,7 @@ import PremiosPage from './components/PremiosPage'
 import ViagemPage from './components/ViagemPage'
 import FeriasPage from './components/FeriasPage'
 import FechamentoViagemPage from './components/FechamentoViagemPage'
+import ContasPagarPage from './components/ContasPagarPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -41,7 +42,6 @@ export default function Home() {
       <Sidebar aba={aba} setAba={setAba} />
       <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
 
-        {/* Páginas sempre montadas, só ocultadas visualmente */}
         <div style={{ display: aba === 'dashboard'     ? 'block' : 'none' }}><DashboardPage /></div>
         <div style={{ display: aba === 'contratos'     ? 'block' : 'none' }}><ContratosPage /></div>
         <div style={{ display: aba === 'motorista'     ? 'block' : 'none' }}><MotoristaPage /></div>
@@ -55,6 +55,7 @@ export default function Home() {
         <div style={{ display: aba === 'multas'        ? 'block' : 'none' }}><MultasPage /></div>
         <div style={{ display: aba === 'avarias'       ? 'block' : 'none' }}><AvariasPage /></div>
         <div style={{ display: aba === 'premios'       ? 'block' : 'none' }}><PremiosPage /></div>
+        <div style={{ display: aba === 'contas_pagar'  ? 'block' : 'none' }}><ContasPagarPage /></div>
 
         {/* Desmontam ao sair — comportamento intencional */}
         {aba === 'novo'       && <NovoContratoPage setAba={setAba} />}
@@ -62,7 +63,6 @@ export default function Home() {
 
         {/* Placeholders */}
         {aba === 'usuarios'       && <Placeholder title="Usuários" icon="👥" />}
-        {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar" icon="📉" />}
         {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
       </main>
     </div>
