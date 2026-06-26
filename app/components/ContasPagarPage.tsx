@@ -161,6 +161,7 @@ export default function ContasPagarPage() {
   const [dadosNFe, setDadosNFe]                   = useState<DadosNFe | null>(null)
   const [cruzamento, setCruzamento]               = useState<ResultadoCruzamento | null>(null)
   const [carregandoXML, setCarregandoXML]         = useState(false)
+  const [erroImport, setErroImport]               = useState('')
   const [vencimento, setVencimento]               = useState('')
   const [obsImport, setObsImport]                 = useState('')
   const [salvandoNFe, setSalvandoNFe]             = useState(false)
@@ -186,7 +187,6 @@ export default function ContasPagarPage() {
 
   useEffect(() => { fetch_() }, [filtroStatus, filtroInicio, filtroFim])
 
-  // Recarrega quando a aba fica visível (display:none → block)
   useEffect(() => {
     const container = containerRef.current
     const parent = container?.parentElement
@@ -213,23 +213,38 @@ export default function ContasPagarPage() {
 
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
+  function fecharImport() {
+    setMostraImport(false)
+    setDadosNFe(null)
+    setCruzamento(null)
+    setErroImport('')
+    setVencimento('')
+    setObsImport('')
+  }
+
   async function lerXML(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
-    setCarregandoXML(true); setDadosNFe(null); setCruzamento(null)
+    setCarregandoXML(true); setDadosNFe(null); setCruzamento(null); setErroImport('')
     try {
       const text = await file.text()
       const dados = parseNFe(text)
-      if (!dados) { showMsg('⚠️ Não foi possível ler o XML.'); return }
+      if (!dados) {
+        setErroImport('Não foi possível ler o XML. Verifique o arquivo.')
+        return
+      }
       const { data: exist } = await supabase
         .from('notas_fiscais').select('id').eq('chave_acesso', dados.chave_acesso).maybeSingle()
-      if (exist) { showMsg('⚠️ Esta NF-e já foi importada anteriormente.'); return }
+      if (exist) {
+        setErroImport('Esta NF-e já foi importada anteriormente.')
+        return
+      }
       setDadosNFe(dados)
       const result = await cruzarComAbastecimentos(dados)
       setCruzamento(result)
     } catch (err) {
       console.error('Erro lerXML:', err)
-      showMsg('⚠️ Erro ao processar XML.')
+      setErroImport('Erro ao processar XML.')
     } finally {
       setCarregandoXML(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -240,7 +255,6 @@ export default function ContasPagarPage() {
     if (!dadosNFe || !vencimento) return
     setSalvandoNFe(true)
     try {
-      // 1. Salva NF-e
       const { data: nfe, error: errNFe } = await supabase
         .from('notas_fiscais').insert({
           chave_acesso: dadosNFe.chave_acesso, numero_nf: dadosNFe.numero_nf,
@@ -253,7 +267,6 @@ export default function ContasPagarPage() {
         }).select().maybeSingle()
       if (errNFe) throw errNFe
 
-      // 2. Cria conta a pagar
       const { error: errConta } = await supabase.from('contas_pagar').insert({
         descricao:         `NF-e ${dadosNFe.numero_nf} — ${dadosNFe.emitente_nome}`,
         fornecedor_nome:   dadosNFe.emitente_nome,
@@ -268,7 +281,6 @@ export default function ContasPagarPage() {
       })
       if (errConta) throw errConta
 
-      // 3. Vincula NF-e ao abastecimento
       if (cruzamento?.abastecimento?.id && nfe?.id) {
         const { error: errAbast } = await supabase
           .from('abastecimentos')
@@ -281,11 +293,10 @@ export default function ContasPagarPage() {
       }
 
       showMsg('✅ NF-e importada, conta criada e abastecimento vinculado!')
-      setMostraImport(false); setDadosNFe(null); setCruzamento(null)
-      setVencimento(''); setObsImport('')
+      fecharImport()
       await fetch_()
     } catch (e: any) {
-      showMsg('❌ Erro: ' + e.message)
+      setErroImport('Erro ao salvar: ' + e.message)
       console.error('Erro salvarNFe:', e)
     } finally { setSalvandoNFe(false) }
   }
@@ -542,7 +553,7 @@ export default function ContasPagarPage() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-900">Contas a Pagar</h1>
         <div className="flex gap-2">
-          <button onClick={() => { setMostraImport(true); setDadosNFe(null); setCruzamento(null); setVencimento('') }}
+          <button onClick={() => { setMostraImport(true); setDadosNFe(null); setCruzamento(null); setErroImport(''); setVencimento('') }}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition">
             <FileText size={16}/> Importar NF-e
           </button>
@@ -653,7 +664,7 @@ export default function ContasPagarPage() {
                 <h2 className="text-white font-black text-lg">Importar NF-e</h2>
                 <p className="text-blue-200 text-xs mt-0.5">Selecione o arquivo XML da nota fiscal</p>
               </div>
-              <button onClick={() => setMostraImport(false)} className="text-white/70 hover:text-white"><X size={22}/></button>
+              <button onClick={fecharImport} className="text-white/70 hover:text-white"><X size={22}/></button>
             </div>
             <div className="p-6 overflow-y-auto space-y-4">
               <input ref={fileRef} type="file" accept=".xml" className="hidden" onChange={lerXML}/>
@@ -663,6 +674,13 @@ export default function ContasPagarPage() {
                   ? <><Loader2 size={16} className="animate-spin"/> Lendo XML...</>
                   : <><Upload size={16}/> Selecionar arquivo XML</>}
               </button>
+
+              {/* ✅ Erro dentro do modal */}
+              {erroImport && (
+                <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm font-bold">
+                  <AlertCircle size={16}/> {erroImport}
+                </div>
+              )}
 
               {dadosNFe && (
                 <>
