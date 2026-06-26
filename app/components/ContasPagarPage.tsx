@@ -18,24 +18,6 @@ interface ContaPagar {
   created_at: string
 }
 
-interface NotaFiscal {
-  id: string
-  chave_acesso: string
-  numero_nf: string
-  serie: string
-  data_emissao: string
-  emitente_cnpj: string
-  emitente_nome: string
-  emitente_fantasia: string
-  emitente_cidade: string
-  emitente_uf: string
-  valor_total: number
-  natureza_operacao: string
-  cfop: string
-  produtos: string
-  info_adicional: string
-}
-
 interface DadosNFe {
   chave_acesso: string
   numero_nf: string
@@ -71,6 +53,7 @@ interface ResultadoCruzamento {
 
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
+const NFE_NS = 'http://www.portalfiscal.inf.br/nfe'
 
 function fmtData(d: string) {
   if (!d) return '—'
@@ -89,56 +72,82 @@ function fmtValor(v: number) {
   return (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-// ── Parser XML da NF-e ────────────────────────────────────────────────────────
+// ── Parser XML NF-e — usa getElementsByTagNameNS para respeitar namespace ────
 function parseNFe(xmlContent: string): DadosNFe | null {
   try {
     const parser = new DOMParser()
-    const doc = parser.parseFromString(xmlContent, 'text/xml')
-    const get = (tag: string) => doc.getElementsByTagName(tag)[0]?.textContent?.trim() || ''
+    // Remove BOM se houver
+    const xml = xmlContent.replace(/^\uFEFF/, '')
+    const doc = parser.parseFromString(xml, 'text/xml')
 
-    // Chave de acesso — vem do protNFe
-    const chNFe = get('chNFe')
-    // Ou extrai do atributo Id da infNFe
-    const infNFe = doc.getElementsByTagName('infNFe')[0]
+    // Verifica erros de parse
+    const parseError = doc.getElementsByTagName('parsererror')[0]
+    if (parseError) {
+      console.error('Erro parse XML:', parseError.textContent)
+      return null
+    }
+
+    // Busca por tag usando namespace — funciona mesmo com xmlns declarado
+    const getNS = (tag: string): string => {
+      const el = doc.getElementsByTagNameNS(NFE_NS, tag)[0]
+      return el?.textContent?.trim() || ''
+    }
+
+    // Chave de acesso — vem do protNFe/chNFe
+    const chNFe = getNS('chNFe')
+    // Fallback: extrai do atributo Id da infNFe
+    const infNFe = doc.getElementsByTagNameNS(NFE_NS, 'infNFe')[0]
     const idAttr = infNFe?.getAttribute('Id') || ''
     const chave_acesso = chNFe || idAttr.replace('NFe', '')
 
-    // Data — remove o horário e timezone
-    const dhEmi = get('dhEmi')
-    const data_emissao = dhEmi.split('T')[0]
+    // Data — só a parte YYYY-MM-DD
+    const data_emissao = getNS('dhEmi').split('T')[0]
 
-    // Produtos — lista os itens
-    const dets = doc.getElementsByTagName('det')
+    // Emitente — pega especificamente do elemento emit
+    const emit = doc.getElementsByTagNameNS(NFE_NS, 'emit')[0]
+    const emitente_cnpj    = emit?.getElementsByTagNameNS(NFE_NS, 'CNPJ')[0]?.textContent?.trim() || ''
+    const emitente_nome    = emit?.getElementsByTagNameNS(NFE_NS, 'xNome')[0]?.textContent?.trim() || ''
+    const emitente_fantasia = emit?.getElementsByTagNameNS(NFE_NS, 'xFant')[0]?.textContent?.trim() || ''
+    const enderEmit = emit?.getElementsByTagNameNS(NFE_NS, 'enderEmit')[0]
+    const emitente_cidade  = enderEmit?.getElementsByTagNameNS(NFE_NS, 'xMun')[0]?.textContent?.trim() || ''
+    const emitente_uf      = enderEmit?.getElementsByTagNameNS(NFE_NS, 'UF')[0]?.textContent?.trim() || ''
+
+    // Valor total
+    const valor_total = parseFloat(getNS('vNF') || '0')
+
+    // Produtos
+    const dets = doc.getElementsByTagNameNS(NFE_NS, 'det')
     const produtos_lista: string[] = []
     let cfop_principal = ''
     for (let i = 0; i < dets.length; i++) {
-      const xProd = dets[i].getElementsByTagName('xProd')[0]?.textContent?.trim() || ''
-      const qCom  = dets[i].getElementsByTagName('qCom')[0]?.textContent?.trim() || ''
-      const uCom  = dets[i].getElementsByTagName('uCom')[0]?.textContent?.trim() || ''
-      const vProd = dets[i].getElementsByTagName('vProd')[0]?.textContent?.trim() || ''
-      const cfop  = dets[i].getElementsByTagName('CFOP')[0]?.textContent?.trim() || ''
+      const xProd = dets[i].getElementsByTagNameNS(NFE_NS, 'xProd')[0]?.textContent?.trim() || ''
+      const qCom  = dets[i].getElementsByTagNameNS(NFE_NS, 'qCom')[0]?.textContent?.trim() || ''
+      const uCom  = dets[i].getElementsByTagNameNS(NFE_NS, 'uCom')[0]?.textContent?.trim() || ''
+      const vProd = dets[i].getElementsByTagNameNS(NFE_NS, 'vProd')[0]?.textContent?.trim() || ''
+      const cfop  = dets[i].getElementsByTagNameNS(NFE_NS, 'CFOP')[0]?.textContent?.trim() || ''
       if (!cfop_principal) cfop_principal = cfop
-      produtos_lista.push(`${xProd} — ${qCom}${uCom} — R$ ${parseFloat(vProd || '0').toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`)
+      const valorFmt = parseFloat(vProd || '0').toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+      produtos_lista.push(`${xProd} — ${qCom}${uCom} — R$ ${valorFmt}`)
     }
 
     return {
       chave_acesso,
-      numero_nf:        get('nNF'),
-      serie:            get('serie'),
+      numero_nf:         getNS('nNF'),
+      serie:             getNS('serie'),
       data_emissao,
-      emitente_cnpj:    get('CNPJ') || get('CPF'), // primeiro CNPJ é do emitente
-      emitente_nome:    get('xNome'),
-      emitente_fantasia: get('xFant'),
-      emitente_cidade:  doc.getElementsByTagName('enderEmit')[0]?.getElementsByTagName('xMun')[0]?.textContent?.trim() || '',
-      emitente_uf:      doc.getElementsByTagName('enderEmit')[0]?.getElementsByTagName('UF')[0]?.textContent?.trim() || '',
-      valor_total:      parseFloat(get('vNF') || '0'),
-      natureza_operacao: get('natOp'),
-      cfop:             cfop_principal,
-      produtos:         produtos_lista.join(' | '),
-      info_adicional:   get('infCpl'),
+      emitente_cnpj,
+      emitente_nome,
+      emitente_fantasia,
+      emitente_cidade,
+      emitente_uf,
+      valor_total,
+      natureza_operacao: getNS('natOp'),
+      cfop:              cfop_principal,
+      produtos:          produtos_lista.join(' | '),
+      info_adicional:    getNS('infCpl'),
     }
   } catch (e) {
-    console.error('Erro ao parsear XML:', e)
+    console.error('Erro ao parsear NF-e:', e)
     return null
   }
 }
@@ -146,17 +155,15 @@ function parseNFe(xmlContent: string): DadosNFe | null {
 // ── Cruzamento com abastecimentos ─────────────────────────────────────────────
 async function cruzarComAbastecimentos(dados: DadosNFe): Promise<ResultadoCruzamento> {
   const cnpjLimpo = dados.emitente_cnpj.replace(/\D/g, '')
+  const cnpjBase  = cnpjLimpo.slice(0, 8)
 
-  // Busca abastecimentos com o mesmo CNPJ do posto na mesma data
   const { data: abasts } = await supabase
     .from('abastecimentos')
     .select('id, data, posto, total, caminhao_placa, motorista, cnpj_posto')
     .eq('data', dados.data_emissao)
     .order('data')
 
-  // Filtra por CNPJ do posto (base 8 dígitos para pegar filiais)
-  const cnpjBase = cnpjLimpo.slice(0, 8)
-  const matches = (abasts || []).filter(a => {
+  const matches = (abasts || []).filter((a: any) => {
     const cnpjAbast = (a.cnpj_posto || '').replace(/\D/g, '')
     return cnpjAbast.startsWith(cnpjBase) || cnpjAbast === cnpjLimpo
   })
@@ -165,61 +172,49 @@ async function cruzarComAbastecimentos(dados: DadosNFe): Promise<ResultadoCruzam
   const diferenca = Math.abs(dados.valor_total - total_abastecimentos)
 
   let status: 'confere' | 'divergencia' | 'nao_encontrado'
-  if (matches.length === 0) {
-    status = 'nao_encontrado'
-  } else if (diferenca < 0.10) { // tolerância de R$ 0,10 para arredondamentos
-    status = 'confere'
-  } else {
-    status = 'divergencia'
-  }
+  if (matches.length === 0)    status = 'nao_encontrado'
+  else if (diferenca < 0.10)   status = 'confere'
+  else                         status = 'divergencia'
 
   return { status, abastecimentos: matches, total_abastecimentos, diferenca }
 }
 
 export default function ContasPagarPage() {
-  const [contas, setContas]               = useState<ContaPagar[]>([])
-  const [sel, setSel]                     = useState<ContaPagar | null>(null)
-  const [loading, setLoading]             = useState(false)
-  const [loadingLista, setLoadingLista]   = useState(false)
-  const [msg, setMsg]                     = useState('')
-  const [confirmExcluir, setConfirmExcluir] = useState(false)
-
-  // Filtros
-  const [filtroStatus, setFiltroStatus]   = useState('')
-  const [filtroInicio, setFiltroInicio]   = useState('')
-  const [filtroFim, setFiltroFim]         = useState('')
-
-  // Modal importar NF-e
-  const [mostraImport, setMostraImport]   = useState(false)
-  const [dadosNFe, setDadosNFe]           = useState<DadosNFe | null>(null)
-  const [cruzamento, setCruzamento]       = useState<ResultadoCruzamento | null>(null)
-  const [carregandoXML, setCarregandoXML] = useState(false)
-  const [vencimento, setVencimento]       = useState('')
-  const [obsImport, setObsImport]         = useState('')
-  const [salvandoNFe, setSalvandoNFe]     = useState(false)
+  const [contas, setContas]                     = useState<ContaPagar[]>([])
+  const [sel, setSel]                           = useState<ContaPagar | null>(null)
+  const [loading, setLoading]                   = useState(false)
+  const [loadingLista, setLoadingLista]         = useState(false)
+  const [msg, setMsg]                           = useState('')
+  const [confirmExcluir, setConfirmExcluir]     = useState(false)
+  const [filtroStatus, setFiltroStatus]         = useState('')
+  const [filtroInicio, setFiltroInicio]         = useState('')
+  const [filtroFim, setFiltroFim]               = useState('')
+  const [mostraImport, setMostraImport]         = useState(false)
+  const [dadosNFe, setDadosNFe]                 = useState<DadosNFe | null>(null)
+  const [cruzamento, setCruzamento]             = useState<ResultadoCruzamento | null>(null)
+  const [carregandoXML, setCarregandoXML]       = useState(false)
+  const [vencimento, setVencimento]             = useState('')
+  const [obsImport, setObsImport]               = useState('')
+  const [salvandoNFe, setSalvandoNFe]           = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-
-  // Modal nova conta manual
-  const [mostraNova, setMostraNova]       = useState(false)
-  const [novaDesc, setNovaDesc]           = useState('')
-  const [novaFornNome, setNovaFornNome]   = useState('')
-  const [novaFornCnpj, setNovaFornCnpj]  = useState('')
-  const [novaValor, setNovaValor]         = useState('')
-  const [novaEmissao, setNovaEmissao]     = useState(new Date().toISOString().split('T')[0])
-  const [novaVenc, setNovaVenc]           = useState('')
-  const [novaObs, setNovaObs]             = useState('')
-
-  // Edição
-  const [editDesc, setEditDesc]           = useState('')
-  const [editFornNome, setEditFornNome]   = useState('')
-  const [editFornCnpj, setEditFornCnpj]  = useState('')
-  const [editValor, setEditValor]         = useState('')
-  const [editEmissao, setEditEmissao]     = useState('')
-  const [editVenc, setEditVenc]           = useState('')
-  const [editStatus, setEditStatus]       = useState('')
-  const [editObs, setEditObs]             = useState('')
+  const [mostraNova, setMostraNova]             = useState(false)
+  const [novaDesc, setNovaDesc]                 = useState('')
+  const [novaFornNome, setNovaFornNome]         = useState('')
+  const [novaFornCnpj, setNovaFornCnpj]         = useState('')
+  const [novaValor, setNovaValor]               = useState('')
+  const [novaEmissao, setNovaEmissao]           = useState(new Date().toISOString().split('T')[0])
+  const [novaVenc, setNovaVenc]                 = useState('')
+  const [novaObs, setNovaObs]                   = useState('')
+  const [editDesc, setEditDesc]                 = useState('')
+  const [editFornNome, setEditFornNome]         = useState('')
+  const [editFornCnpj, setEditFornCnpj]         = useState('')
+  const [editValor, setEditValor]               = useState('')
+  const [editEmissao, setEditEmissao]           = useState('')
+  const [editVenc, setEditVenc]                 = useState('')
+  const [editStatus, setEditStatus]             = useState('')
+  const [editObs, setEditObs]                   = useState('')
   const [cruzamentoDetalhe, setCruzamentoDetalhe] = useState<ResultadoCruzamento | null>(null)
-  const [carregandoCruz, setCarregandoCruz] = useState(false)
+  const [carregandoCruz, setCarregandoCruz]     = useState(false)
 
   useEffect(() => { fetch_() }, [filtroStatus, filtroInicio, filtroFim])
 
@@ -248,19 +243,25 @@ export default function ContasPagarPage() {
     try {
       const text = await file.text()
       const dados = parseNFe(text)
-      if (!dados) { showMsg('⚠️ Não foi possível ler o XML. Verifique o arquivo.'); return }
+      if (!dados) {
+        showMsg('⚠️ Não foi possível ler o XML. Verifique o arquivo.')
+        return
+      }
 
-      // Verifica se já foi importada
+      // Verifica duplicata
       const { data: exist } = await supabase
-        .from('notas_fiscais').select('id').eq('chave_acesso', dados.chave_acesso).maybeSingle()
-      if (exist) { showMsg('⚠️ Esta NF-e já foi importada anteriormente.'); return }
+        .from('notas_fiscais').select('id')
+        .eq('chave_acesso', dados.chave_acesso).maybeSingle()
+      if (exist) {
+        showMsg('⚠️ Esta NF-e já foi importada anteriormente.')
+        return
+      }
 
       setDadosNFe(dados)
-
-      // Cruzamento com abastecimentos
       const result = await cruzarComAbastecimentos(dados)
       setCruzamento(result)
     } catch (err) {
+      console.error('Erro lerXML:', err)
       showMsg('⚠️ Erro ao processar XML.')
     } finally {
       setCarregandoXML(false)
@@ -273,7 +274,6 @@ export default function ContasPagarPage() {
     if (!dadosNFe || !vencimento) return
     setSalvandoNFe(true)
     try {
-      // 1. Salva na tabela notas_fiscais
       const { data: nfe, error: errNFe } = await supabase
         .from('notas_fiscais').insert({
           chave_acesso:      dadosNFe.chave_acesso,
@@ -293,34 +293,27 @@ export default function ContasPagarPage() {
         }).select().maybeSingle()
       if (errNFe) throw errNFe
 
-      // 2. Cria a conta a pagar
-      const { error: errConta } = await supabase
-        .from('contas_pagar').insert({
-          descricao:         `NF-e ${dadosNFe.numero_nf} — ${dadosNFe.emitente_nome}`,
-          fornecedor_nome:   dadosNFe.emitente_nome,
-          fornecedor_cnpj:   dadosNFe.emitente_cnpj,
-          valor:             dadosNFe.valor_total,
-          data_emissao:      dadosNFe.data_emissao,
-          data_vencimento:   vencimento,
-          status:            'PENDENTE',
-          nota_fiscal_id:    nfe?.id || null,
-          nota_fiscal_chave: dadosNFe.chave_acesso,
-          obs:               obsImport,
-        })
-      if (errConta) throw errConta
+      await supabase.from('contas_pagar').insert({
+        descricao:         `NF-e ${dadosNFe.numero_nf} — ${dadosNFe.emitente_nome}`,
+        fornecedor_nome:   dadosNFe.emitente_nome,
+        fornecedor_cnpj:   dadosNFe.emitente_cnpj,
+        valor:             dadosNFe.valor_total,
+        data_emissao:      dadosNFe.data_emissao,
+        data_vencimento:   vencimento,
+        status:            'PENDENTE',
+        nota_fiscal_id:    nfe?.id || null,
+        nota_fiscal_chave: dadosNFe.chave_acesso,
+        obs:               obsImport,
+      })
 
       showMsg('✅ NF-e importada e conta a pagar criada!')
       setMostraImport(false)
-      setDadosNFe(null)
-      setCruzamento(null)
-      setVencimento('')
-      setObsImport('')
+      setDadosNFe(null); setCruzamento(null)
+      setVencimento(''); setObsImport('')
       await fetch_()
     } catch (e: any) {
       showMsg('❌ Erro: ' + e.message)
-    } finally {
-      setSalvandoNFe(false)
-    }
+    } finally { setSalvandoNFe(false) }
   }
 
   // ── Nova conta manual ───────────────────────────────────────────────────────
@@ -345,11 +338,10 @@ export default function ContasPagarPage() {
       await fetch_()
     } catch (e: any) {
       showMsg('❌ Erro: ' + e.message)
-    } finally {
-      setLoading(false) }
+    } finally { setLoading(false) }
   }
 
-  // ── Selecionar conta para editar ────────────────────────────────────────────
+  // ── Selecionar conta ────────────────────────────────────────────────────────
   async function selecionar(c: ContaPagar) {
     setSel(c)
     setEditDesc(c.descricao || '')
@@ -363,13 +355,12 @@ export default function ContasPagarPage() {
     setConfirmExcluir(false)
     setCruzamentoDetalhe(null)
 
-    // Se tem NF-e vinculada, faz o cruzamento
     if (c.fornecedor_cnpj && c.data_emissao) {
       setCarregandoCruz(true)
       const result = await cruzarComAbastecimentos({
         emitente_cnpj: c.fornecedor_cnpj,
-        data_emissao: c.data_emissao,
-        valor_total: c.valor,
+        data_emissao:  c.data_emissao,
+        valor_total:   c.valor,
       } as DadosNFe)
       setCruzamentoDetalhe(result)
       setCarregandoCruz(false)
@@ -395,8 +386,7 @@ export default function ContasPagarPage() {
       await fetch_()
     } catch (e: any) {
       showMsg('❌ Erro: ' + e.message)
-    } finally {
-      setLoading(false) }
+    } finally { setLoading(false) }
   }
 
   async function excluir() {
@@ -411,26 +401,26 @@ export default function ContasPagarPage() {
     finally { setLoading(false) }
   }
 
-  // ── Totais ──────────────────────────────────────────────────────────────────
   const totalPendente = useMemo(() =>
-    contas.filter(c => c.status === 'PENDENTE').reduce((s, c) => s + (c.valor || 0), 0)
-  , [contas])
+    contas.filter(c => c.status === 'PENDENTE').reduce((s, c) => s + (c.valor || 0), 0), [contas])
   const totalPago = useMemo(() =>
-    contas.filter(c => c.status === 'PAGO').reduce((s, c) => s + (c.valor || 0), 0)
-  , [contas])
+    contas.filter(c => c.status === 'PAGO').reduce((s, c) => s + (c.valor || 0), 0), [contas])
   const vencidas = useMemo(() => {
     const hoje = new Date().toISOString().split('T')[0]
     return contas.filter(c => c.status === 'PENDENTE' && c.data_vencimento < hoje).length
   }, [contas])
 
-  // ── Badge status ─────────────────────────────────────────────────────────────
   function badgeStatus(s: string) {
     if (s === 'PAGO')      return 'bg-green-100 text-green-700'
     if (s === 'CANCELADO') return 'bg-gray-100 text-gray-500'
     return 'bg-yellow-100 text-yellow-700'
   }
 
-  // ── Badge cruzamento ──────────────────────────────────────────────────────────
+  function isVencida(c: ContaPagar) {
+    const hoje = new Date().toISOString().split('T')[0]
+    return c.status === 'PENDENTE' && c.data_vencimento < hoje
+  }
+
   function BadgeCruzamento({ status }: { status: ResultadoCruzamento['status'] }) {
     if (status === 'confere')
       return <span className="flex items-center gap-1 text-xs font-bold text-green-600"><CheckCircle2 size={12}/> Confere</span>
@@ -439,13 +429,7 @@ export default function ContasPagarPage() {
     return <span className="flex items-center gap-1 text-xs font-bold text-gray-400"><XCircle size={12}/> Sem abastecimento</span>
   }
 
-  // ── Verifica se a conta está vencida ─────────────────────────────────────────
-  function isVencida(c: ContaPagar) {
-    const hoje = new Date().toISOString().split('T')[0]
-    return c.status === 'PENDENTE' && c.data_vencimento < hoje
-  }
-
-  // ── DETALHE / EDIÇÃO ─────────────────────────────────────────────────────────
+  // ── DETALHE ──────────────────────────────────────────────────────────────────
   if (sel) return (
     <div className="p-6 max-w-3xl mx-auto">
       <button onClick={() => setSel(null)}
@@ -468,8 +452,7 @@ export default function ContasPagarPage() {
         </div>
 
         <div className="p-6 space-y-4">
-
-          {/* Cruzamento com abastecimentos */}
+          {/* Cruzamento */}
           {sel.nota_fiscal_id && (
             <div className={`p-4 rounded-xl border ${
               carregandoCruz ? 'bg-gray-50 border-gray-200' :
@@ -481,8 +464,7 @@ export default function ContasPagarPage() {
                 <p className="text-xs font-black text-gray-600 uppercase tracking-widest">Cruzamento com Abastecimentos</p>
                 {carregandoCruz
                   ? <Loader2 size={14} className="animate-spin text-gray-400"/>
-                  : cruzamentoDetalhe && <BadgeCruzamento status={cruzamentoDetalhe.status}/>
-                }
+                  : cruzamentoDetalhe && <BadgeCruzamento status={cruzamentoDetalhe.status}/>}
               </div>
               {cruzamentoDetalhe && !carregandoCruz && (
                 <>
@@ -502,20 +484,16 @@ export default function ContasPagarPage() {
                       </p>
                     </div>
                   </div>
-                  {cruzamentoDetalhe.abastecimentos.length > 0 && (
-                    <div className="space-y-1">
-                      {cruzamentoDetalhe.abastecimentos.map(a => (
-                        <div key={a.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 text-xs border border-gray-100">
+                  {cruzamentoDetalhe.abastecimentos.length > 0
+                    ? cruzamentoDetalhe.abastecimentos.map(a => (
+                        <div key={a.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 text-xs border border-gray-100 mb-1">
                           <span className="font-bold text-gray-700">{a.caminhao_placa}</span>
                           <span className="text-gray-500">{a.motorista}</span>
                           <span className="font-black text-gray-900">{fmtValor(a.total)}</span>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  {cruzamentoDetalhe.status === 'nao_encontrado' && (
-                    <p className="text-xs text-gray-400 italic">Nenhum abastecimento encontrado para este CNPJ nesta data.</p>
-                  )}
+                      ))
+                    : <p className="text-xs text-gray-400 italic">Nenhum abastecimento encontrado para este CNPJ nesta data.</p>
+                  }
                 </>
               )}
             </div>
@@ -539,14 +517,12 @@ export default function ContasPagarPage() {
               </select>
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div><label className={LC}>Fornecedor</label>
               <input value={editFornNome} onChange={e => setEditFornNome(e.target.value)} className={IC}/></div>
             <div><label className={LC}>CNPJ</label>
               <input value={editFornCnpj} onChange={e => setEditFornCnpj(e.target.value)} className={IC}/></div>
           </div>
-
           <div className="grid grid-cols-3 gap-4">
             <div><label className={LC}>Valor (R$)</label>
               <input type="number" step="0.01" value={editValor} onChange={e => setEditValor(e.target.value)} className={IC}/></div>
@@ -555,7 +531,6 @@ export default function ContasPagarPage() {
             <div><label className={LC}>Vencimento</label>
               <input type="date" value={editVenc} onChange={e => setEditVenc(e.target.value)} className={IC}/></div>
           </div>
-
           <div><label className={LC}>Observações</label>
             <textarea value={editObs} onChange={e => setEditObs(e.target.value)} rows={2} className={IC}/></div>
 
@@ -601,7 +576,6 @@ export default function ContasPagarPage() {
         </div>
       )}
 
-      {/* Cards resumo */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Pendente</p>
@@ -617,7 +591,6 @@ export default function ContasPagarPage() {
         </div>
       </div>
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-bold text-gray-900">Contas a Pagar</h1>
         <div className="flex gap-2">
@@ -632,7 +605,6 @@ export default function ContasPagarPage() {
         </div>
       </div>
 
-      {/* Filtros */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 grid grid-cols-3 gap-3">
         <div>
           <label className="text-xs font-semibold text-gray-500 uppercase mb-1 flex items-center gap-1"><Filter size={11}/> Status</label>
@@ -662,7 +634,6 @@ export default function ContasPagarPage() {
         )}
       </div>
 
-      {/* Lista */}
       {loadingLista ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={32} className="animate-spin text-red-600"/>
@@ -732,13 +703,12 @@ export default function ContasPagarPage() {
             <div className="px-6 py-5 bg-blue-600 flex items-center justify-between shrink-0">
               <div>
                 <h2 className="text-white font-black text-lg">Importar NF-e</h2>
-                <p className="text-blue-200 text-xs mt-0.5">Selecione o XML da nota fiscal</p>
+                <p className="text-blue-200 text-xs mt-0.5">Selecione o arquivo XML da nota fiscal</p>
               </div>
               <button onClick={() => setMostraImport(false)} className="text-white/70 hover:text-white"><X size={22}/></button>
             </div>
 
             <div className="p-6 overflow-y-auto space-y-4">
-              {/* Upload */}
               <input ref={fileRef} type="file" accept=".xml" className="hidden" onChange={lerXML}/>
               <button onClick={() => fileRef.current?.click()} disabled={carregandoXML}
                 className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-blue-200 hover:border-blue-400 bg-blue-50 text-blue-600 rounded-2xl py-4 text-sm font-bold transition disabled:opacity-50">
@@ -747,7 +717,6 @@ export default function ContasPagarPage() {
                   : <><Upload size={16}/> Selecionar arquivo XML</>}
               </button>
 
-              {/* Dados da NF-e */}
               {dadosNFe && (
                 <>
                   <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
@@ -756,14 +725,15 @@ export default function ContasPagarPage() {
                       <div>
                         <p className="text-[10px] text-gray-400 uppercase">Emitente</p>
                         <p className="font-bold text-gray-900">{dadosNFe.emitente_nome}</p>
-                        <p className="text-[10px] text-gray-500">{dadosNFe.emitente_fantasia && `${dadosNFe.emitente_fantasia} · `}{dadosNFe.emitente_cidade}/{dadosNFe.emitente_uf}</p>
+                        {dadosNFe.emitente_fantasia && <p className="text-[10px] text-gray-500">{dadosNFe.emitente_fantasia}</p>}
+                        <p className="text-[10px] text-gray-500">{dadosNFe.emitente_cidade}/{dadosNFe.emitente_uf}</p>
                       </div>
                       <div>
                         <p className="text-[10px] text-gray-400 uppercase">CNPJ</p>
                         <p className="font-bold text-gray-900">{fmtCnpj(dadosNFe.emitente_cnpj)}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] text-gray-400 uppercase">Nº NF-e / Série</p>
+                        <p className="text-[10px] text-gray-400 uppercase">Nº / Série</p>
                         <p className="font-bold text-gray-900">{dadosNFe.numero_nf} / {dadosNFe.serie}</p>
                       </div>
                       <div>
@@ -787,10 +757,9 @@ export default function ContasPagarPage() {
                     )}
                   </div>
 
-                  {/* Cruzamento */}
                   {cruzamento && (
                     <div className={`rounded-2xl p-4 border ${
-                      cruzamento.status === 'confere' ? 'bg-green-50 border-green-200' :
+                      cruzamento.status === 'confere'     ? 'bg-green-50 border-green-200' :
                       cruzamento.status === 'divergencia' ? 'bg-orange-50 border-orange-200' :
                       'bg-gray-50 border-gray-200'
                     }`}>
@@ -814,25 +783,21 @@ export default function ContasPagarPage() {
                           </p>
                         </div>
                       </div>
-                      {cruzamento.abastecimentos.length > 0 ? (
-                        <div className="space-y-1">
-                          {cruzamento.abastecimentos.map(a => (
-                            <div key={a.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 text-xs border border-gray-100">
+                      {cruzamento.abastecimentos.length > 0
+                        ? cruzamento.abastecimentos.map(a => (
+                            <div key={a.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-1.5 text-xs border border-gray-100 mb-1">
                               <span className="font-black text-gray-700">{a.caminhao_placa}</span>
                               <span className="text-gray-500 truncate mx-2">{a.motorista}</span>
                               <span className="font-black text-gray-900 shrink-0">{fmtValor(a.total)}</span>
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 italic">
-                          Nenhum abastecimento encontrado para este CNPJ na data {fmtData(dadosNFe.data_emissao)}.
-                        </p>
-                      )}
+                          ))
+                        : <p className="text-xs text-gray-400 italic">
+                            Nenhum abastecimento encontrado para este CNPJ na data {fmtData(dadosNFe.data_emissao)}.
+                          </p>
+                      }
                     </div>
                   )}
 
-                  {/* Vencimento */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={LC}>Data de Vencimento *</label>
