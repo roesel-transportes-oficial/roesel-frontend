@@ -2,6 +2,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../services/supabase'
 
+const FORM_STORAGE_KEY = 'novo_contrato_form'
+
+const FORM_INICIAL = {
+  motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
+  frota: '', contrato: '', data: '', fat_bruto: '', chapa: '',
+  origem: '', destino: '', qtd_veiculos: '', adiantamento_pago: false,
+  dt_pagamento: '', status: 'ABERTO', obs: '',
+}
+
 export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => void }) {
   const [motoristas, setMotoristas] = useState<any[]>([])
   const [clientes, setClientes]     = useState<any[]>([])
@@ -17,12 +26,20 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const [contratoLidoIA, setContratoLidoIA]         = useState(false)
   const [camposIAAtivos, setCamposIAAtivos]         = useState(false)
 
-  const [form, setForm] = useState({
-    motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
-    frota: '', contrato: '', data: '', fat_bruto: '', chapa: '',
-    origem: '', destino: '', qtd_veiculos: '', adiantamento_pago: false,
-    dt_pagamento: '', status: 'ABERTO', obs: '',
+  // ✅ Restaura form do sessionStorage se existir
+  const [form, setForm] = useState(() => {
+    if (typeof window === 'undefined') return FORM_INICIAL
+    try {
+      const saved = sessionStorage.getItem(FORM_STORAGE_KEY)
+      return saved ? JSON.parse(saved) : FORM_INICIAL
+    } catch { return FORM_INICIAL }
   })
+
+  // ✅ Salva form no sessionStorage sempre que mudar
+  function atualizarForm(novoForm: typeof FORM_INICIAL) {
+    setForm(novoForm)
+    try { sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(novoForm)) } catch {}
+  }
 
   useEffect(() => {
     Promise.all([
@@ -55,51 +72,42 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     if (data) setCarretas(data)
   }
 
-  // ─── Regra do Chapa ──────────────────────────────────────────────────────
   function calcularChapa(destino: string, cliente: string): string {
     const d = destino.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     const c = cliente.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-
     const semChapa =
-      d.includes('IGARAPE') ||
-      d.includes('BETIM') ||
-      d.includes('GUARUJA') ||
-      d.includes('SANTOS') ||
+      d.includes('IGARAPE') || d.includes('BETIM') ||
+      d.includes('GUARUJA') || d.includes('SANTOS') ||
       (c.includes('AUTOPORT') && d.includes('JUIZ DE FORA'))
-
     return semChapa ? '0' : '250'
   }
 
   function handle(e: any) {
     const { name, value, type, checked } = e.target
     const novo = type === 'checkbox' ? checked : value
-
-    setForm(f => {
-      const atualizado = { ...f, [name]: novo }
-      // Recalcula chapa automaticamente quando muda destino ou cliente
-      if (name === 'destino' || name === 'cliente') {
-        atualizado.chapa = calcularChapa(
-          name === 'destino' ? novo : f.destino,
-          name === 'cliente' ? novo : f.cliente
-        )
-      }
-      return atualizado
-    })
+    const atualizado = { ...form, [name]: novo }
+    if (name === 'destino' || name === 'cliente') {
+      atualizado.chapa = calcularChapa(
+        name === 'destino' ? novo : form.destino,
+        name === 'cliente' ? novo : form.cliente
+      )
+    }
+    atualizarForm(atualizado)
   }
 
   function selecionarCliente(valor: string) {
     if (!valor) {
-      setForm(f => ({ ...f, cliente: '', cnpj: '', chapa: calcularChapa(f.destino, '') }))
+      atualizarForm({ ...form, cliente: '', cnpj: '', chapa: calcularChapa(form.destino, '') })
       return
     }
     const [nome, cnpj] = valor.split('||')
     const cliente = clientes.find(c => c.nome === nome && (c.cnpj || '') === cnpj)
-    setForm(f => ({
-      ...f,
+    atualizarForm({
+      ...form,
       cliente: nome,
       cnpj: cliente?.cnpj ? formatCnpj(cliente.cnpj) : '',
-      chapa: calcularChapa(f.destino, nome),
-    }))
+      chapa: calcularChapa(form.destino, nome),
+    })
   }
 
   function formatCnpj(v: string) {
@@ -138,7 +146,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   function encontrarClienteLista(lista: any[], nomeIA: string, cnpjIA?: string, origemIA?: string) {
     if (!nomeIA && !cnpjIA) return null
     const nomeNorm = nomeIA ? normalizar(nomeIA) : ''
-
     if (cnpjIA) {
       const cnpjLimpo = cnpjIA.replace(/\D/g, '')
       if (cnpjLimpo.length === 14) {
@@ -151,9 +158,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         if (porBase && nomeNorm && nomesSaoParecidos(nomeIA, porBase.nome)) return porBase
       }
     }
-
     if (!nomeNorm) return null
-
     const todosExatos = lista.filter(c => normalizar(c.nome) === nomeNorm)
     if (todosExatos.length === 1) return todosExatos[0]
     if (todosExatos.length > 1) {
@@ -166,7 +171,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       }
       return todosExatos[0]
     }
-
     const todosContem = lista.filter(c => {
       const nomeCad = normalizar(c.nome)
       return nomeCad.includes(nomeNorm) || nomeNorm.includes(nomeCad)
@@ -182,7 +186,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       }
       return todosContem[0]
     }
-
     const found = lista.find(c => {
       const nomeCad = normalizar(c.nome)
       const palavrasIA  = nomeNorm.split(' ').filter(p => p.length > 2)
@@ -201,7 +204,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       return matches.length >= Math.max(2, Math.floor(palavrasIA.length * 0.6))
     })
     if (found) return found
-
     let melhorScore = 0, melhorCliente = null
     for (const c of lista) {
       const score = similaridade(normalizar(c.nome), nomeNorm)
@@ -331,92 +333,89 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       if (parsed.contrato) setContratoLidoIA(true)
       setCamposIAAtivos(true)
 
-      setForm(f => ({
-        ...f,
+      const novoForm = {
+        ...form,
         ...Object.fromEntries(Object.entries(parsed).filter(([_, v]) => v !== '' && v !== null && v !== undefined)),
         motorista:     motoristaEncontrado ? motoristaEncontrado.nome : '',
         cliente:       nomeCliente,
         cnpj:          parsed.cnpj ? formatCnpj(parsed.cnpj) : clienteEncontrado?.cnpj ? formatCnpj(clienteEncontrado.cnpj) : '',
         placa:         caminhaoEncontrado ? caminhaoEncontrado.placa : '',
         placa_carreta: carretaEncontrada ? carretaEncontrada.placa : '',
-        // ← Calcula chapa automaticamente com os dados da IA
-        chapa: calcularChapa(destino, nomeCliente),
-      }))
+        chapa:         calcularChapa(destino, nomeCliente),
+      }
+      atualizarForm(novoForm)
     } catch { setErro('Não foi possível ler o documento. Preencha manualmente.') }
     finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
   }
 
- async function salvar(e: any) {
-  e.preventDefault(); setLoading(true); setErro('')
-  try {
-    // ── Verifica se o número de contrato já existe ──
-    const { data: existente } = await supabase
-      .from('contratos')
-      .select('id')
-      .eq('contrato', form.contrato)
-      .limit(1)
-      .maybeSingle()
-
-    if (existente) {
-      setErro(`⚠️ Contrato #${form.contrato} já está cadastrado. Verifique o número.`)
-      setLoading(false)
-      return
-    }
-
-    const payload: any = { ...form }
-    payload.fat_bruto    = parseFloat(payload.fat_bruto) || 0
-    payload.chapa        = parseFloat(payload.chapa) || 0
-    payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
-    payload.placa_carreta = payload.placa_carreta || ''
-    if (!payload.data) delete payload.data
-    if (!payload.dt_pagamento) delete payload.dt_pagamento
-
-    const res = await fetch('/api/contratos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) throw new Error(await res.text())
-
-    const { data: contratoData } = await supabase
-      .from('contratos').select('id')
-      .eq('contrato', form.contrato)
-      .order('created_at', { ascending: false })
-      .limit(1).maybeSingle()
-    const contratoId = contratoData?.id || null
-
-    if (contratoId) {
-      let caminhaoId: string | null = null
-      if (form.placa) {
-        const { data: camData } = await supabase
-          .from('caminhoes').select('id').eq('placa', form.placa).limit(1).maybeSingle()
-        if (camData) caminhaoId = camData.id
+  async function salvar(e: any) {
+    e.preventDefault(); setLoading(true); setErro('')
+    try {
+      const { data: existente } = await supabase
+        .from('contratos').select('id').eq('contrato', form.contrato).limit(1).maybeSingle()
+      if (existente) {
+        setErro(`⚠️ Contrato #${form.contrato} já está cadastrado. Verifique o número.`)
+        setLoading(false)
+        return
       }
 
-      const { data: viagemData } = await supabase.from('viagens').insert({
-        motorista:      form.motorista,
-        caminhao_id:    caminhaoId,
-        caminhao_placa: form.placa || '',
-        empresa:        form.cliente,
-        origem:         form.origem,
-        destino:        form.destino,
-        valor_contrato: payload.fat_bruto,
-        status:         'EM ANDAMENTO',
-        obs:            `Gerado do contrato #${form.contrato}`
-      }).select().maybeSingle()
+      const payload: any = { ...form }
+      payload.fat_bruto    = parseFloat(payload.fat_bruto) || 0
+      payload.chapa        = parseFloat(payload.chapa) || 0
+      payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
+      payload.placa_carreta = payload.placa_carreta || ''
+      if (!payload.data) delete payload.data
+      if (!payload.dt_pagamento) delete payload.dt_pagamento
 
-      if (viagemData?.id) {
-        await supabase.from('viagem_contratos').insert({
-          viagem_id:       viagemData.id,
-          contrato_id:     contratoId,
-          contrato_numero: form.contrato
-        })
+      const res = await fetch('/api/contratos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error(await res.text())
+
+      const { data: contratoData } = await supabase
+        .from('contratos').select('id').eq('contrato', form.contrato)
+        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      const contratoId = contratoData?.id || null
+
+      if (contratoId) {
+        let caminhaoId: string | null = null
+        if (form.placa) {
+          const { data: camData } = await supabase
+            .from('caminhoes').select('id').eq('placa', form.placa).limit(1).maybeSingle()
+          if (camData) caminhaoId = camData.id
+        }
+
+        const { data: viagemData } = await supabase.from('viagens').insert({
+          motorista:      form.motorista,
+          caminhao_id:    caminhaoId,
+          caminhao_placa: form.placa || '',
+          empresa:        form.cliente,
+          origem:         form.origem,
+          destino:        form.destino,
+          valor_contrato: payload.fat_bruto,
+          status:         'EM ANDAMENTO',
+          obs:            `Gerado do contrato #${form.contrato}`
+        }).select().maybeSingle()
+
+        if (viagemData?.id) {
+          await supabase.from('viagem_contratos').insert({
+            viagem_id:       viagemData.id,
+            contrato_id:     contratoId,
+            contrato_numero: form.contrato
+          })
+        }
       }
-    }
 
-    setAba('contratos')
-  } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
-}
+      // ✅ Limpa o form e o sessionStorage após salvar com sucesso
+      try { sessionStorage.removeItem(FORM_STORAGE_KEY) } catch {}
+      setForm(FORM_INICIAL)
+      setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
+      setContratoLidoIA(false); setCamposIAAtivos(false)
+      setAba('contratos')
+    } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
+  }
 
   function clienteSelectValue() {
     const c = clientes.find(c => c.nome === form.cliente && formatCnpj(c.cnpj || '') === form.cnpj)
@@ -577,12 +576,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Chapa (R$)
-              {form.chapa === '0' && (
-                <span className="ml-2 text-xs text-green-600 font-medium">✅ sem chapa</span>
-              )}
-              {form.chapa === '250' && (
-                <span className="ml-2 text-xs text-blue-600 font-medium">🔧 R$ 250 calculado</span>
-              )}
+              {form.chapa === '0' && <span className="ml-2 text-xs text-green-600 font-medium">✅ sem chapa</span>}
+              {form.chapa === '250' && <span className="ml-2 text-xs text-blue-600 font-medium">🔧 R$ 250 calculado</span>}
             </label>
             <input name="chapa" type="number" step="0.01" value={form.chapa} onChange={handle} className={IC} />
           </div>
@@ -612,7 +607,18 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           <textarea name="obs" value={form.obs} onChange={handle} rows={3} className={IC} />
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between">
+          {/* ✅ Botão limpar para o usuário apagar o formulário manualmente */}
+          <button type="button"
+            onClick={() => {
+              try { sessionStorage.removeItem(FORM_STORAGE_KEY) } catch {}
+              setForm(FORM_INICIAL)
+              setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
+              setContratoLidoIA(false); setCamposIAAtivos(false)
+            }}
+            className="text-xs text-gray-400 hover:text-gray-600 underline">
+            Limpar formulário
+          </button>
           <button type="submit" disabled={loading}
             className="bg-red-600 hover:bg-red-700 text-white font-medium px-6 py-2 rounded-lg text-sm disabled:opacity-50">
             {loading ? 'Salvando...' : 'Salvar Contrato'}

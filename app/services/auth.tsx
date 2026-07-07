@@ -25,84 +25,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function carregarUsuario(emailAuth: string) {
     const { data, error } = await supabase
       .from('usuarios')
-      .select('*')
+      .select('nome, login, perm, email, status')
       .eq('email', emailAuth)
-      .limit(1)
+      .maybeSingle()
 
     if (error) {
       console.warn('Erro ao buscar usuário:', error)
       return
     }
 
-    if (data && data.length > 0) {
-      const u = data[0]
-      setUser(u.nome || u.login)
-      setPerm(u.perm)
-      setEmail(u.email)
+    if (data) {
+      setUser(data.nome || data.login)
+      setPerm(data.perm)
+      setEmail(data.email)
     } else {
-      // Usuário autenticado no Supabase mas não existe na tabela usuarios.
-      // Não força logout — deixa o estado vazio e o page.tsx mostra Login.
-      setUser(null)
-      setPerm('')
-      setEmail(null)
+      setUser(null); setPerm(''); setEmail(null)
     }
   }
 
   useEffect(() => {
-  let mounted = true
+    let mounted = true
 
-  async function checkSession() {
-    try {
-      // Timeout de 5s: se o Supabase demorar mais que isso pra responder,
-      // desiste e mostra a tela de login em vez de carregar eternamente
-      const sessionPromise = supabase.auth.getSession()
-      const timeoutPromise = new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), 5000)
-      )
+    async function checkSession() {
+      try {
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), 5000)
+        )
 
-      const result = await Promise.race([sessionPromise, timeoutPromise])
+        const result = await Promise.race([sessionPromise, timeoutPromise])
 
-      if (!mounted) return
+        if (!mounted) return
 
-      // Se deu timeout (result === null), vai pra tela de login
-      if (result === null) {
-        console.warn('Timeout ao verificar sessão — indo para login')
-        setUser(null); setPerm(''); setEmail(null)
-        setLoading(false)
-        return
-      }
+        if (result === null) {
+          console.warn('Timeout ao verificar sessão — indo para login')
+          setUser(null); setPerm(''); setEmail(null)
+          setLoading(false)
+          return
+        }
 
-      const { data: { session } } = result
-      if (session?.user?.email) {
-        await carregarUsuario(session.user.email)
-      }
-    } catch (e) {
-      console.warn('Erro ao verificar sessão:', e)
-    } finally {
-      if (mounted) setLoading(false)
-    }
-  }
-
-  checkSession()
-
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      if (!mounted) return
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        const { data: { session } } = result
         if (session?.user?.email) {
           await carregarUsuario(session.user.email)
         }
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null); setPerm(''); setEmail(null)
+      } catch (e) {
+        console.warn('Erro ao verificar sessão:', e)
+      } finally {
+        if (mounted) setLoading(false)
       }
     }
-  )
 
-  return () => {
-    mounted = false
-    subscription.unsubscribe()
-  }
-}, [])
+    checkSession()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (session?.user?.email) {
+            await carregarUsuario(session.user.email)
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null); setPerm(''); setEmail(null)
+        }
+      }
+    )
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
 
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
     let emailLogin = loginOrEmail
@@ -146,9 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.warn('Erro ao fazer signOut:', e)
     }
-    setUser(null)
-    setPerm('')
-    setEmail(null)
+    setUser(null); setPerm(''); setEmail(null)
     window.location.replace('/')
   }
 
