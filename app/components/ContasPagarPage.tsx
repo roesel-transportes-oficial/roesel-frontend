@@ -4,51 +4,26 @@ import { supabase } from '../services/supabase'
 import { Plus, ArrowLeft, Save, Trash2, Upload, Loader2, Filter, FileText, AlertCircle, CheckCircle2, XCircle, X, Link } from 'lucide-react'
 
 interface ContaPagar {
-  id: string
-  descricao: string
-  fornecedor_nome: string
-  fornecedor_cnpj: string
-  valor: number
-  data_emissao: string
-  data_vencimento: string
-  status: string
-  nota_fiscal_id: string | null
-  nota_fiscal_chave: string | null
-  obs: string
-  created_at: string
+  id: string; descricao: string; fornecedor_nome: string; fornecedor_cnpj: string
+  valor: number; data_emissao: string; data_vencimento: string; status: string
+  nota_fiscal_id: string | null; nota_fiscal_chave: string | null; obs: string; created_at: string
 }
 
 interface DadosNFe {
-  chave_acesso: string
-  numero_nf: string
-  serie: string
-  data_emissao: string
-  emitente_cnpj: string
-  emitente_nome: string
-  emitente_fantasia: string
-  emitente_cidade: string
-  emitente_uf: string
-  valor_total: number
-  natureza_operacao: string
-  cfop: string
-  produtos: string
-  info_adicional: string
+  chave_acesso: string; numero_nf: string; serie: string; data_emissao: string
+  emitente_cnpj: string; emitente_nome: string; emitente_fantasia: string
+  emitente_cidade: string; emitente_uf: string; valor_total: number
+  natureza_operacao: string; cfop: string; produtos: string; info_adicional: string
 }
 
 interface AbastecimentoMatch {
-  id: string
-  data: string
-  posto: string
-  total: number
-  caminhao_placa: string
-  motorista: string
-  nota_fiscal_id: string | null
+  id: string; data: string; posto: string; total: number
+  caminhao_placa: string; motorista: string; nota_fiscal_id: string | null
 }
 
 interface ResultadoCruzamento {
   status: 'confere' | 'divergencia' | 'nao_encontrado'
-  abastecimento: AbastecimentoMatch | null
-  diferenca: number
+  abastecimento: AbastecimentoMatch | null; diferenca: number
 }
 
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
@@ -126,8 +101,7 @@ async function cruzarComAbastecimentos(dados: DadosNFe): Promise<ResultadoCruzam
   const { data: abasts } = await supabase
     .from('abastecimentos')
     .select('id, data, posto, total, caminhao_placa, motorista, cnpj_posto, nota_fiscal_id')
-    .eq('data', dados.data_emissao)
-    .order('total')
+    .eq('data', dados.data_emissao).order('total')
   const porCnpj = (abasts || []).filter((a: any) => {
     const cnpjAbast = (a.cnpj_posto || '').replace(/\D/g, '')
     return cnpjAbast.startsWith(cnpjBase) || cnpjAbast === cnpjLimpo
@@ -141,8 +115,7 @@ async function cruzarComAbastecimentos(dados: DadosNFe): Promise<ResultadoCruzam
   const diferenca = Math.abs((melhor.total || 0) - dados.valor_total)
   return {
     status: diferenca < 1.00 ? 'confere' : 'divergencia',
-    abastecimento: melhor,
-    diferenca,
+    abastecimento: melhor, diferenca,
   }
 }
 
@@ -187,12 +160,18 @@ export default function ContasPagarPage() {
 
   useEffect(() => { fetch_() }, [filtroStatus, filtroInicio, filtroFim])
 
+  // ✅ MutationObserver corrigido — não chama fetch_ múltiplas vezes
   useEffect(() => {
     const container = containerRef.current
     const parent = container?.parentElement
     if (!parent) return
+    let jaCarregou = false
     const observer = new MutationObserver(() => {
-      if (parent.style.display !== 'none') fetch_()
+      if (parent.style.display !== 'none' && !jaCarregou) {
+        jaCarregou = true
+        fetch_()
+        setTimeout(() => { jaCarregou = false }, 1000)
+      }
     })
     observer.observe(parent, { attributes: true, attributeFilter: ['style'] })
     return () => observer.disconnect()
@@ -214,12 +193,8 @@ export default function ContasPagarPage() {
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
   function fecharImport() {
-    setMostraImport(false)
-    setDadosNFe(null)
-    setCruzamento(null)
-    setErroImport('')
-    setVencimento('')
-    setObsImport('')
+    setMostraImport(false); setDadosNFe(null); setCruzamento(null)
+    setErroImport(''); setVencimento(''); setObsImport('')
   }
 
   async function lerXML(e: React.ChangeEvent<HTMLInputElement>) {
@@ -229,16 +204,10 @@ export default function ContasPagarPage() {
     try {
       const text = await file.text()
       const dados = parseNFe(text)
-      if (!dados) {
-        setErroImport('Não foi possível ler o XML. Verifique o arquivo.')
-        return
-      }
+      if (!dados) { setErroImport('Não foi possível ler o XML.'); return }
       const { data: exist } = await supabase
         .from('notas_fiscais').select('id').eq('chave_acesso', dados.chave_acesso).maybeSingle()
-      if (exist) {
-        setErroImport('Esta NF-e já foi importada anteriormente.')
-        return
-      }
+      if (exist) { setErroImport('Esta NF-e já foi importada anteriormente.'); return }
       setDadosNFe(dados)
       const result = await cruzarComAbastecimentos(dados)
       setCruzamento(result)
@@ -282,14 +251,10 @@ export default function ContasPagarPage() {
       if (errConta) throw errConta
 
       if (cruzamento?.abastecimento?.id && nfe?.id) {
-        const { error: errAbast } = await supabase
-          .from('abastecimentos')
-          .update({
-            nota_fiscal_id:    nfe.id,
-            nota_fiscal_chave: dadosNFe.chave_acesso,
-          })
-          .eq('id', cruzamento.abastecimento.id)
-        if (errAbast) console.error('Erro ao vincular abastecimento:', errAbast)
+        await supabase.from('abastecimentos').update({
+          nota_fiscal_id:    nfe.id,
+          nota_fiscal_chave: dadosNFe.chave_acesso,
+        }).eq('id', cruzamento.abastecimento.id)
       }
 
       showMsg('✅ NF-e importada, conta criada e abastecimento vinculado!')
@@ -297,7 +262,6 @@ export default function ContasPagarPage() {
       await fetch_()
     } catch (e: any) {
       setErroImport('Erro ao salvar: ' + e.message)
-      console.error('Erro salvarNFe:', e)
     } finally { setSalvandoNFe(false) }
   }
 
@@ -317,9 +281,8 @@ export default function ContasPagarPage() {
       setNovaDesc(''); setNovaFornNome(''); setNovaFornCnpj('')
       setNovaValor(''); setNovaVenc(''); setNovaObs('')
       await fetch_()
-    } catch (e: any) {
-      showMsg('❌ Erro: ' + e.message)
-    } finally { setLoading(false) }
+    } catch (e: any) { showMsg('❌ Erro: ' + e.message) }
+    finally { setLoading(false) }
   }
 
   async function selecionar(c: ContaPagar) {
@@ -331,12 +294,9 @@ export default function ContasPagarPage() {
     if (c.fornecedor_cnpj && c.data_emissao) {
       setCarregandoCruz(true)
       const result = await cruzarComAbastecimentos({
-        emitente_cnpj: c.fornecedor_cnpj,
-        data_emissao:  c.data_emissao,
-        valor_total:   c.valor,
+        emitente_cnpj: c.fornecedor_cnpj, data_emissao: c.data_emissao, valor_total: c.valor,
       } as DadosNFe)
-      setCruzamentoDetalhe(result)
-      setCarregandoCruz(false)
+      setCruzamentoDetalhe(result); setCarregandoCruz(false)
     }
   }
 
@@ -390,7 +350,7 @@ export default function ContasPagarPage() {
     if (status === 'confere')
       return <span className="flex items-center gap-1 text-xs font-bold text-green-600"><CheckCircle2 size={12}/> Confere</span>
     if (status === 'divergencia')
-      return <span className="flex items-center gap-1 text-xs font-bold text-orange-500"><AlertCircle size={12}/> Divergência de valor</span>
+      return <span className="flex items-center gap-1 text-xs font-bold text-orange-500"><AlertCircle size={12}/> Divergência</span>
     return <span className="flex items-center gap-1 text-xs font-bold text-gray-400"><XCircle size={12}/> Sem abastecimento</span>
   }
 
@@ -414,7 +374,6 @@ export default function ContasPagarPage() {
     )
   }
 
-  // ── DETALHE ──────────────────────────────────────────────────────────────────
   if (sel) return (
     <div className="p-6 max-w-3xl mx-auto">
       <button onClick={() => setSel(null)}
@@ -422,7 +381,6 @@ export default function ContasPagarPage() {
         <ArrowLeft size={16}/> Voltar
       </button>
       {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
-
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className={`px-6 py-5 flex items-center justify-between
           ${editStatus === 'PAGO' ? 'bg-green-600' : isVencida(sel) ? 'bg-red-700' : 'bg-gray-900'}`}>
@@ -435,7 +393,6 @@ export default function ContasPagarPage() {
             <p className="text-white font-black text-2xl">{fmtValor(sel.valor)}</p>
           </div>
         </div>
-
         <div className="p-6 space-y-4">
           {sel.nota_fiscal_id && (
             <div className={`p-4 rounded-xl border ${
@@ -457,14 +414,12 @@ export default function ContasPagarPage() {
               )}
             </div>
           )}
-
           {sel.nota_fiscal_chave && (
             <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
               <p className="text-[10px] font-black text-blue-400 uppercase mb-1">Chave NF-e</p>
               <p className="text-xs font-mono text-blue-700 break-all">{sel.nota_fiscal_chave}</p>
             </div>
           )}
-
           <div className="grid grid-cols-2 gap-4">
             <div><label className={LC}>Descrição</label>
               <input value={editDesc} onChange={e => setEditDesc(e.target.value)} className={IC}/></div>
@@ -492,7 +447,6 @@ export default function ContasPagarPage() {
           </div>
           <div><label className={LC}>Observações</label>
             <textarea value={editObs} onChange={e => setEditObs(e.target.value)} rows={2} className={IC}/></div>
-
           <div className="flex gap-3 pt-2">
             <button onClick={salvar} disabled={loading}
               className="flex-1 flex items-center justify-center gap-2 bg-red-600 text-white py-2.5 rounded-xl text-sm font-bold uppercase hover:bg-red-700 transition disabled:opacity-50">
@@ -503,7 +457,6 @@ export default function ContasPagarPage() {
               <Trash2 size={14}/> Excluir
             </button>
           </div>
-
           {confirmExcluir && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
               <div className="bg-white p-6 rounded-2xl shadow-2xl text-center max-w-sm w-full mx-4">
@@ -526,7 +479,6 @@ export default function ContasPagarPage() {
     </div>
   )
 
-  // ── LISTA ────────────────────────────────────────────────────────────────────
   return (
     <div ref={containerRef} className="p-6 max-w-5xl mx-auto">
       {msg && (
@@ -534,7 +486,6 @@ export default function ContasPagarPage() {
           {msg}
         </div>
       )}
-
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Pendente</p>
@@ -655,7 +606,6 @@ export default function ContasPagarPage() {
         </div>
       )}
 
-      {/* ── MODAL IMPORTAR NF-e ── */}
       {mostraImport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
@@ -674,14 +624,11 @@ export default function ContasPagarPage() {
                   ? <><Loader2 size={16} className="animate-spin"/> Lendo XML...</>
                   : <><Upload size={16}/> Selecionar arquivo XML</>}
               </button>
-
-              {/* ✅ Erro dentro do modal */}
               {erroImport && (
                 <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm font-bold">
                   <AlertCircle size={16}/> {erroImport}
                 </div>
               )}
-
               {dadosNFe && (
                 <>
                   <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
@@ -721,7 +668,6 @@ export default function ContasPagarPage() {
                       </div>
                     )}
                   </div>
-
                   {cruzamento && (
                     <div className={`rounded-2xl p-4 border ${
                       cruzamento.status === 'confere'     ? 'bg-green-50 border-green-200' :
@@ -744,12 +690,11 @@ export default function ContasPagarPage() {
                       ) : (
                         <p className="text-xs text-gray-400 italic">
                           Nenhum abastecimento encontrado para este CNPJ na data {fmtData(dadosNFe.data_emissao)}.
-                          A conta será criada sem vínculo com abastecimento.
+                          A conta será criada sem vínculo.
                         </p>
                       )}
                     </div>
                   )}
-
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className={LC}>Data de Vencimento *</label>
@@ -760,7 +705,6 @@ export default function ContasPagarPage() {
                       <input value={obsImport} onChange={e => setObsImport(e.target.value)} className={IC} placeholder="Opcional"/>
                     </div>
                   </div>
-
                   <button onClick={salvarNFe} disabled={salvandoNFe || !vencimento}
                     className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest transition disabled:opacity-50">
                     {salvandoNFe
@@ -774,7 +718,6 @@ export default function ContasPagarPage() {
         </div>
       )}
 
-      {/* ── MODAL NOVA CONTA MANUAL ── */}
       {mostraNova && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
