@@ -142,7 +142,9 @@ JSON de retorno (SOMENTE isso):
 // ─────────────────────────────────────────────────────────────────────────
 const PROVIDER = (process.env.IA_PROVIDER || 'anthropic').toLowerCase()
 
-async function chamarAnthropic(base64: string, mediaType: string, isPDF: boolean) {
+type ResultadoIA = { texto: string; erro?: undefined } | { texto?: undefined; erro: string; status?: number }
+
+async function chamarAnthropic(base64: string, mediaType: string, isPDF: boolean): Promise<ResultadoIA> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -182,7 +184,7 @@ async function chamarAnthropic(base64: string, mediaType: string, isPDF: boolean
   return { texto: data.content[0].text }
 }
 
-async function chamarGeminiUmaVez(base64: string, mediaType: string, modelo: string) {
+async function chamarGeminiUmaVez(base64: string, mediaType: string, modelo: string): Promise<ResultadoIA> {
   const GEMINI_KEY = process.env.GEMINI_API_KEY!
 
   const response = await fetch(
@@ -223,7 +225,7 @@ async function chamarGeminiUmaVez(base64: string, mediaType: string, modelo: str
   return { texto }
 }
 
-async function chamarGemini(base64: string, mediaType: string) {
+async function chamarGemini(base64: string, mediaType: string): Promise<ResultadoIA> {
   // Modelo principal + fallback caso esteja sobrecarregado (503)
   const modelos = ['gemini-3.5-flash', 'gemini-3.1-flash-lite']
   const MAX_TENTATIVAS_POR_MODELO = 2
