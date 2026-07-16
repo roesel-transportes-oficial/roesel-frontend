@@ -10,29 +10,7 @@ const MAPA_FROTA: Record<string, string> = {
   '4797/4717': '4797/4717', '8135': '8135', '80825': '80825', '8082S': '80825',
 }
 
-export async function POST(req: NextRequest) {
-  const { base64, mediaType, isPDF } = await req.json()
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-5',
-      max_tokens: 1500,
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: isPDF ? 'document' : 'image',
-            source: { type: 'base64', media_type: mediaType, data: base64 }
-          },
-          {
-            type: 'text',
-            text: `Analise este contrato de transporte rodoviário brasileiro e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem explicações.
+const PROMPT = `Analise este contrato de transporte rodoviário brasileiro e extraia os dados. Responda APENAS com JSON válido, sem markdown, sem backticks, sem explicações.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 EXISTEM 3 TIPOS DE CONTRATO:
@@ -151,28 +129,108 @@ JSON de retorno (SOMENTE isso):
   "status": "ABERTO",
   "obs": ""
 }`
-          }
+
+// ─────────────────────────────────────────────────────────────────────────
+// PROVEDOR: controla qual IA é usada.
+// Defina IA_PROVIDER=gemini nas env vars da Vercel para usar o Gemini
+// temporariamente. Sem essa variável (ou com IA_PROVIDER=anthropic), usa
+// o Claude normalmente. Basta remover/trocar a env var para voltar.
+// ─────────────────────────────────────────────────────────────────────────
+const PROVIDER = (process.env.IA_PROVIDER || 'anthropic').toLowerCase()
+
+async function chamarAnthropic(base64: string, mediaType: string, isPDF: boolean) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': process.env.ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 1500,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: isPDF ? 'document' : 'image',
+            source: { type: 'base64', media_type: mediaType, data: base64 }
+          },
+          { type: 'text', text: PROMPT }
         ]
       }]
     })
   })
 
-  // ✅ Verifica se a chamada para a Claude API falhou
   if (!response.ok) {
     const errorBody = await response.text()
     console.error('Erro Anthropic API:', response.status, errorBody)
-    return NextResponse.json({ _erro: `Erro ${response.status}: ${errorBody}` }, { status: 200 })
+    return { erro: `Erro ${response.status}: ${errorBody}` }
   }
 
   const data = await response.json()
 
-  // ✅ Verifica se a resposta não tem o conteúdo esperado
   if (!data.content || !data.content[0]?.text) {
     console.error('Resposta inesperada da Anthropic:', JSON.stringify(data))
-    return NextResponse.json({ _erro: 'Resposta vazia da IA: ' + JSON.stringify(data) }, { status: 200 })
+    return { erro: 'Resposta vazia da IA: ' + JSON.stringify(data) }
   }
 
-  const text = data.content[0].text
+  return { texto: data.content[0].text }
+}
+
+async function chamarGemini(base64: string, mediaType: string) {
+  const GEMINI_KEY = process.env.GEMINI_API_KEY!
+  const modelo = 'gemini-2.5-flash'
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${GEMINI_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [
+            { inline_data: { mime_type: mediaType, data: base64 } },
+            { text: PROMPT }
+          ]
+        }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+        }
+      })
+    }
+  )
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    console.error('Erro Gemini API:', response.status, errorBody)
+    return { erro: `Erro ${response.status}: ${errorBody}` }
+  }
+
+  const data = await response.json()
+
+  const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!texto) {
+    console.error('Resposta inesperada do Gemini:', JSON.stringify(data))
+    return { erro: 'Resposta vazia da IA: ' + JSON.stringify(data) }
+  }
+
+  return { texto }
+}
+
+export async function POST(req: NextRequest) {
+  const { base64, mediaType, isPDF } = await req.json()
+
+  const resultado = PROVIDER === 'gemini'
+    ? await chamarGemini(base64, mediaType)
+    : await chamarAnthropic(base64, mediaType, isPDF)
+
+  if (resultado.erro) {
+    return NextResponse.json({ _erro: resultado.erro }, { status: 200 })
+  }
+
+  const text = resultado.texto!
 
   try {
     // ✅ Remove blocos markdown (```json ... ```) antes de parsear
