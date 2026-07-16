@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Aumenta o tempo máximo de execução da função (padrão é 10s no plano Hobby).
+// Necessário porque a leitura de PDF pela IA pode demorar mais que isso.
+export const maxDuration = 60
+
 const MAPA_FROTA: Record<string, string> = {
   '12018': '2333', '12052': '2086', '12089': '2085', '12087': '2405',
   '12057': '116', '12170': 'P123', '12156': '110', '12134': '2109',
@@ -178,9 +182,8 @@ async function chamarAnthropic(base64: string, mediaType: string, isPDF: boolean
   return { texto: data.content[0].text }
 }
 
-async function chamarGemini(base64: string, mediaType: string) {
+async function chamarGeminiUmaVez(base64: string, mediaType: string, modelo: string) {
   const GEMINI_KEY = process.env.GEMINI_API_KEY!
-  const modelo = 'gemini-3.5-flash'
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${GEMINI_KEY}`,
@@ -197,6 +200,9 @@ async function chamarGemini(base64: string, mediaType: string) {
         }],
         generationConfig: {
           responseMimeType: 'application/json',
+          thinkingConfig: {
+            thinkingLevel: 'low',
+          },
         }
       })
     }
@@ -204,19 +210,46 @@ async function chamarGemini(base64: string, mediaType: string) {
 
   if (!response.ok) {
     const errorBody = await response.text()
-    console.error('Erro Gemini API:', response.status, errorBody)
-    return { erro: `Erro ${response.status}: ${errorBody}` }
+    return { erro: `Erro ${response.status}: ${errorBody}`, status: response.status }
   }
 
   const data = await response.json()
 
   const texto = data?.candidates?.[0]?.content?.parts?.[0]?.text
   if (!texto) {
-    console.error('Resposta inesperada do Gemini:', JSON.stringify(data))
-    return { erro: 'Resposta vazia da IA: ' + JSON.stringify(data) }
+    return { erro: 'Resposta vazia da IA: ' + JSON.stringify(data), status: 200 }
   }
 
   return { texto }
+}
+
+async function chamarGemini(base64: string, mediaType: string) {
+  // Modelo principal + fallback caso esteja sobrecarregado (503)
+  const modelos = ['gemini-3.5-flash', 'gemini-3.1-flash-lite']
+  const MAX_TENTATIVAS_POR_MODELO = 2
+
+  for (const modelo of modelos) {
+    for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_POR_MODELO; tentativa++) {
+      const resultado = await chamarGeminiUmaVez(base64, mediaType, modelo)
+
+      if (!resultado.erro) return resultado
+
+      const isSobrecarga = resultado.status === 503 || resultado.status === 429
+      console.error(`Erro Gemini (${modelo}, tentativa ${tentativa}):`, resultado.erro)
+
+      if (isSobrecarga && tentativa < MAX_TENTATIVAS_POR_MODELO) {
+        // Espera um pouco antes de tentar de novo (backoff simples)
+        await new Promise(r => setTimeout(r, 1500 * tentativa))
+        continue
+      }
+
+      if (isSobrecarga) break // tenta o próximo modelo da lista
+
+      return { erro: resultado.erro } // erro que não é de sobrecarga, não adianta retry
+    }
+  }
+
+  return { erro: 'Todos os modelos Gemini estão indisponíveis no momento. Tente novamente em alguns minutos.' }
 }
 
 export async function POST(req: NextRequest) {
