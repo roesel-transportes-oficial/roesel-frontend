@@ -7,7 +7,7 @@ import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, User, AlertTriangl
 interface Motorista {
   id: string; nome: string; cpf: string; rg: string
   tipo: string; ativo: boolean; adiantamento: boolean
-  dt_desligamento: string
+  dt_desligamento: string; dt_admissao: string; freelancer: boolean
   vencimento_cnh: string; vencimento_permisso: string; vencimento_toxicologico: string
   vencimento_periodico: string
   caminhao_id: string; caminhao_temp_id: string; de_ferias: boolean
@@ -109,6 +109,8 @@ export default function MotoristaPage() {
   const [editAtivo, setEditAtivo] = useState(true)
   const [editAdiantamento, setEditAdiantamento] = useState(true)
   const [editDtDesligamento, setEditDtDesligamento] = useState('')
+  const [editDtAdmissao, setEditDtAdmissao] = useState('')
+  const [editFreelancer, setEditFreelancer] = useState(false)
   const [editCnh, setEditCnh] = useState('')
   const [editPermisso, setEditPermisso] = useState('')
   const [editToxico, setEditToxico] = useState('')
@@ -123,6 +125,8 @@ export default function MotoristaPage() {
   const [cadCpf, setCadCpf] = useState('')
   const [cadRg, setCadRg] = useState('')
   const [cadTipo, setCadTipo] = useState('Com adiantamento')
+  const [cadDtAdmissao, setCadDtAdmissao] = useState('')
+  const [cadFreelancer, setCadFreelancer] = useState(false)
   const [cadCnh, setCadCnh] = useState('')
   const [cadPermisso, setCadPermisso] = useState('')
   const [cadToxico, setCadToxico] = useState('')
@@ -187,6 +191,8 @@ export default function MotoristaPage() {
     setEditAtivo(m.ativo !== false)
     setEditAdiantamento(m.adiantamento !== false)
     setEditDtDesligamento(m.dt_desligamento || '')
+    setEditDtAdmissao(m.dt_admissao || '')
+    setEditFreelancer(m.freelancer || false)
     setEditCnh(m.vencimento_cnh || '')
     setEditPermisso(m.vencimento_permisso || '')
     setEditToxico(m.vencimento_toxicologico || '')
@@ -249,6 +255,8 @@ export default function MotoristaPage() {
           nome: editNome.toUpperCase(), cpf: editCpf, rg: editRg,
           tipo: editTipo, ativo: editAtivo, adiantamento: editAdiantamento,
           dt_desligamento: editDtDesligamento || null,
+          dt_admissao: editDtAdmissao || null,
+          freelancer: editFreelancer,
           vencimento_cnh: editCnh || null,
           vencimento_permisso: editPermisso || null,
           vencimento_toxicologico: editToxico || null,
@@ -300,6 +308,8 @@ export default function MotoristaPage() {
         const { error } = await supabase.from('motoristas').insert({
           nome: cadNome.toUpperCase(), cpf: cadCpf, rg: cadRg,
           tipo: cadTipo, ativo: true, adiantamento: true,
+          dt_admissao: cadDtAdmissao || null,
+          freelancer: cadFreelancer,
           vencimento_cnh: cadCnh || null,
           vencimento_permisso: cadPermisso || null,
           vencimento_toxicologico: cadToxico || null,
@@ -309,6 +319,7 @@ export default function MotoristaPage() {
       }
       await fetch_()
       setCadNome(''); setCadCpf(''); setCadRg(''); setCadTipo('Com adiantamento')
+      setCadDtAdmissao(''); setCadFreelancer(false)
       setCadCnh(''); setCadPermisso(''); setCadToxico(''); setCadPeriodico('')
       setMostraCad(false)
       showMsg('✅ Motorista cadastrado!')
@@ -406,6 +417,10 @@ export default function MotoristaPage() {
             <input value={fmtCpf(cadCpf)} onChange={e => setCadCpf(e.target.value.replace(/\D/g,''))}
               placeholder="000.000.000-00" maxLength={14} className={InputClass} />
           </div>
+          <div>
+            <label className={LabelClass}>Data de Admissão</label>
+            <input type="date" value={cadDtAdmissao} onChange={e => setCadDtAdmissao(e.target.value)} className={InputClass} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={LabelClass}>Venc. CNH</label>
@@ -423,6 +438,9 @@ export default function MotoristaPage() {
               <label className={LabelClass}>Venc. Periódico</label>
               <input type="date" value={cadPeriodico} onChange={e => setCadPeriodico(e.target.value)} className={InputClass} />
             </div>
+          </div>
+          <div className="border-t border-gray-100 pt-3">
+            <Toggle value={cadFreelancer} onChange={() => setCadFreelancer(!cadFreelancer)} label="Freelancer" />
           </div>
           <div className="flex gap-2 pt-1">
             <button onClick={cadastrar} disabled={loading}
@@ -473,6 +491,11 @@ export default function MotoristaPage() {
                       {editDeFerias && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/30 text-blue-100">
                           🏖️ De férias
+                        </span>
+                      )}
+                      {editFreelancer && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400/30 text-purple-100">
+                          🧾 Freelancer
                         </span>
                       )}
                     </div>
@@ -551,6 +574,11 @@ export default function MotoristaPage() {
                   <input value={fmtCpf(editCpf)} onChange={e => setEditCpf(e.target.value.replace(/\D/g,''))}
                     placeholder="000.000.000-00" maxLength={14} className={InputClass} />
                 </div>
+              </div>
+
+              <div>
+                <label className={LabelClass}>Data de Admissão</label>
+                <input type="date" value={editDtAdmissao} onChange={e => setEditDtAdmissao(e.target.value)} className={InputClass} />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -647,6 +675,7 @@ export default function MotoristaPage() {
               </div>
 
               <div className="border-t border-gray-100 pt-4 space-y-3">
+                <Toggle value={editFreelancer} onChange={() => setEditFreelancer(!editFreelancer)} label="Freelancer" />
                 <Toggle value={editAdiantamento} onChange={() => setEditAdiantamento(!editAdiantamento)} label="Adiantamento" />
                 <Toggle value={editAtivo} onChange={() => {
                   setEditAtivo(!editAtivo)
@@ -758,6 +787,7 @@ export default function MotoristaPage() {
                       {caminhao && ` · 🚛 ${caminhao.placa}`}
                       {caminhaoTemp && ` · 🚛 ${caminhaoTemp.placa} (temp)`}
                       {m.de_ferias && ` · 🏖️ Férias`}
+                      {m.freelancer && ` · 🧾 Freelancer`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
