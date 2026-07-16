@@ -180,7 +180,7 @@ async function chamarAnthropic(base64: string, mediaType: string, isPDF: boolean
 
 async function chamarGemini(base64: string, mediaType: string) {
   const GEMINI_KEY = process.env.GEMINI_API_KEY!
-  const modelo = 'gemini-2.5-flash'
+  const modelo = 'gemini-3.5-flash'
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${GEMINI_KEY}`,
