@@ -23,6 +23,15 @@ interface Manutencao {
 interface Licenca { id: string; caminhao_id: string; estado: string; vencimento: string }
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
+const ESTADOS_NOMES: Record<string, string> = {
+  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia',
+  CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás',
+  MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais',
+  PA: 'Pará', PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí',
+  RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul',
+  RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo',
+  SE: 'Sergipe', TO: 'Tocantins',
+}
 const TIPOS_MANUTENCAO = ['Troca de óleo','Revisão geral','Freios','Pneus','Suspensão','Motor','Câmbio','Elétrica','Funilaria/Pintura','Outro']
 
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
@@ -506,7 +515,7 @@ export default function CaminhaoPage() {
                       <div className="space-y-1"><label className={LC}>Estado</label>
                         <select value={novaLicEstado} onChange={e => setNovaLicEstado(e.target.value)} className={IC}>
                           <option value="">Selecione...</option>
-                          {ESTADOS.map(uf => <option key={uf} value={uf}>{uf}</option>)}
+                          {ESTADOS.map(uf => <option key={uf} value={uf}>{ESTADOS_NOMES[uf]}</option>)}
                         </select>
                       </div>
                       <div className="space-y-1"><label className={LC}>Vencimento</label><input type="date" value={novaLicVencimento} onChange={e => setNovaLicVencimento(e.target.value)} className={IC}/></div>
@@ -519,9 +528,9 @@ export default function CaminhaoPage() {
                       return (
                         <div key={l.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between group">
                           <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-black text-xs">{l.estado}</div>
+                            <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600 font-black text-xs shrink-0">{l.estado}</div>
                             <div>
-                              <p className="text-[10px] font-black text-gray-400 uppercase">Vencimento</p>
+                              <p className="text-[10px] font-black text-gray-400 uppercase">{ESTADOS_NOMES[l.estado] || l.estado}</p>
                               <p className={`text-xs font-black ${dias !== null && dias < 30 ? 'text-red-600' : 'text-gray-900'}`}>{fmtData(l.vencimento)}</p>
                             </div>
                           </div>

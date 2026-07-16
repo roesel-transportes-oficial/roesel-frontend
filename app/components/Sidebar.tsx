@@ -17,7 +17,7 @@ const menus = [
   { id: 'dashboard', label: 'Visão Geral',   icon: LayoutDashboard, adminOnly: false },
   { id: 'novo',      label: 'Novo Contrato', icon: FilePlus,        adminOnly: false },
   { id: 'contratos', label: 'Contratos',     icon: FileText,        adminOnly: false },
-  { id: 'caminhao',  label: 'Caminhão',      icon: Car,             adminOnly: false },
+  { id: 'caminhao',  label: 'Gestão de Frota', icon: Car,           adminOnly: false },
   { id: 'clientes',  label: 'Clientes',      icon: UserCircle,      adminOnly: false },
   { id: 'premios',   label: 'Prêmios',       icon: Trophy,          adminOnly: false },
   { id: 'usuarios',  label: 'Usuários',      icon: Users,           adminOnly: true  },
