@@ -93,6 +93,7 @@ export default function MotoristaPage() {
   const [motoristas, setMotoristas] = useState<Motorista[]>([])
   const [caminhoes, setCaminhoes] = useState<Caminhao[]>([])
   const [busca, setBusca] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
   const [sel, setSel] = useState<Motorista | null>(null)
   const [mostraCad, setMostraCad] = useState(false)
   const [mostraHistorico, setMostraHistorico] = useState(false)
@@ -169,9 +170,13 @@ export default function MotoristaPage() {
     ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_periodico) || '')
   )
 
-  const filtrados = busca.trim()
-    ? motoristas.filter(m => m.nome.toLowerCase().includes(busca.toLowerCase()))
-    : motoristas
+  const filtrados = motoristas
+    .filter(m => {
+      if (filtroStatus === 'ativos') return m.ativo !== false
+      if (filtroStatus === 'inativos') return m.ativo === false
+      return true
+    })
+    .filter(m => busca.trim() ? m.nome.toLowerCase().includes(busca.toLowerCase()) : true)
 
   function selecionar(m: Motorista) {
     setSel(m)
@@ -197,85 +202,122 @@ export default function MotoristaPage() {
   }
 
   function voltar() { setSel(null); setBusca(''); setConfirmExcluir(false); setMostraHistorico(false) }
-  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
+  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
   async function salvar() {
     if (!sel) return
     setLoading(true)
 
-    const feriasFoiAtivado = editDeFerias && !sel.de_ferias
+    try {
+      const feriasFoiAtivado = editDeFerias && !sel.de_ferias
 
-    if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeFerias) {
-      if (sel.caminhao_id) {
-        await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', sel.caminhao_id)
+      if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeFerias) {
+        if (sel.caminhao_id) {
+          const { error: e1 } = await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', sel.caminhao_id)
+          if (e1) throw e1
+        }
+        const { error: e2 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
+        if (e2) throw e2
       }
-      await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
-    }
 
-    if (editDeFerias && editSubstitutoId && editCaminhaoId) {
-      const substituto = motoristas.find(m => m.id === editSubstitutoId)
-      if (substituto) {
-        await supabase.from('motoristas').update({ caminhao_temp_id: editCaminhaoId }).eq('id', editSubstitutoId)
-        await supabase.from('caminhoes').update({ motorista_atual: substituto.nome }).eq('id', editCaminhaoId)
-        const cam = caminhoes.find(c => c.id === editCaminhaoId)
-        if (feriasFoiAtivado) {
-          await registrarHistorico(sel, substituto.nome, cam?.placa || '')
+      if (editDeFerias && editSubstitutoId && editCaminhaoId) {
+        const substituto = motoristas.find(m => m.id === editSubstitutoId)
+        if (substituto) {
+          const { error: e3 } = await supabase.from('motoristas').update({ caminhao_temp_id: editCaminhaoId }).eq('id', editSubstitutoId)
+          if (e3) throw e3
+          const { error: e4 } = await supabase.from('caminhoes').update({ motorista_atual: substituto.nome }).eq('id', editCaminhaoId)
+          if (e4) throw e4
+          const cam = caminhoes.find(c => c.id === editCaminhaoId)
+          if (feriasFoiAtivado) {
+            await registrarHistorico(sel, substituto.nome, cam?.placa || '')
+          }
         }
       }
-    }
 
-    if (!editDeFerias && sel.de_ferias && sel.substituto_id && editCaminhaoId) {
-      const substituto = motoristas.find(m => m.id === sel.substituto_id)
-      if (substituto) {
-        await supabase.from('motoristas').update({ caminhao_temp_id: null }).eq('id', sel.substituto_id)
-        await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
+      if (!editDeFerias && sel.de_ferias && sel.substituto_id && editCaminhaoId) {
+        const substituto = motoristas.find(m => m.id === sel.substituto_id)
+        if (substituto) {
+          const { error: e5 } = await supabase.from('motoristas').update({ caminhao_temp_id: null }).eq('id', sel.substituto_id)
+          if (e5) throw e5
+          const { error: e6 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
+          if (e6) throw e6
+        }
       }
-    }
 
-    if (perm !== 'demo') {
-      await supabase.from('motoristas').update({
-        nome: editNome.toUpperCase(), cpf: editCpf, rg: editRg,
-        tipo: editTipo, ativo: editAtivo, adiantamento: editAdiantamento,
-        dt_desligamento: editDtDesligamento || null,
-        vencimento_cnh: editCnh || null,
-        vencimento_permisso: editPermisso || null,
-        vencimento_toxicologico: editToxico || null,
-        vencimento_periodico: editPeriodico || null,
-        caminhao_id: editCaminhaoId || null,
-        de_ferias: editDeFerias,
-        ferias_inicio: editDeFerias ? editFeriasInicio || null : null,
-        ferias_fim: editDeFerias ? editFeriasFim || null : null,
-        substituto_id: editDeFerias ? editSubstitutoId || null : null,
-      }).eq('id', sel.id)
-    }
+      if (perm !== 'demo') {
+        const { error: e7 } = await supabase.from('motoristas').update({
+          nome: editNome.toUpperCase(), cpf: editCpf, rg: editRg,
+          tipo: editTipo, ativo: editAtivo, adiantamento: editAdiantamento,
+          dt_desligamento: editDtDesligamento || null,
+          vencimento_cnh: editCnh || null,
+          vencimento_permisso: editPermisso || null,
+          vencimento_toxicologico: editToxico || null,
+          vencimento_periodico: editPeriodico || null,
+          caminhao_id: editCaminhaoId || null,
+          de_ferias: editDeFerias,
+          ferias_inicio: editDeFerias ? editFeriasInicio || null : null,
+          ferias_fim: editDeFerias ? editFeriasFim || null : null,
+          substituto_id: editDeFerias ? editSubstitutoId || null : null,
+        }).eq('id', sel.id)
+        if (e7) throw e7
+      }
 
-    await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
+      await fetch_()
+      voltar()
+      showMsg('✅ Atualizado!')
+    } catch (err: any) {
+      console.error('Erro ao salvar motorista:', err)
+      showMsg('❌ Erro ao salvar: ' + (err?.message || 'erro desconhecido'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function excluir() {
     if (!sel) return
     setLoading(true)
-    if (perm !== 'demo') await supabase.from('motoristas').delete().eq('id', sel.id)
-    await fetch_(); setLoading(false); voltar(); showMsg('Motorista excluído.')
+    try {
+      if (perm !== 'demo') {
+        const { error } = await supabase.from('motoristas').delete().eq('id', sel.id)
+        if (error) throw error
+      }
+      await fetch_()
+      voltar()
+      showMsg('Motorista excluído.')
+    } catch (err: any) {
+      console.error('Erro ao excluir motorista:', err)
+      showMsg('❌ Erro ao excluir: ' + (err?.message || 'erro desconhecido'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function cadastrar() {
     if (!cadNome.trim()) return
     setLoading(true)
-    if (perm !== 'demo') {
-      await supabase.from('motoristas').insert({
-        nome: cadNome.toUpperCase(), cpf: cadCpf, rg: cadRg,
-        tipo: cadTipo, ativo: true, adiantamento: true,
-        vencimento_cnh: cadCnh || null,
-        vencimento_permisso: cadPermisso || null,
-        vencimento_toxicologico: cadToxico || null,
-        vencimento_periodico: cadPeriodico || null,
-      })
+    try {
+      if (perm !== 'demo') {
+        const { error } = await supabase.from('motoristas').insert({
+          nome: cadNome.toUpperCase(), cpf: cadCpf, rg: cadRg,
+          tipo: cadTipo, ativo: true, adiantamento: true,
+          vencimento_cnh: cadCnh || null,
+          vencimento_permisso: cadPermisso || null,
+          vencimento_toxicologico: cadToxico || null,
+          vencimento_periodico: cadPeriodico || null,
+        })
+        if (error) throw error
+      }
+      await fetch_()
+      setCadNome(''); setCadCpf(''); setCadRg(''); setCadTipo('Com adiantamento')
+      setCadCnh(''); setCadPermisso(''); setCadToxico(''); setCadPeriodico('')
+      setMostraCad(false)
+      showMsg('✅ Motorista cadastrado!')
+    } catch (err: any) {
+      console.error('Erro ao cadastrar motorista:', err)
+      showMsg('❌ Erro ao cadastrar: ' + (err?.message || 'erro desconhecido'))
+    } finally {
+      setLoading(false)
     }
-    await fetch_(); setLoading(false)
-    setCadNome(''); setCadCpf(''); setCadRg(''); setCadTipo('Com adiantamento')
-    setCadCnh(''); setCadPermisso(''); setCadToxico(''); setCadPeriodico('')
-    setMostraCad(false); showMsg('✅ Motorista cadastrado!')
   }
 
   const InputClass = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
@@ -399,7 +441,7 @@ export default function MotoristaPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
+      {msg && <div className={`mb-4 p-3 rounded-xl text-sm border ${msg.startsWith('❌') ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>{msg}</div>}
 
       {sel ? (
         <div>
@@ -621,8 +663,8 @@ export default function MotoristaPage() {
 
               <div className="flex gap-2 pt-2">
                 <button onClick={salvar} disabled={loading}
-                  className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
-                  <Save size={15}/> Salvar alterações
+                  className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition disabled:opacity-60">
+                  <Save size={15}/> {loading ? 'Salvando...' : 'Salvar alterações'}
                 </button>
                 <button onClick={() => setConfirmExcluir(true)}
                   className="flex items-center gap-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl px-4 py-2.5 text-sm transition">
@@ -664,6 +706,19 @@ export default function MotoristaPage() {
               </div>
             </div>
           )}
+
+          <div className="flex gap-2 mb-4">
+            {(['ativos', 'inativos', 'todos'] as const).map(f => (
+              <button key={f} onClick={() => setFiltroStatus(f)}
+                className={`px-4 py-2 rounded-xl text-xs font-medium transition ${
+                  filtroStatus === f
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}>
+                {f === 'ativos' ? 'Ativos' : f === 'inativos' ? 'Inativos' : 'Todos'}
+              </button>
+            ))}
+          </div>
 
           <div className="relative mb-4">
             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
