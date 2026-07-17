@@ -297,6 +297,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     setLoadingIA(true); setErro('')
     setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
     setContratoLidoIA(false); setCamposIAAtivos(false)
+
+    // ✅ Timeout de segurança: se a API não responder em 50s, desiste
+    // e libera o loading em vez de travar pra sempre.
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 50000)
+
     try {
       let clientesAtuais = clientes
       if (clientesAtuais.length === 0) clientesAtuais = await fetchClientes()
@@ -304,16 +310,28 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       const base64 = await new Promise<string>((res, rej) => {
         const r = new FileReader()
         r.onload = () => res((r.result as string).split(',')[1])
-        r.onerror = () => rej()
+        r.onerror = () => rej(new Error('Não foi possível ler o arquivo selecionado.'))
         r.readAsDataURL(file)
       })
 
       const response = await fetch('/api/ler-contrato', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, mediaType: file.type, isPDF: file.type === 'application/pdf' })
+        body: JSON.stringify({ base64, mediaType: file.type, isPDF: file.type === 'application/pdf' }),
+        signal: controller.signal,
       })
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status} ao chamar a IA.`)
+      }
+
       const parsed = await response.json()
+
+      // ✅ A API pode responder 200 mas ainda assim carregar um erro no campo _erro
+      if (parsed._erro) {
+        throw new Error(typeof parsed._erro === 'string' ? parsed._erro : 'Erro ao processar o documento com a IA.')
+      }
 
       const motoristasAtivos    = motoristas.filter(m => m.ativo !== false)
       const motoristaEncontrado = encontrarMotorista(motoristasAtivos, parsed.motorista || '')
@@ -344,8 +362,17 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         chapa:         calcularChapa(destino, nomeCliente),
       }
       atualizarForm(novoForm)
-    } catch { setErro('Não foi possível ler o documento. Preencha manualmente.') }
-    finally { setLoadingIA(false); if (fileRef.current) fileRef.current.value = '' }
+    } catch (err: any) {
+      clearTimeout(timeoutId)
+      if (err?.name === 'AbortError') {
+        setErro('⏱️ A IA demorou demais para responder (mais de 50s). Tente novamente ou preencha manualmente.')
+      } else {
+        setErro(err?.message || 'Não foi possível ler o documento. Preencha manualmente.')
+      }
+    } finally {
+      setLoadingIA(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   async function salvar(e: any) {
