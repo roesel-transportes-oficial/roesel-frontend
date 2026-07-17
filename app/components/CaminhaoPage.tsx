@@ -8,6 +8,7 @@ interface Caminhao {
   id: string; placa: string; placa_carreta: string; modelo: string; ano: string
   status: string; motivo_parado: string; dt_parado: string
   motorista_atual: string; obs_documentos: string; frota: string
+  vencimento_cronotacografo?: string; vencimento_permisso?: string
 }
 interface Carreta { id: string; placa: string; modelo: string; ano: string; status: string; obs: string }
 interface Motorista { id: string; nome: string; ativo: boolean }
@@ -75,6 +76,8 @@ export default function CaminhaoPage() {
   const [editMotorista, setEditMotorista]       = useState('')
   const [editFrota, setEditFrota]               = useState('')
   const [editObs, setEditObs]                   = useState('')
+  const [editVencCronotacografo, setEditVencCronotacografo] = useState('')
+  const [editVencPermisso, setEditVencPermisso]             = useState('')
   const [novaLicEstado, setNovaLicEstado]         = useState('')
   const [novaLicVencimento, setNovaLicVencimento] = useState('')
   const [cadPlaca, setCadPlaca]               = useState('')
@@ -173,6 +176,8 @@ export default function CaminhaoPage() {
     setEditStatus(c.status || 'rodando'); setEditMotivo(c.motivo_parado || '')
     setEditDtParado(c.dt_parado || ''); setEditMotorista(c.motorista_atual || '')
     setEditFrota(c.frota || ''); setEditObs(c.obs_documentos || '')
+    setEditVencCronotacografo(c.vencimento_cronotacografo || '')
+    setEditVencPermisso(c.vencimento_permisso || '')
     setAba('info'); fetchLicencas(c.id)
   }
 
@@ -185,6 +190,8 @@ export default function CaminhaoPage() {
       motivo_parado: editStatus !== 'rodando' ? editMotivo : '',
       dt_parado: editStatus !== 'rodando' ? editDtParado : null,
       motorista_atual: editMotorista, obs_documentos: editObs,
+      vencimento_cronotacografo: editVencCronotacografo || null,
+      vencimento_permisso: editVencPermisso || null,
     }).eq('id', sel.id)
     await fetch_()
     setLoading(false); setSel(null); showMsg('✅ Atualizado!')
@@ -470,7 +477,7 @@ export default function CaminhaoPage() {
                 </button>
                 <button onClick={() => setAba('licencas')}
                   className={`pb-4 text-xs font-black uppercase tracking-widest transition-all ${aba === 'licencas' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-400'}`}>
-                  Licenças Estaduais
+                  Documentos
                 </button>
               </div>
 
@@ -509,8 +516,37 @@ export default function CaminhaoPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
+                  {/* ── Cronotacógrafo e Permisso: vencimento único por caminhão ── */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 space-y-1">
+                      <label className={LC}>Cronotacógrafo — Vencimento</label>
+                      <input type="date" value={editVencCronotacografo} onChange={e => setEditVencCronotacografo(e.target.value)} className={IC}/>
+                      {editVencCronotacografo && (() => {
+                        const dias = diasParaVencer(editVencCronotacografo)
+                        return dias !== null && dias < 30 ? (
+                          <p className={`text-[10px] font-black uppercase mt-1 ${dias < 0 ? 'text-red-600' : 'text-orange-500'}`}>
+                            {dias < 0 ? `Vencido há ${Math.abs(dias)}d` : `Vence em ${dias}d`}
+                          </p>
+                        ) : null
+                      })()}
+                    </div>
+                    <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 space-y-1">
+                      <label className={LC}>Permisso — Vencimento</label>
+                      <input type="date" value={editVencPermisso} onChange={e => setEditVencPermisso(e.target.value)} className={IC}/>
+                      {editVencPermisso && (() => {
+                        const dias = diasParaVencer(editVencPermisso)
+                        return dias !== null && dias < 30 ? (
+                          <p className={`text-[10px] font-black uppercase mt-1 ${dias < 0 ? 'text-red-600' : 'text-orange-500'}`}>
+                            {dias < 0 ? `Vencido há ${Math.abs(dias)}d` : `Vence em ${dias}d`}
+                          </p>
+                        ) : null
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* ── Licenças Estaduais: múltiplas por caminhão ── */}
                   <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Nova Licença</h4>
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Nova Licença Estadual</h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                       <div className="space-y-1"><label className={LC}>Estado</label>
                         <select value={novaLicEstado} onChange={e => setNovaLicEstado(e.target.value)} className={IC}>
