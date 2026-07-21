@@ -123,13 +123,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: emailLogin,
-      password: senha,
-    })
+    // ✅ Timeout de segurança: se signInWithPassword travar (sem resolver
+    // nem dar erro), libera o botão depois de 15s em vez de ficar preso
+    // pra sempre em "Entrando...".
+    try {
+      const signInPromise = supabase.auth.signInWithPassword({
+        email: emailLogin,
+        password: senha,
+      })
+      const timeoutPromise = new Promise<'timeout'>((resolve) =>
+        setTimeout(() => resolve('timeout'), 15000)
+      )
 
-    if (error) return 'Usuário ou senha incorretos'
-    return null
+      const result = await Promise.race([signInPromise, timeoutPromise])
+
+      if (result === 'timeout') {
+        console.warn('Timeout ao fazer login — tente novamente')
+        return 'A conexão demorou demais. Tente novamente.'
+      }
+
+      const { error } = result
+      if (error) return 'Usuário ou senha incorretos'
+      return null
+    } catch (e: any) {
+      console.warn('Erro inesperado ao fazer login:', e)
+      return 'Erro inesperado ao fazer login. Tente novamente.'
+    }
   }
 
   async function logout() {
