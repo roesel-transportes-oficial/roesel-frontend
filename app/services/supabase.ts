@@ -21,7 +21,13 @@ function getClient(): SupabaseClient {
       autoRefreshToken: true,
       detectSessionInUrl: false,
       flowType: 'implicit',
-      lock: async (name, acquireTimeout, fn) => fn(),
+      // ✅ Removida a trava customizada (lock: async (...) => fn()) que
+      // desligava o mecanismo interno do Supabase de serializar operações
+      // de sessão. Isso causava condição de corrida entre a recuperação
+      // automática da sessão salva (após F5) e um novo login manual,
+      // travando o app indefinidamente. Sem sobrescrever "lock", o
+      // Supabase usa seu comportamento padrão, feito para lidar com
+      // exatamente esse tipo de concorrência.
     }
   })
 
