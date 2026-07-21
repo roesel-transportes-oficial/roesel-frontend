@@ -96,37 +96,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // ✅ Toda a função agora está protegida por try/catch — qualquer erro,
+  // síncrono ou assíncrono, gera uma mensagem de erro em vez de travar
+  // o botão pra sempre em "Entrando...".
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
-    let emailLogin = loginOrEmail
+    try {
+      let emailLogin = loginOrEmail
 
-    if (!loginOrEmail.includes('@')) {
-      const { data } = await supabase
-        .from('usuarios')
-        .select('email, status')
-        .eq('login', loginOrEmail)
-        .limit(1)
+      if (!loginOrEmail.includes('@')) {
+        const { data, error: errBusca } = await supabase
+          .from('usuarios')
+          .select('email, status')
+          .eq('login', loginOrEmail)
+          .limit(1)
 
-      if (!data || data.length === 0) return 'Usuário não encontrado'
-      if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
-      if (data[0].status === 'inativo') return 'Conta inativa'
-      emailLogin = data[0].email
-    } else {
-      const { data } = await supabase
-        .from('usuarios')
-        .select('status')
-        .eq('email', loginOrEmail)
-        .limit(1)
+        if (errBusca) {
+          console.warn('Erro ao buscar usuário por login:', errBusca)
+          return 'Erro ao verificar usuário. Tente novamente.'
+        }
 
-      if (data && data.length > 0) {
+        if (!data || data.length === 0) return 'Usuário não encontrado'
         if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
         if (data[0].status === 'inativo') return 'Conta inativa'
-      }
-    }
+        emailLogin = data[0].email
+      } else {
+        const { data, error: errBusca } = await supabase
+          .from('usuarios')
+          .select('status')
+          .eq('email', loginOrEmail)
+          .limit(1)
 
-    // ✅ Timeout de segurança: se signInWithPassword travar (sem resolver
-    // nem dar erro), libera o botão depois de 15s em vez de ficar preso
-    // pra sempre em "Entrando...".
-    try {
+        if (errBusca) {
+          console.warn('Erro ao buscar usuário por email:', errBusca)
+          return 'Erro ao verificar usuário. Tente novamente.'
+        }
+
+        if (data && data.length > 0) {
+          if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
+          if (data[0].status === 'inativo') return 'Conta inativa'
+        }
+      }
+
+      // ✅ Timeout de segurança pro signInWithPassword em si
       const signInPromise = supabase.auth.signInWithPassword({
         email: emailLogin,
         password: senha,
@@ -146,8 +157,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) return 'Usuário ou senha incorretos'
       return null
     } catch (e: any) {
-      console.warn('Erro inesperado ao fazer login:', e)
-      return 'Erro inesperado ao fazer login. Tente novamente.'
+      // ✅ Captura QUALQUER erro síncrono ou assíncrono dentro de login(),
+      // inclusive erros lançados antes de qualquer chamada de rede
+      // (ex: problema ao acessar o client do Supabase).
+      console.error('Erro inesperado na função login():', e)
+      return 'Erro inesperado: ' + (e?.message || 'tente novamente ou recarregue a página.')
     }
   }
 

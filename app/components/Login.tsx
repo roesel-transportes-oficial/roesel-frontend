@@ -24,14 +24,22 @@ export default function Login() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true); setErro('')
-    const err = await login(loginInput, senha)
-    if (err) {
-      setErro(err)
+    try {
+      const err = await login(loginInput, senha)
+      if (err) {
+        setErro(err)
+        setLoading(false)
+      }
+      // Se deu certo (err === null), NÃO chama setLoading(false).
+      // O AuthProvider vai atualizar o user, page.tsx vai re-renderizar
+      // e mostrar o dashboard, desmontando este componente Login.
+    } catch (e: any) {
+      // ✅ Protege contra qualquer erro inesperado (síncrono ou assíncrono)
+      // que login() não tenha capturado, evitando o botão travar pra sempre.
+      console.error('Erro inesperado no handleLogin:', e)
+      setErro('Erro inesperado: ' + (e?.message || 'tente novamente'))
       setLoading(false)
     }
-    // Se deu certo (err === null), NÃO chama setLoading(false).
-    // O AuthProvider vai atualizar o user, page.tsx vai re-renderizar
-    // e mostrar o dashboard, desmontando este componente Login.
   }
 
   async function handleCadastro(e: React.FormEvent) {
@@ -41,59 +49,71 @@ export default function Login() {
     if (cadSenha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres'); return }
     setLoading(true)
 
-    const { data: existe } = await supabase
-      .from('usuarios')
-      .select('id')
-      .eq('login', cadLogin)
-      .single()
+    try {
+      const { data: existe } = await supabase
+        .from('usuarios')
+        .select('id')
+        .eq('login', cadLogin)
+        .single()
 
-    if (existe) { setErro('Este usuário já existe'); setLoading(false); return }
+      if (existe) { setErro('Este usuário já existe'); setLoading(false); return }
 
-    const { error } = await supabase.from('usuarios').insert({
-      nome: cadNome.toUpperCase(),
-      login: cadLogin.toLowerCase(),
-      email: cadEmail.toLowerCase(),
-      senha: cadSenha,
-      perm: 'view',
-      status: 'pendente',
-      primeiro_acesso: false,
-    })
+      const { error } = await supabase.from('usuarios').insert({
+        nome: cadNome.toUpperCase(),
+        login: cadLogin.toLowerCase(),
+        email: cadEmail.toLowerCase(),
+        senha: cadSenha,
+        perm: 'view',
+        status: 'pendente',
+        primeiro_acesso: false,
+      })
 
-    if (error) { setErro('Erro ao criar conta. Tente novamente.'); setLoading(false); return }
+      if (error) { setErro('Erro ao criar conta. Tente novamente.'); setLoading(false); return }
 
-    setMsg('✅ Cadastro realizado! Aguarde a aprovação do administrador.')
-    setLoading(false)
-    setTimeout(() => { setTela('login'); setMsg('') }, 4000)
+      setMsg('✅ Cadastro realizado! Aguarde a aprovação do administrador.')
+      setLoading(false)
+      setTimeout(() => { setTela('login'); setMsg('') }, 4000)
+    } catch (e: any) {
+      console.error('Erro inesperado no handleCadastro:', e)
+      setErro('Erro inesperado: ' + (e?.message || 'tente novamente'))
+      setLoading(false)
+    }
   }
 
   async function handleRecuperar(e: React.FormEvent) {
     e.preventDefault()
     setErro(''); setLoading(true)
 
-    const { data } = await supabase
-      .from('usuarios')
-      .select('login')
-      .eq('email', recEmail.toLowerCase().trim())
-      .limit(1)
+    try {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('login')
+        .eq('email', recEmail.toLowerCase().trim())
+        .limit(1)
 
-    if (!data || data.length === 0) {
-      setErro('Email não encontrado')
+      if (!data || data.length === 0) {
+        setErro('Email não encontrado')
+        setLoading(false)
+        return
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(recEmail.toLowerCase().trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+
+      if (error) {
+        setErro('Erro ao enviar email. Tente novamente.')
+        setLoading(false)
+        return
+      }
+
+      setMsg('✅ Email de redefinição enviado! Verifique sua caixa de entrada.')
       setLoading(false)
-      return
-    }
-
-    const { error } = await supabase.auth.resetPasswordForEmail(recEmail.toLowerCase().trim(), {
-      redirectTo: `${window.location.origin}/reset-password`,
-    })
-
-    if (error) {
-      setErro('Erro ao enviar email. Tente novamente.')
+    } catch (e: any) {
+      console.error('Erro inesperado no handleRecuperar:', e)
+      setErro('Erro inesperado: ' + (e?.message || 'tente novamente'))
       setLoading(false)
-      return
     }
-
-    setMsg('✅ Email de redefinição enviado! Verifique sua caixa de entrada.')
-    setLoading(false)
   }
 
   const InputClass = "w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
