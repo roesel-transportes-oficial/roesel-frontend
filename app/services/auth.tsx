@@ -1,6 +1,6 @@
 'use client'
 import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase } from './supabase'
+import { supabase, resetSupabaseClient } from './supabase'
 
 interface AuthContextType {
   user: string | null
@@ -28,16 +28,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('nome, login, perm, email, status')
       .eq('email', emailAuth)
       .maybeSingle()
-
-    if (error) {
-      console.warn('Erro ao buscar usuário:', error)
-      return
-    }
-
+    if (error) { console.warn('Erro ao buscar usuário:', error); return }
     if (data) {
-      setUser(data.nome || data.login)
-      setPerm(data.perm)
-      setEmail(data.email)
+      setUser(data.nome || data.login); setPerm(data.perm); setEmail(data.email)
     } else {
       setUser(null); setPerm(''); setEmail(null)
     }
@@ -49,27 +42,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function checkSession() {
       try {
         const sessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), 5000)
-        )
-
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
         const result = await Promise.race([sessionPromise, timeoutPromise])
 
         if (!mounted) return
 
         if (result === null) {
-          console.warn('Timeout ao verificar sessão — indo para login')
+          console.warn('Timeout ao verificar sessão — limpando sessão presa')
+          resetSupabaseClient()
           setUser(null); setPerm(''); setEmail(null)
           setLoading(false)
           return
         }
 
         const { data: { session } } = result
-        if (session?.user?.email) {
-          await carregarUsuario(session.user.email)
-        }
+        if (session?.user?.email) await carregarUsuario(session.user.email)
       } catch (e) {
         console.warn('Erro ao verificar sessão:', e)
+        resetSupabaseClient()
       } finally {
         if (mounted) setLoading(false)
       }
@@ -81,96 +71,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         if (!mounted) return
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (session?.user?.email) {
-            await carregarUsuario(session.user.email)
-          }
+          if (session?.user?.email) await carregarUsuario(session.user.email)
         } else if (event === 'SIGNED_OUT') {
           setUser(null); setPerm(''); setEmail(null)
         }
       }
     )
 
-    return () => {
-      mounted = false
-      subscription.unsubscribe()
-    }
+    return () => { mounted = false; subscription.unsubscribe() }
   }, [])
 
-  // ✅ Toda a função agora está protegida por try/catch — qualquer erro,
-  // síncrono ou assíncrono, gera uma mensagem de erro em vez de travar
-  // o botão pra sempre em "Entrando...".
+  async function tentarSignIn(email: string, senha: string) {
+    const signInPromise = supabase.auth.signInWithPassword({ email, password: senha })
+    const timeoutPromise = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 8000))
+    return Promise.race([signInPromise, timeoutPromise])
+  }
+
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
     try {
       let emailLogin = loginOrEmail
 
       if (!loginOrEmail.includes('@')) {
         const { data, error: errBusca } = await supabase
-          .from('usuarios')
-          .select('email, status')
-          .eq('login', loginOrEmail)
-          .limit(1)
-
-        if (errBusca) {
-          console.warn('Erro ao buscar usuário por login:', errBusca)
-          return 'Erro ao verificar usuário. Tente novamente.'
-        }
-
+          .from('usuarios').select('email, status').eq('login', loginOrEmail).limit(1)
+        if (errBusca) return 'Erro ao verificar usuário. Tente novamente.'
         if (!data || data.length === 0) return 'Usuário não encontrado'
         if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
         if (data[0].status === 'inativo') return 'Conta inativa'
         emailLogin = data[0].email
       } else {
         const { data, error: errBusca } = await supabase
-          .from('usuarios')
-          .select('status')
-          .eq('email', loginOrEmail)
-          .limit(1)
-
-        if (errBusca) {
-          console.warn('Erro ao buscar usuário por email:', errBusca)
-          return 'Erro ao verificar usuário. Tente novamente.'
-        }
-
+          .from('usuarios').select('status').eq('email', loginOrEmail).limit(1)
+        if (errBusca) return 'Erro ao verificar usuário. Tente novamente.'
         if (data && data.length > 0) {
           if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
           if (data[0].status === 'inativo') return 'Conta inativa'
         }
       }
 
-      // ✅ Timeout de segurança pro signInWithPassword em si
-      const signInPromise = supabase.auth.signInWithPassword({
-        email: emailLogin,
-        password: senha,
-      })
-      const timeoutPromise = new Promise<'timeout'>((resolve) =>
-        setTimeout(() => resolve('timeout'), 15000)
-      )
+      // ✅ Primeira tentativa
+      let result = await tentarSignIn(emailLogin, senha)
 
-      const result = await Promise.race([signInPromise, timeoutPromise])
+      // ✅ Se travou (timeout), é sinal de sessão presa — limpa e tenta
+      // de novo automaticamente, sem precisar fechar a aba manualmente.
+      if (result === 'timeout') {
+        console.warn('Timeout no login — limpando sessão presa e tentando de novo')
+        resetSupabaseClient()
+        result = await tentarSignIn(emailLogin, senha)
+      }
 
       if (result === 'timeout') {
-        console.warn('Timeout ao fazer login — tente novamente')
-        return 'A conexão demorou demais. Tente novamente.'
+        return 'A conexão demorou demais mesmo após nova tentativa. Recarregue a página (F5) e tente novamente.'
       }
 
       const { error } = result
       if (error) return 'Usuário ou senha incorretos'
       return null
     } catch (e: any) {
-      // ✅ Captura QUALQUER erro síncrono ou assíncrono dentro de login(),
-      // inclusive erros lançados antes de qualquer chamada de rede
-      // (ex: problema ao acessar o client do Supabase).
       console.error('Erro inesperado na função login():', e)
-      return 'Erro inesperado: ' + (e?.message || 'tente novamente ou recarregue a página.')
+      resetSupabaseClient()
+      return 'Erro inesperado: ' + (e?.message || 'tente novamente.')
     }
   }
 
   async function logout() {
-    try {
-      await supabase.auth.signOut()
-    } catch (e) {
-      console.warn('Erro ao fazer signOut:', e)
-    }
+    try { await supabase.auth.signOut() } catch (e) { console.warn('Erro ao fazer signOut:', e) }
+    resetSupabaseClient()
     setUser(null); setPerm(''); setEmail(null)
     window.location.replace('/')
   }
