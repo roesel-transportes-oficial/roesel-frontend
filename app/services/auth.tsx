@@ -1,74 +1,154 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+'use client'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { supabase } from './supabase'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY
-
-let _client: SupabaseClient | null = null
-
-function getClient(): SupabaseClient {
-  if (_client) return _client
-
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error(
-      'Supabase não configurado: verifique NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_KEY nas variáveis de ambiente da Vercel.'
-    )
-  }
-
-  _client = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: false,
-      flowType: 'implicit',
-      lock: async (name, acquireTimeout, fn) => fn(),
-    }
-  })
-
-  return _client
+interface AuthContextType {
+  user: string | null
+  perm: string
+  email: string | null
+  login: (loginOrEmail: string, senha: string) => Promise<string | null>
+  logout: () => void
+  loading: boolean
 }
 
-// ✅ Proxy: o client real só é instanciado (getClient()) na primeira
-// propriedade acessada, ex: supabase.from(...) ou supabase.auth.getSession().
-// Isso evita que o build estático (páginas como /_not-found) quebre
-// tentando criar o client antes das env vars estarem disponíveis.
-//
-// IMPORTANTE: não passamos o "receiver" (a Proxy) para Reflect.get/getters —
-// o SupabaseClient usa getters internos com campos privados (#) que dependem
-// de rodar com "this" apontando pro client real, não pro Proxy. Passar o
-// receiver quebra esse contexto silenciosamente e trava chamadas como
-// supabase.auth.getSession() sem lançar erro nenhum.
-export const supabase = new Proxy({} as SupabaseClient, {
-  get(_target, prop) {
-    const client = getClient()
-    const value = (client as any)[prop]
-    return typeof value === 'function' ? value.bind(client) : value
-  }
+const AuthContext = createContext<AuthContextType>({
+  user: null, perm: '', email: null,
+  login: async () => null, logout: () => {}, loading: true
 })
 
-// ── Recuperação após inatividade ──────────────────────────────────────────
-// O navegador suspende conexões de rede em abas inativas por muito tempo.
-// Quando isso acontece, requisições pendentes nunca recebem resposta e a
-// tela fica travada em "carregando". A solução é detectar quanto tempo a
-// aba ficou oculta e, se passou de um limite, recarregar a página inteira
-// para garantir que tudo volte a funcionar.
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<string | null>(null)
+  const [perm, setPerm] = useState('')
+  const [email, setEmail] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
-if (typeof window !== 'undefined') {
-  let ocultoDesde: number | null = null
-  const LIMITE_INATIVIDADE_MS = 3 * 60 * 1000 // 3 minutos
+  async function carregarUsuario(emailAuth: string) {
+    const { data, error } = await supabase
+      .from('usuarios')
+      .select('nome, login, perm, email, status')
+      .eq('email', emailAuth)
+      .maybeSingle()
 
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      ocultoDesde = Date.now()
-    } else if (document.visibilityState === 'visible') {
-      const tempoOculto = ocultoDesde ? Date.now() - ocultoDesde : 0
-      ocultoDesde = null
+    if (error) {
+      console.warn('Erro ao buscar usuário:', error)
+      return
+    }
 
-      if (tempoOculto > LIMITE_INATIVIDADE_MS) {
-        window.location.reload()
-      } else {
-        supabase.auth.getSession()
+    if (data) {
+      setUser(data.nome || data.login)
+      setPerm(data.perm)
+      setEmail(data.email)
+    } else {
+      setUser(null); setPerm(''); setEmail(null)
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true
+
+    async function checkSession() {
+      try {
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), 5000)
+        )
+
+        const result = await Promise.race([sessionPromise, timeoutPromise])
+
+        if (!mounted) return
+
+        if (result === null) {
+          console.warn('Timeout ao verificar sessão — indo para login')
+          setUser(null); setPerm(''); setEmail(null)
+          setLoading(false)
+          return
+        }
+
+        const { data: { session } } = result
+        if (session?.user?.email) {
+          await carregarUsuario(session.user.email)
+        }
+      } catch (e) {
+        console.warn('Erro ao verificar sessão:', e)
+      } finally {
+        if (mounted) setLoading(false)
       }
     }
-  })
+
+    checkSession()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return
+        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (session?.user?.email) {
+            await carregarUsuario(session.user.email)
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null); setPerm(''); setEmail(null)
+        }
+      }
+    )
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  async function login(loginOrEmail: string, senha: string): Promise<string | null> {
+    let emailLogin = loginOrEmail
+
+    if (!loginOrEmail.includes('@')) {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('email, status')
+        .eq('login', loginOrEmail)
+        .limit(1)
+
+      if (!data || data.length === 0) return 'Usuário não encontrado'
+      if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
+      if (data[0].status === 'inativo') return 'Conta inativa'
+      emailLogin = data[0].email
+    } else {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('status')
+        .eq('email', loginOrEmail)
+        .limit(1)
+
+      if (data && data.length > 0) {
+        if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
+        if (data[0].status === 'inativo') return 'Conta inativa'
+      }
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: emailLogin,
+      password: senha,
+    })
+
+    if (error) return 'Usuário ou senha incorretos'
+    return null
+  }
+
+  async function logout() {
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      console.warn('Erro ao fazer signOut:', e)
+    }
+    setUser(null); setPerm(''); setEmail(null)
+    window.location.replace('/')
+  }
+
+  return (
+    <AuthContext.Provider value={{ user, perm, email, login, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+export function useAuth() {
+  return useContext(AuthContext)
 }

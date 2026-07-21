@@ -9,9 +9,6 @@ function getClient(): SupabaseClient {
   if (_client) return _client
 
   if (!supabaseUrl || !supabaseKey) {
-    // Isso só deve disparar em runtime real (browser) se as env vars
-    // realmente não estiverem configuradas na Vercel — nunca durante
-    // o build estático, pois o client não é criado até ser usado.
     throw new Error(
       'Supabase não configurado: verifique NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_KEY nas variáveis de ambiente da Vercel.'
     )
@@ -35,10 +32,16 @@ function getClient(): SupabaseClient {
 // propriedade acessada, ex: supabase.from(...) ou supabase.auth.getSession().
 // Isso evita que o build estático (páginas como /_not-found) quebre
 // tentando criar o client antes das env vars estarem disponíveis.
+//
+// IMPORTANTE: não passamos o "receiver" (a Proxy) para os getters —
+// o SupabaseClient usa getters internos com campos privados (#) que dependem
+// de rodar com "this" apontando pro client real, não pro Proxy. Passar o
+// receiver quebra esse contexto silenciosamente e trava chamadas como
+// supabase.auth.getSession() sem lançar erro nenhum.
 export const supabase = new Proxy({} as SupabaseClient, {
-  get(_target, prop, receiver) {
+  get(_target, prop) {
     const client = getClient()
-    const value = Reflect.get(client, prop, receiver)
+    const value = (client as any)[prop]
     return typeof value === 'function' ? value.bind(client) : value
   }
 })
@@ -62,10 +65,8 @@ if (typeof window !== 'undefined') {
       ocultoDesde = null
 
       if (tempoOculto > LIMITE_INATIVIDADE_MS) {
-        // Ficou tempo demais inativo — recarrega para evitar tela travada
         window.location.reload()
       } else {
-        // Pouco tempo inativo — só renova a sessão, sem precisar recarregar
         supabase.auth.getSession()
       }
     }
