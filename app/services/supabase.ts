@@ -5,6 +5,25 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY
 
 let _client: SupabaseClient | null = null
 
+// ✅ Trava simples em memória (mutex), sem depender da API navigator.locks
+// do navegador — essa API pode ficar "presa" entre recarregamentos de
+// página, travando o app pra sempre. Esta trava vive só na memória do
+// JS desta aba e é sempre liberada corretamente.
+let filaDeTravas: Promise<any> = Promise.resolve()
+
+async function trancaSimples<T>(fn: () => Promise<T>): Promise<T> {
+  const execucaoAnterior = filaDeTravas
+  let liberar: () => void
+  filaDeTravas = new Promise<void>((resolve) => { liberar = resolve })
+
+  await execucaoAnterior
+  try {
+    return await fn()
+  } finally {
+    liberar!()
+  }
+}
+
 function getClient(): SupabaseClient {
   if (_client) return _client
 
@@ -21,13 +40,7 @@ function getClient(): SupabaseClient {
       autoRefreshToken: true,
       detectSessionInUrl: false,
       flowType: 'implicit',
-      // ✅ Removida a trava customizada (lock: async (...) => fn()) que
-      // desligava o mecanismo interno do Supabase de serializar operações
-      // de sessão. Isso causava condição de corrida entre a recuperação
-      // automática da sessão salva (após F5) e um novo login manual,
-      // travando o app indefinidamente. Sem sobrescrever "lock", o
-      // Supabase usa seu comportamento padrão, feito para lidar com
-      // exatamente esse tipo de concorrência.
+      lock: async (_name, _acquireTimeout, fn) => trancaSimples(fn),
     }
   })
 
@@ -41,9 +54,7 @@ function getClient(): SupabaseClient {
 //
 // IMPORTANTE: não passamos o "receiver" (a Proxy) para os getters —
 // o SupabaseClient usa getters internos com campos privados (#) que dependem
-// de rodar com "this" apontando pro client real, não pro Proxy. Passar o
-// receiver quebra esse contexto silenciosamente e trava chamadas como
-// supabase.auth.getSession() sem lançar erro nenhum.
+// de rodar com "this" apontando pro client real, não pro Proxy.
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     const client = getClient()
@@ -53,12 +64,6 @@ export const supabase = new Proxy({} as SupabaseClient, {
 })
 
 // ── Recuperação após inatividade ──────────────────────────────────────────
-// O navegador suspende conexões de rede em abas inativas por muito tempo.
-// Quando isso acontece, requisições pendentes nunca recebem resposta e a
-// tela fica travada em "carregando". A solução é detectar quanto tempo a
-// aba ficou oculta e, se passou de um limite, recarregar a página inteira
-// para garantir que tudo volte a funcionar.
-
 if (typeof window !== 'undefined') {
   let ocultoDesde: number | null = null
   const LIMITE_INATIVIDADE_MS = 3 * 60 * 1000 // 3 minutos
