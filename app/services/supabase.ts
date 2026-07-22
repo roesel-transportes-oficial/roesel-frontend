@@ -41,17 +41,12 @@ export const supabase = new Proxy({} as SupabaseClient, {
 })
 
 // ═══════════════════════════════════════════════════════════════════════
-// MODO DEMO — bloqueio no nível de rede (window.fetch)
+// MODO DEMO — bloqueio no nível de rede, só para dados (/rest/v1/...)
 // ═══════════════════════════════════════════════════════════════════════
-// Muitas telas fazem chamadas diretas via fetch() pra API REST do
-// Supabase (padrão "supaFetch"), sem passar pelo client supabase-js e
-// sem enviar o JWT do usuário — por isso RLS baseado em auth.jwt() não
-// enxergava o usuário demo nessas chamadas.
-//
-// A solução aqui intercepta QUALQUER requisição do navegador para o
-// domínio do Supabase, não importa qual código a disparou. Quando
-// permAtual === 'demo': GET retorna lista vazia, qualquer escrita
-// (POST/PATCH/PUT/DELETE) é bloqueada sem chegar ao banco.
+// IMPORTANTE: NÃO bloqueia chamadas de autenticação (/auth/v1/...) —
+// isso incluía refresh automático de token, getSession, signOut etc.
+// Bloquear essas travava o client de auth inteiro só para o usuário
+// demo, causando "Carregando..." infinito ao navegar entre páginas.
 // ═══════════════════════════════════════════════════════════════════════
 
 if (typeof window !== 'undefined' && !(window as any).__fetchPatchedParaDemo) {
@@ -64,9 +59,11 @@ if (typeof window !== 'undefined' && !(window as any).__fetchPatchedParaDemo) {
       input instanceof URL ? input.toString() :
       (input as Request).url
 
-    const ehChamadaSupabase = !!supabaseUrl && url.startsWith(supabaseUrl)
+    // ✅ Só intercepta chamadas de DADOS (/rest/v1/), nunca /auth/v1/,
+    // /storage/v1/ ou qualquer outro serviço do Supabase.
+    const ehChamadaDeDados = !!supabaseUrl && url.startsWith(`${supabaseUrl}/rest/v1/`)
 
-    if (permAtual === 'demo' && ehChamadaSupabase) {
+    if (permAtual === 'demo' && ehChamadaDeDados) {
       const method = (
         init?.method ||
         (typeof input !== 'string' && !(input instanceof URL) ? (input as Request).method : 'GET')
@@ -81,7 +78,6 @@ if (typeof window !== 'undefined' && !(window as any).__fetchPatchedParaDemo) {
         })
       }
 
-      // POST / PATCH / PUT / DELETE: finge sucesso sem gravar nada
       return new Response(JSON.stringify({}), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
