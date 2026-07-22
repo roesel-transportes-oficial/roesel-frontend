@@ -39,14 +39,11 @@ export function resetSupabaseClient() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// MODO DEMO — bloqueio central de escrita
-// ═══════════════════════════════════════════════════════════════════════
-// `permAtual` é atualizado pelo AuthProvider sempre que a permissão do
-// usuário logado muda. Quando for 'demo', qualquer .insert/.update/
-// .upsert/.delete em QUALQUER tabela, de QUALQUER página do sistema,
-// é interceptado aqui e nunca chega ao banco — retorna uma resposta
-// "de mentira" com sucesso, sem gravar nada. Isso evita ter que
-// adicionar `if (perm !== 'demo')` em cada página individualmente.
+// MODO DEMO — bloqueia TUDO (leitura e escrita) numa única variável.
+// Quando permAtual === 'demo', qualquer .from(tabela) devolve sempre
+// vazio, não importa o que a página peça: select retorna [], insert/
+// update/delete não fazem nada. Resultado: o usuário demo vê o sistema
+// inteiro vazio, sem dados reais, e não consegue alterar nada.
 // ═══════════════════════════════════════════════════════════════════════
 
 let permAtual: string = ''
@@ -55,43 +52,34 @@ export function setPermAtual(perm: string) {
   permAtual = perm
 }
 
-function criarNoOpDemo(acao: string, tabela: string): any {
-  console.warn(`[MODO DEMO] Ação bloqueada: ${acao} em "${tabela}" — nada foi gravado.`)
-  const resultado = { data: null, error: null }
+function tabelaFalsaDemo(): any {
+  const resultadoVazio = { data: [], error: null, count: 0 }
   const handler: ProxyHandler<any> = {
     get(_t, prop) {
-      if (prop === 'then') return (resolve: any) => resolve(resultado)
-      if (prop === 'catch' || prop === 'finally') return () => noop
-      // Qualquer outro método encadeado (.eq, .select, .single, etc.)
-      // retorna o próprio no-op, permitindo encadear sem quebrar.
-      return (..._args: any[]) => noop
-    },
-    apply() { return noop }
+      if (prop === 'then') return (resolve: any) => resolve(resultadoVazio)
+      if (prop === 'single' || prop === 'maybeSingle') {
+        return () => Promise.resolve({ data: null, error: null })
+      }
+      // Qualquer método encadeado (.select, .eq, .order, .insert, .update,
+      // .delete, .limit...) retorna o mesmo objeto falso, permitindo
+      // encadear sem quebrar, sempre terminando em resultado vazio.
+      return (..._args: any[]) => tabelaFalsaDemo()
+    }
   }
-  const noop: any = new Proxy(function () {}, handler)
-  return noop
+  return new Proxy({}, handler)
 }
 
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     const client = getClient()
 
-    // Intercepta especificamente o .from(tabela) para poder bloquear
-    // escrita tabela por tabela, mantendo leitura (.select) sempre livre.
     if (prop === 'from') {
       return (tabela: string) => {
-        const builder = (client as any).from(tabela)
-        if (permAtual !== 'demo') return builder
-
-        return new Proxy(builder, {
-          get(t, p) {
-            if (['insert', 'update', 'upsert', 'delete'].includes(p as string)) {
-              return (..._args: any[]) => criarNoOpDemo(String(p), tabela)
-            }
-            const v = (t as any)[p]
-            return typeof v === 'function' ? v.bind(t) : v
-          }
-        })
+        if (permAtual === 'demo') {
+          console.warn(`[MODO DEMO] Bloqueado acesso a "${tabela}" — retornando vazio.`)
+          return tabelaFalsaDemo()
+        }
+        return (client as any).from(tabela)
       }
     }
 
