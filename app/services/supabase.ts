@@ -42,11 +42,7 @@ export const supabase = new Proxy({} as SupabaseClient, {
 
 // ═══════════════════════════════════════════════════════════════════════
 // MODO DEMO — bloqueio no nível de rede, só para dados (/rest/v1/...)
-// ═══════════════════════════════════════════════════════════════════════
-// IMPORTANTE: NÃO bloqueia chamadas de autenticação (/auth/v1/...) —
-// isso incluía refresh automático de token, getSession, signOut etc.
-// Bloquear essas travava o client de auth inteiro só para o usuário
-// demo, causando "Carregando..." infinito ao navegar entre páginas.
+// Não bloqueia /auth/v1/ — bloquear autenticação travava o app.
 // ═══════════════════════════════════════════════════════════════════════
 
 if (typeof window !== 'undefined' && !(window as any).__fetchPatchedParaDemo) {
@@ -59,8 +55,6 @@ if (typeof window !== 'undefined' && !(window as any).__fetchPatchedParaDemo) {
       input instanceof URL ? input.toString() :
       (input as Request).url
 
-    // ✅ Só intercepta chamadas de DADOS (/rest/v1/), nunca /auth/v1/,
-    // /storage/v1/ ou qualquer outro serviço do Supabase.
     const ehChamadaDeDados = !!supabaseUrl && url.startsWith(`${supabaseUrl}/rest/v1/`)
 
     if (permAtual === 'demo' && ehChamadaDeDados) {
@@ -88,20 +82,9 @@ if (typeof window !== 'undefined' && !(window as any).__fetchPatchedParaDemo) {
   }
 }
 
-// ── Recuperação após inatividade ──────────────────────────────────────────
-if (typeof window !== 'undefined') {
-  let ocultoDesde: number | null = null
-  const LIMITE_INATIVIDADE_MS = 3 * 60 * 1000
-
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      ocultoDesde = Date.now()
-    } else if (document.visibilityState === 'visible') {
-      const tempoOculto = ocultoDesde ? Date.now() - ocultoDesde : 0
-      ocultoDesde = null
-      if (tempoOculto > LIMITE_INATIVIDADE_MS) {
-        window.location.reload()
-      }
-    }
-  })
-}
+// ✅ REMOVIDO: o reload automático após inatividade (visibilitychange +
+// window.location.reload()). Esse reload estava disparando em momentos
+// ruins — no meio de uma renovação de token, por exemplo — e travando
+// a tela em "Carregando..." depois de recarregar. Os timeouts de
+// segurança já existentes em getSession() e login() (no auth.tsx) já
+// protegem contra travamentos sem precisar de reload forçado da página.
