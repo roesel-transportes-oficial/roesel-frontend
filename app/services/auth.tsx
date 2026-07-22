@@ -1,6 +1,6 @@
 'use client'
 import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase, setPermAtual } from './supabase'
+import { supabase } from './supabase'
 
 interface AuthContextType {
   user: string | null
@@ -35,18 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (data) {
-      // ✅ setPermAtual chamado DIRETO aqui, de forma síncrona, ANTES de
-      // qualquer setState do React. Isso garante que a variável de
-      // controle do modo demo já está correta antes que qualquer página
-      // filha tenha chance de montar e disparar suas buscas de dados —
-      // eliminando a corrida entre o useEffect do AuthProvider (pai) e
-      // o useEffect das páginas (filhas), que sempre roda primeiro.
-      setPermAtual(data.perm)
       setUser(data.nome || data.login)
       setPerm(data.perm)
       setEmail(data.email)
     } else {
-      setPermAtual('')
       setUser(null); setPerm(''); setEmail(null)
     }
   }
@@ -56,16 +48,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function checkSession() {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise<'timeout'>((resolve) =>
+          setTimeout(() => resolve('timeout'), 6000)
+        )
+        const result = await Promise.race([sessionPromise, timeoutPromise])
+
         if (!mounted) return
+
+        if (result === 'timeout') {
+          console.warn('Timeout ao verificar sessão — mostrando tela de login')
+          setUser(null); setPerm(''); setEmail(null)
+          setLoading(false)
+          return
+        }
+
+        const { data: { session } } = result
         if (session?.user?.email) {
           await carregarUsuario(session.user.email)
-        } else {
-          setPermAtual('')
         }
       } catch (e) {
         console.warn('Erro ao verificar sessão:', e)
-        setPermAtual('')
       } finally {
         if (mounted) setLoading(false)
       }
@@ -79,7 +82,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           if (session?.user?.email) await carregarUsuario(session.user.email)
         } else if (event === 'SIGNED_OUT') {
-          setPermAtual('')
           setUser(null); setPerm(''); setEmail(null)
         }
       }
@@ -125,7 +127,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     try { await supabase.auth.signOut() } catch (e) { console.warn('Erro ao fazer signOut:', e) }
-    setPermAtual('')
     setUser(null); setPerm(''); setEmail(null)
     window.location.replace('/')
   }
