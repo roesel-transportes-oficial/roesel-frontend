@@ -5,13 +5,21 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY
 
 let _client: SupabaseClient | null = null
 
-function criarClient(): SupabaseClient {
+function getClient(): SupabaseClient {
+  if (_client) return _client
+
   if (!supabaseUrl || !supabaseKey) {
     throw new Error(
       'Supabase não configurado: verifique NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_KEY nas variáveis de ambiente da Vercel.'
     )
   }
-  return createClient(supabaseUrl, supabaseKey, {
+
+  // ✅ Client único, criado UMA vez só e nunca recriado. Recriar o client
+  // (como a função resetSupabaseClient fazia antes) gera uma SEGUNDA
+  // instância do GoTrueClient competindo pela mesma trava de sessão no
+  // sessionStorage — é isso que causava "Multiple GoTrueClient instances"
+  // e os travamentos em cascata.
+  _client = createClient(supabaseUrl, supabaseKey, {
     auth: {
       storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
       persistSession: true,
@@ -20,34 +28,11 @@ function criarClient(): SupabaseClient {
       flowType: 'implicit',
     }
   })
-}
 
-function getClient(): SupabaseClient {
-  if (!_client) _client = criarClient()
   return _client
 }
 
-export function resetSupabaseClient() {
-  if (typeof window !== 'undefined') {
-    try {
-      Object.keys(window.sessionStorage)
-        .filter(k => k.startsWith('sb-'))
-        .forEach(k => window.sessionStorage.removeItem(k))
-    } catch {}
-  }
-  _client = null
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// MODO DEMO — bloqueia TUDO (leitura e escrita) numa única variável.
-// Quando permAtual === 'demo', qualquer .from(tabela) devolve sempre
-// vazio, não importa o que a página peça: select retorna [], insert/
-// update/delete não fazem nada. Resultado: o usuário demo vê o sistema
-// inteiro vazio, sem dados reais, e não consegue alterar nada.
-// ═══════════════════════════════════════════════════════════════════════
-
 let permAtual: string = ''
-
 export function setPermAtual(perm: string) {
   permAtual = perm
 }
@@ -60,9 +45,6 @@ function tabelaFalsaDemo(): any {
       if (prop === 'single' || prop === 'maybeSingle') {
         return () => Promise.resolve({ data: null, error: null })
       }
-      // Qualquer método encadeado (.select, .eq, .order, .insert, .update,
-      // .delete, .limit...) retorna o mesmo objeto falso, permitindo
-      // encadear sem quebrar, sempre terminando em resultado vazio.
       return (..._args: any[]) => tabelaFalsaDemo()
     }
   }
@@ -101,8 +83,6 @@ if (typeof window !== 'undefined') {
       ocultoDesde = null
       if (tempoOculto > LIMITE_INATIVIDADE_MS) {
         window.location.reload()
-      } else {
-        supabase.auth.getSession()
       }
     }
   })

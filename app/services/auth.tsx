@@ -1,6 +1,6 @@
 'use client'
 import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase, resetSupabaseClient, setPermAtual } from './supabase'
+import { supabase, setPermAtual } from './supabase'
 
 interface AuthContextType {
   user: string | null
@@ -22,8 +22,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // ✅ Sempre que a permissão mudar (login, logout, troca de usuário),
-  // sincroniza com o supabase.ts para o bloqueio de modo demo funcionar.
   useEffect(() => {
     setPermAtual(perm)
   }, [perm])
@@ -47,25 +45,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function checkSession() {
       try {
-        const sessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
-        const result = await Promise.race([sessionPromise, timeoutPromise])
-
+        const { data: { session } } = await supabase.auth.getSession()
         if (!mounted) return
-
-        if (result === null) {
-          console.warn('Timeout ao verificar sessão — limpando sessão presa')
-          resetSupabaseClient()
-          setUser(null); setPerm(''); setEmail(null)
-          setLoading(false)
-          return
-        }
-
-        const { data: { session } } = result
         if (session?.user?.email) await carregarUsuario(session.user.email)
       } catch (e) {
         console.warn('Erro ao verificar sessão:', e)
-        resetSupabaseClient()
       } finally {
         if (mounted) setLoading(false)
       }
@@ -86,12 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => { mounted = false; subscription.unsubscribe() }
   }, [])
-
-  async function tentarSignIn(email: string, senha: string) {
-    const signInPromise = supabase.auth.signInWithPassword({ email, password: senha })
-    const timeoutPromise = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 8000))
-    return Promise.race([signInPromise, timeoutPromise])
-  }
 
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
     try {
@@ -115,31 +93,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      let result = await tentarSignIn(emailLogin, senha)
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailLogin,
+        password: senha,
+      })
 
-      if (result === 'timeout') {
-        console.warn('Timeout no login — limpando sessão presa e tentando de novo')
-        resetSupabaseClient()
-        result = await tentarSignIn(emailLogin, senha)
-      }
-
-      if (result === 'timeout') {
-        return 'A conexão demorou demais mesmo após nova tentativa. Recarregue a página (F5) e tente novamente.'
-      }
-
-      const { error } = result
       if (error) return 'Usuário ou senha incorretos'
       return null
     } catch (e: any) {
       console.error('Erro inesperado na função login():', e)
-      resetSupabaseClient()
       return 'Erro inesperado: ' + (e?.message || 'tente novamente.')
     }
   }
 
   async function logout() {
     try { await supabase.auth.signOut() } catch (e) { console.warn('Erro ao fazer signOut:', e) }
-    resetSupabaseClient()
     setUser(null); setPerm(''); setEmail(null)
     window.location.replace('/')
   }
