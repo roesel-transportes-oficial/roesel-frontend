@@ -5,27 +5,6 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY
 
 let _client: SupabaseClient | null = null
 
-// ✅ Trava simples, só em memória do JavaScript — NÃO usa a API
-// navigator.locks do navegador. A trava padrão do Supabase usa essa API,
-// que é "presa ao navegador" e pode ficar órfã se a página recarregar
-// (F5) no meio de uma operação — a página nova espera uma trava que
-// nunca é liberada, travando pra sempre. Essa trava em memória nasce
-// sempre limpa a cada F5, porque o módulo JS é recriado do zero.
-let filaDeTravas: Promise<any> = Promise.resolve()
-
-async function trancaEmMemoria<T>(fn: () => Promise<T>): Promise<T> {
-  const execucaoAnterior = filaDeTravas
-  let liberar: () => void
-  filaDeTravas = new Promise<void>((resolve) => { liberar = resolve })
-
-  await execucaoAnterior
-  try {
-    return await fn()
-  } finally {
-    liberar!()
-  }
-}
-
 function getClient(): SupabaseClient {
   if (_client) return _client
 
@@ -35,6 +14,11 @@ function getClient(): SupabaseClient {
     )
   }
 
+  // ✅ Configuração padrão da biblioteca, sem "lock" customizado.
+  // Tentativas de trava própria (memória, bypass) causaram mais bugs
+  // do que resolveram — o comportamento padrão do Supabase já é testado
+  // pela própria equipe deles. A proteção contra travamento fica a cargo
+  // do timeout de segurança no auth.tsx, não de reinventar a trava aqui.
   _client = createClient(supabaseUrl, supabaseKey, {
     auth: {
       storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
@@ -42,7 +26,6 @@ function getClient(): SupabaseClient {
       autoRefreshToken: true,
       detectSessionInUrl: false,
       flowType: 'implicit',
-      lock: async (_name, _acquireTimeout, fn) => trancaEmMemoria(fn),
     }
   })
 
