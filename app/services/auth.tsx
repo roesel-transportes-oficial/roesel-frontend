@@ -46,26 +46,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true
 
+    // ✅ Timeout envolvendo o PROCESSO INTEIRO (getSession + carregarUsuario),
+    // não só o getSession. Antes, se carregarUsuario travasse (ex: RLS mais
+    // lento na tabela usuarios), não tinha proteção nenhuma e a tela ficava
+    // presa em "Carregando..." pra sempre.
+    async function checkSessionCompleta() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user?.email) {
+        await carregarUsuario(session.user.email)
+      }
+    }
+
     async function checkSession() {
       try {
-        const sessionPromise = supabase.auth.getSession()
+        const processoPromise = checkSessionCompleta()
         const timeoutPromise = new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), 6000)
+          setTimeout(() => resolve('timeout'), 8000)
         )
-        const result = await Promise.race([sessionPromise, timeoutPromise])
+
+        const resultado = await Promise.race([processoPromise, timeoutPromise])
 
         if (!mounted) return
 
-        if (result === 'timeout') {
-          console.warn('Timeout ao verificar sessão — mostrando tela de login')
+        if (resultado === 'timeout') {
+          console.warn('Timeout ao verificar sessão/permissão — mostrando tela de login')
           setUser(null); setPerm(''); setEmail(null)
-          setLoading(false)
-          return
-        }
-
-        const { data: { session } } = result
-        if (session?.user?.email) {
-          await carregarUsuario(session.user.email)
         }
       } catch (e) {
         console.warn('Erro ao verificar sessão:', e)
@@ -112,11 +117,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email: emailLogin,
-        password: senha,
-      })
+      const signInPromise = supabase.auth.signInWithPassword({ email: emailLogin, password: senha })
+      const timeoutPromise = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10000))
+      const result = await Promise.race([signInPromise, timeoutPromise])
 
+      if (result === 'timeout') {
+        return 'A conexão demorou demais. Recarregue a página (F5) e tente novamente.'
+      }
+
+      const { error } = result
       if (error) return 'Usuário ou senha incorretos'
       return null
     } catch (e: any) {
