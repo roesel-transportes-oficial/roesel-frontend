@@ -1,6 +1,6 @@
 'use client'
 import { createContext, useContext, useEffect, useState } from 'react'
-import { supabase, resetSupabaseClient } from './supabase'
+import { supabase, resetSupabaseClient, setPermAtual } from './supabase'
 
 interface AuthContextType {
   user: string | null
@@ -21,6 +21,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [perm, setPerm] = useState('')
   const [email, setEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // ✅ Sempre que a permissão mudar (login, logout, troca de usuário),
+  // sincroniza com o supabase.ts para o bloqueio de modo demo funcionar.
+  useEffect(() => {
+    setPermAtual(perm)
+  }, [perm])
 
   async function carregarUsuario(emailAuth: string) {
     const { data, error } = await supabase
@@ -109,11 +115,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // ✅ Primeira tentativa
       let result = await tentarSignIn(emailLogin, senha)
 
-      // ✅ Se travou (timeout), é sinal de sessão presa — limpa e tenta
-      // de novo automaticamente, sem precisar fechar a aba manualmente.
       if (result === 'timeout') {
         console.warn('Timeout no login — limpando sessão presa e tentando de novo')
         resetSupabaseClient()
