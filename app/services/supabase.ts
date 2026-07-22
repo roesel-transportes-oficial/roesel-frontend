@@ -14,11 +14,6 @@ function getClient(): SupabaseClient {
     )
   }
 
-  // ✅ Client único, criado UMA vez só e nunca recriado. Recriar o client
-  // (como a função resetSupabaseClient fazia antes) gera uma SEGUNDA
-  // instância do GoTrueClient competindo pela mesma trava de sessão no
-  // sessionStorage — é isso que causava "Multiple GoTrueClient instances"
-  // e os travamentos em cascata.
   _client = createClient(supabaseUrl, supabaseKey, {
     auth: {
       storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
@@ -37,38 +32,65 @@ export function setPermAtual(perm: string) {
   permAtual = perm
 }
 
-function tabelaFalsaDemo(): any {
-  const resultadoVazio = { data: [], error: null, count: 0 }
-  const handler: ProxyHandler<any> = {
-    get(_t, prop) {
-      if (prop === 'then') return (resolve: any) => resolve(resultadoVazio)
-      if (prop === 'single' || prop === 'maybeSingle') {
-        return () => Promise.resolve({ data: null, error: null })
-      }
-      return (..._args: any[]) => tabelaFalsaDemo()
-    }
-  }
-  return new Proxy({}, handler)
-}
-
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     const client = getClient()
-
-    if (prop === 'from') {
-      return (tabela: string) => {
-        if (permAtual === 'demo') {
-          console.warn(`[MODO DEMO] Bloqueado acesso a "${tabela}" — retornando vazio.`)
-          return tabelaFalsaDemo()
-        }
-        return (client as any).from(tabela)
-      }
-    }
-
     const value = (client as any)[prop]
     return typeof value === 'function' ? value.bind(client) : value
   }
 })
+
+// ═══════════════════════════════════════════════════════════════════════
+// MODO DEMO — bloqueio no nível de rede (window.fetch)
+// ═══════════════════════════════════════════════════════════════════════
+// Muitas telas fazem chamadas diretas via fetch() pra API REST do
+// Supabase (padrão "supaFetch"), sem passar pelo client supabase-js e
+// sem enviar o JWT do usuário — por isso RLS baseado em auth.jwt() não
+// enxergava o usuário demo nessas chamadas.
+//
+// A solução aqui intercepta QUALQUER requisição do navegador para o
+// domínio do Supabase, não importa qual código a disparou. Quando
+// permAtual === 'demo': GET retorna lista vazia, qualquer escrita
+// (POST/PATCH/PUT/DELETE) é bloqueada sem chegar ao banco.
+// ═══════════════════════════════════════════════════════════════════════
+
+if (typeof window !== 'undefined' && !(window as any).__fetchPatchedParaDemo) {
+  (window as any).__fetchPatchedParaDemo = true
+  const fetchOriginal = window.fetch.bind(window)
+
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === 'string' ? input :
+      input instanceof URL ? input.toString() :
+      (input as Request).url
+
+    const ehChamadaSupabase = !!supabaseUrl && url.startsWith(supabaseUrl)
+
+    if (permAtual === 'demo' && ehChamadaSupabase) {
+      const method = (
+        init?.method ||
+        (typeof input !== 'string' && !(input instanceof URL) ? (input as Request).method : 'GET')
+      ).toUpperCase()
+
+      console.warn(`[MODO DEMO] Bloqueado fetch ${method} → ${url}`)
+
+      if (method === 'GET' || method === 'HEAD') {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      }
+
+      // POST / PATCH / PUT / DELETE: finge sucesso sem gravar nada
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    return fetchOriginal(input, init)
+  }
+}
 
 // ── Recuperação após inatividade ──────────────────────────────────────────
 if (typeof window !== 'undefined') {
