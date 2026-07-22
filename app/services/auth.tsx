@@ -22,20 +22,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [email, setEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    setPermAtual(perm)
-  }, [perm])
-
   async function carregarUsuario(emailAuth: string) {
     const { data, error } = await supabase
       .from('usuarios')
       .select('nome, login, perm, email, status')
       .eq('email', emailAuth)
       .maybeSingle()
-    if (error) { console.warn('Erro ao buscar usuário:', error); return }
+
+    if (error) {
+      console.warn('Erro ao buscar usuário:', error)
+      return
+    }
+
     if (data) {
-      setUser(data.nome || data.login); setPerm(data.perm); setEmail(data.email)
+      // ✅ setPermAtual chamado DIRETO aqui, de forma síncrona, ANTES de
+      // qualquer setState do React. Isso garante que a variável de
+      // controle do modo demo já está correta antes que qualquer página
+      // filha tenha chance de montar e disparar suas buscas de dados —
+      // eliminando a corrida entre o useEffect do AuthProvider (pai) e
+      // o useEffect das páginas (filhas), que sempre roda primeiro.
+      setPermAtual(data.perm)
+      setUser(data.nome || data.login)
+      setPerm(data.perm)
+      setEmail(data.email)
     } else {
+      setPermAtual('')
       setUser(null); setPerm(''); setEmail(null)
     }
   }
@@ -47,9 +58,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (!mounted) return
-        if (session?.user?.email) await carregarUsuario(session.user.email)
+        if (session?.user?.email) {
+          await carregarUsuario(session.user.email)
+        } else {
+          setPermAtual('')
+        }
       } catch (e) {
         console.warn('Erro ao verificar sessão:', e)
+        setPermAtual('')
       } finally {
         if (mounted) setLoading(false)
       }
@@ -63,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           if (session?.user?.email) await carregarUsuario(session.user.email)
         } else if (event === 'SIGNED_OUT') {
+          setPermAtual('')
           setUser(null); setPerm(''); setEmail(null)
         }
       }
@@ -108,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     try { await supabase.auth.signOut() } catch (e) { console.warn('Erro ao fazer signOut:', e) }
+    setPermAtual('')
     setUser(null); setPerm(''); setEmail(null)
     window.location.replace('/')
   }
