@@ -60,7 +60,9 @@ export default function DashboardPage() {
   const deFerias = motoristas.filter((m: any) => m.de_ferias)
   const parados = caminhoes.filter((c: any) => c.status !== 'rodando')
 
-  const alertasVenc: { nome: string; campo: string; dias: number; status: string }[] = []
+  const alertasVenc: { nome: string; campo: string; dias: number; status: string; tipo: 'motorista' | 'caminhao' }[] = []
+
+  // ── Documentos do motorista ──
   motoristas.filter((m: any) => m.ativo).forEach((m: any) => {
     const campos = [
       { label: 'CNH', data: m.vencimento_cnh },
@@ -76,6 +78,27 @@ export default function DashboardPage() {
           campo: c.label,
           dias: diasParaVencer(c.data) || 0,
           status: s,
+          tipo: 'motorista',
+        })
+      }
+    })
+  })
+
+  // ✅ NOVO: Documentos do caminhão (Cronotacógrafo, Permisso)
+  caminhoes.forEach((c: any) => {
+    const campos = [
+      { label: 'Cronotacógrafo', data: c.vencimento_cronotacografo },
+      { label: 'Permisso (caminhão)', data: c.vencimento_permisso },
+    ]
+    campos.forEach(campo => {
+      const s = vencStatus(campo.data)
+      if (s && s !== 'ok') {
+        alertasVenc.push({
+          nome: c.placa,
+          campo: campo.label,
+          dias: diasParaVencer(campo.data) || 0,
+          status: s,
+          tipo: 'caminhao',
         })
       }
     })
@@ -161,10 +184,12 @@ export default function DashboardPage() {
                   a.status === 'critico' ? 'bg-orange-50' : 'bg-yellow-50'
                 }`}>
                   <div>
-                    <p className={`font-medium text-xs ${
+                    <p className={`font-medium text-xs flex items-center gap-1 ${
                       a.status === 'vencido' ? 'text-red-700' :
                       a.status === 'critico' ? 'text-orange-700' : 'text-yellow-700'
-                    }`}>{a.nome}</p>
+                    }`}>
+                      {a.tipo === 'caminhao' && '🚛 '}{a.nome}
+                    </p>
                     <p className={`text-xs ${
                       a.status === 'vencido' ? 'text-red-500' :
                       a.status === 'critico' ? 'text-orange-500' : 'text-yellow-600'
