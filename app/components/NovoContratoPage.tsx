@@ -26,7 +26,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const [contratoLidoIA, setContratoLidoIA]         = useState(false)
   const [camposIAAtivos, setCamposIAAtivos]         = useState(false)
 
-  // ✅ Restaura form do sessionStorage se existir
   const [form, setForm] = useState(() => {
     if (typeof window === 'undefined') return FORM_INICIAL
     try {
@@ -35,7 +34,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     } catch { return FORM_INICIAL }
   })
 
-  // ✅ Salva form no sessionStorage sempre que mudar
   function atualizarForm(novoForm: typeof FORM_INICIAL) {
     setForm(novoForm)
     try { sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(novoForm)) } catch {}
@@ -298,8 +296,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
     setContratoLidoIA(false); setCamposIAAtivos(false)
 
-    // ✅ Timeout de segurança: se a API não responder em 50s, desiste
-    // e libera o loading em vez de travar pra sempre.
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 50000)
 
@@ -328,7 +324,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
       const parsed = await response.json()
 
-      // ✅ A API pode responder 200 mas ainda assim carregar um erro no campo _erro
       if (parsed._erro) {
         throw new Error(typeof parsed._erro === 'string' ? parsed._erro : 'Erro ao processar o documento com a IA.')
       }
@@ -376,13 +371,29 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   }
 
   async function salvar(e: any) {
-    e.preventDefault(); setLoading(true); setErro('')
+    e.preventDefault()
+    setLoading(true); setErro('')
+
+    // ✅ Timeout de segurança em toda a operação de salvar (checagem de
+    // duplicidade + POST /api/contratos + criação de viagem). Antes,
+    // nenhuma dessas chamadas tinha proteção contra travamento — se
+    // qualquer uma travasse, o botão ficava preso em "Salvando..." pra
+    // sempre, sem nenhum erro visível.
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 20000)
+
     try {
-      const { data: existente } = await supabase
+      const { data: existente, error: errExiste } = await supabase
         .from('contratos').select('id').eq('contrato', form.contrato).limit(1).maybeSingle()
+
+      if (errExiste) {
+        throw new Error('Erro ao verificar contrato existente: ' + errExiste.message)
+      }
+
       if (existente) {
         setErro(`⚠️ Contrato #${form.contrato} já está cadastrado. Verifique o número.`)
         setLoading(false)
+        clearTimeout(timeoutId)
         return
       }
 
@@ -398,8 +409,14 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       })
-      if (!res.ok) throw new Error(await res.text())
+      clearTimeout(timeoutId)
+
+      if (!res.ok) {
+        const textoErro = await res.text()
+        throw new Error(`Erro ${res.status} ao salvar contrato: ${textoErro}`)
+      }
 
       const { data: contratoData } = await supabase
         .from('contratos').select('id').eq('contrato', form.contrato)
@@ -435,13 +452,21 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         }
       }
 
-      // ✅ Limpa o form e o sessionStorage após salvar com sucesso
       try { sessionStorage.removeItem(FORM_STORAGE_KEY) } catch {}
       setForm(FORM_INICIAL)
       setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
       setContratoLidoIA(false); setCamposIAAtivos(false)
       setAba('contratos')
-    } catch { setErro('Erro ao salvar contrato.'); setLoading(false) }
+    } catch (err: any) {
+      clearTimeout(timeoutId)
+      console.error('Erro ao salvar contrato:', err)
+      if (err?.name === 'AbortError') {
+        setErro('⏱️ A operação demorou demais (mais de 20s). Verifique sua conexão e tente novamente.')
+      } else {
+        setErro('Erro ao salvar contrato: ' + (err?.message || 'erro desconhecido'))
+      }
+      setLoading(false)
+    }
   }
 
   function clienteSelectValue() {
@@ -635,7 +660,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         </div>
 
         <div className="flex items-center justify-between">
-          {/* ✅ Botão limpar para o usuário apagar o formulário manualmente */}
           <button type="button"
             onClick={() => {
               try { sessionStorage.removeItem(FORM_STORAGE_KEY) } catch {}
