@@ -55,7 +55,18 @@ export default function ContratosPage() {
   const [editAdiantamentoPago, setEditAdiantamentoPago] = useState(false)
   const [editDtPagamento, setEditDtPagamento] = useState('')
 
+  // ✅ Guarda contra corrida entre chamadas concorrentes de fetch_().
+  // Existem DOIS useEffects que chamam fetch_() (filtro de mês/ano e o
+  // MutationObserver de troca de aba). Se os dois dispararem quase ao
+  // mesmo tempo, a resposta mais lenta podia "vencer" por último e
+  // travar o loading pra sempre, mesmo com os dados já carregados pela
+  // chamada mais rápida. Agora cada chamada tem um ID; só a chamada
+  // MAIS RECENTE tem permissão de atualizar o estado — respostas
+  // desatualizadas de chamadas antigas são simplesmente ignoradas.
+  const fetchIdRef = useRef(0)
+
   async function fetch_() {
+    const meuId = ++fetchIdRef.current
     setLoadingLista(true)
     try {
       let query = supabase
@@ -77,15 +88,22 @@ export default function ContratosPage() {
       }
 
       const { data, error } = await query
+
+      // Se já rodou outra chamada mais nova enquanto esta esperava a
+      // resposta, esta aqui está obsoleta — não mexe em mais nada.
+      if (meuId !== fetchIdRef.current) return
+
       if (error) {
         console.error('Erro ao buscar contratos:', error)
         return
       }
       if (data) setContratos(data as Contrato[])
     } catch (error) {
-      console.error('Erro ao buscar contratos:', error)
+      if (meuId === fetchIdRef.current) console.error('Erro ao buscar contratos:', error)
     } finally {
-      setLoadingLista(false)
+      // Só a chamada mais recente pode desligar o loading. Uma chamada
+      // antiga que termina depois (ou trava) não pode mais interferir.
+      if (meuId === fetchIdRef.current) setLoadingLista(false)
     }
   }
 
