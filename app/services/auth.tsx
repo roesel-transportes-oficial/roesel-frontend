@@ -25,6 +25,11 @@ function limparTokenSessaoPresa() {
   } catch {}
 }
 
+async function comTimeout<T>(promessa: Promise<T>, ms: number): Promise<T | 'timeout'> {
+  const timeoutPromise = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), ms))
+  return Promise.race([promessa, timeoutPromise])
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<string | null>(null)
   const [perm, setPerm] = useState('')
@@ -62,24 +67,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // ✅ Se a primeira tentativa der timeout (conexão "fria" — comum logo
+    // após F5), o sistema tenta de novo automaticamente UMA vez, em vez
+    // de desistir e mostrar login direto. A segunda tentativa geralmente
+    // é rápida, porque a conexão já foi estabelecida na primeira. Isso
+    // elimina a necessidade de apertar F5 duas vezes manualmente.
     async function checkSession() {
       try {
-        const processoPromise = checkSessionCompleta()
-        // ✅ Timeout aumentado de 8s para 20s — a primeira conexão do
-        // navegador com o Supabase (handshake DNS + TLS) pode legitimamente
-        // demorar mais que 8s dependendo da rede. 8s estava desistindo
-        // cedo demais em conexões "frias", mostrando erro à toa mesmo
-        // quando a conexão ia funcionar se esperasse um pouco mais.
-        const timeoutPromise = new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), 20000)
-        )
-
-        const resultado = await Promise.race([processoPromise, timeoutPromise])
+        let resultado = await comTimeout(checkSessionCompleta(), 12000)
 
         if (!mounted) return
 
         if (resultado === 'timeout') {
-          console.warn('Timeout ao verificar sessão — limpando token preso e mostrando login')
+          console.warn('Primeira tentativa deu timeout — tentando de novo automaticamente')
+          resultado = await comTimeout(checkSessionCompleta(), 12000)
+        }
+
+        if (!mounted) return
+
+        if (resultado === 'timeout') {
+          console.warn('Segunda tentativa também deu timeout — limpando token e mostrando login')
           limparTokenSessaoPresa()
           setUser(null); setPerm(''); setEmail(null)
         }
@@ -139,18 +146,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // ✅ Timeout aumentado de 15s para 25s, pelo mesmo motivo — dar
-      // margem suficiente para uma primeira conexão "fria" completar.
-      const timeoutPromise = new Promise<'timeout'>((resolve) =>
-        setTimeout(() => resolve('timeout'), 25000)
-      )
-
-      const resultado = await Promise.race([processoDeLogin(), timeoutPromise])
+      // ✅ Mesmo padrão de retry automático no login.
+      let resultado = await comTimeout(processoDeLogin(), 15000)
 
       if (resultado === 'timeout') {
-        console.warn('Timeout no processo de login — limpando token preso')
+        console.warn('Primeira tentativa de login deu timeout — tentando de novo automaticamente')
+        resultado = await comTimeout(processoDeLogin(), 15000)
+      }
+
+      if (resultado === 'timeout') {
         limparTokenSessaoPresa()
-        return 'A conexão demorou demais. Tente novamente.'
+        return 'A conexão está instável. Tente novamente em alguns instantes.'
       }
 
       return resultado
