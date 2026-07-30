@@ -16,10 +16,6 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => null, logout: () => {}, loading: true
 })
 
-// ✅ Limpa só as chaves do sessionStorage relacionadas à sessão Supabase
-// (não recria o client, não mexe em mais nada). Usado quando detectamos
-// timeout — sinal de que o token salvo está corrompido/travando — para
-// automaticamente fazer o mesmo efeito de "fechar e abrir a aba".
 function limparTokenSessaoPresa() {
   if (typeof window === 'undefined') return
   try {
@@ -69,8 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function checkSession() {
       try {
         const processoPromise = checkSessionCompleta()
+        // ✅ Timeout aumentado de 8s para 20s — a primeira conexão do
+        // navegador com o Supabase (handshake DNS + TLS) pode legitimamente
+        // demorar mais que 8s dependendo da rede. 8s estava desistindo
+        // cedo demais em conexões "frias", mostrando erro à toa mesmo
+        // quando a conexão ia funcionar se esperasse um pouco mais.
         const timeoutPromise = new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), 8000)
+          setTimeout(() => resolve('timeout'), 20000)
         )
 
         const resultado = await Promise.race([processoPromise, timeoutPromise])
@@ -138,8 +139,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      // ✅ Timeout aumentado de 15s para 25s, pelo mesmo motivo — dar
+      // margem suficiente para uma primeira conexão "fria" completar.
       const timeoutPromise = new Promise<'timeout'>((resolve) =>
-        setTimeout(() => resolve('timeout'), 15000)
+        setTimeout(() => resolve('timeout'), 25000)
       )
 
       const resultado = await Promise.race([processoDeLogin(), timeoutPromise])
@@ -147,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (resultado === 'timeout') {
         console.warn('Timeout no processo de login — limpando token preso')
         limparTokenSessaoPresa()
-        return 'A conexão demorou demais. Tente novamente (o problema deve estar resolvido agora).'
+        return 'A conexão demorou demais. Tente novamente.'
       }
 
       return resultado
@@ -160,8 +163,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function logout() {
     try { await supabase.auth.signOut() } catch (e) { console.warn('Erro ao fazer signOut:', e) }
-    // ✅ Limpa qualquer resíduo de token ao sair — evita que um logout
-    // deixe algo pendurado que trave o próximo login na mesma aba.
     limparTokenSessaoPresa()
     setUser(null); setPerm(''); setEmail(null)
     window.location.replace('/')
