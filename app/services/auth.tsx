@@ -46,10 +46,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true
 
-    // ✅ Timeout envolvendo o PROCESSO INTEIRO (getSession + carregarUsuario),
-    // não só o getSession. Antes, se carregarUsuario travasse (ex: RLS mais
-    // lento na tabela usuarios), não tinha proteção nenhuma e a tela ficava
-    // presa em "Carregando..." pra sempre.
     async function checkSessionCompleta() {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user?.email) {
@@ -95,8 +91,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false; subscription.unsubscribe() }
   }, [])
 
+  // ✅ Antes, só o signInWithPassword (a última etapa) tinha timeout.
+  // As consultas anteriores (buscar email pelo login, ou checar status
+  // pelo email) não tinham proteção nenhuma — se travassem, o botão
+  // ficava preso pra sempre, mesmo com o timeout "existindo" no código.
+  // Agora todo o PROCESSO de login roda dentro de um único timeout.
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
-    try {
+    async function processoDeLogin(): Promise<string | null> {
       let emailLogin = loginOrEmail
 
       if (!loginOrEmail.includes('@')) {
@@ -117,17 +118,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const signInPromise = supabase.auth.signInWithPassword({ email: emailLogin, password: senha })
-      const timeoutPromise = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 10000))
-      const result = await Promise.race([signInPromise, timeoutPromise])
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailLogin,
+        password: senha,
+      })
 
-      if (result === 'timeout') {
+      if (error) return 'Usuário ou senha incorretos'
+      return null
+    }
+
+    try {
+      const timeoutPromise = new Promise<'timeout'>((resolve) =>
+        setTimeout(() => resolve('timeout'), 15000)
+      )
+
+      const resultado = await Promise.race([processoDeLogin(), timeoutPromise])
+
+      if (resultado === 'timeout') {
+        console.warn('Timeout no processo de login — alguma consulta travou')
         return 'A conexão demorou demais. Recarregue a página (F5) e tente novamente.'
       }
 
-      const { error } = result
-      if (error) return 'Usuário ou senha incorretos'
-      return null
+      return resultado
     } catch (e: any) {
       console.error('Erro inesperado na função login():', e)
       return 'Erro inesperado: ' + (e?.message || 'tente novamente.')
