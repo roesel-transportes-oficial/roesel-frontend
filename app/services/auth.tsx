@@ -16,6 +16,19 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => null, logout: () => {}, loading: true
 })
 
+// ✅ Limpa só as chaves do sessionStorage relacionadas à sessão Supabase
+// (não recria o client, não mexe em mais nada). Usado quando detectamos
+// timeout — sinal de que o token salvo está corrompido/travando — para
+// automaticamente fazer o mesmo efeito de "fechar e abrir a aba".
+function limparTokenSessaoPresa() {
+  if (typeof window === 'undefined') return
+  try {
+    Object.keys(window.sessionStorage)
+      .filter(k => k.startsWith('sb-'))
+      .forEach(k => window.sessionStorage.removeItem(k))
+  } catch {}
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<string | null>(null)
   const [perm, setPerm] = useState('')
@@ -65,11 +78,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mounted) return
 
         if (resultado === 'timeout') {
-          console.warn('Timeout ao verificar sessão/permissão — mostrando tela de login')
+          console.warn('Timeout ao verificar sessão — limpando token preso e mostrando login')
+          limparTokenSessaoPresa()
           setUser(null); setPerm(''); setEmail(null)
         }
       } catch (e) {
         console.warn('Erro ao verificar sessão:', e)
+        limparTokenSessaoPresa()
       } finally {
         if (mounted) setLoading(false)
       }
@@ -91,11 +106,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { mounted = false; subscription.unsubscribe() }
   }, [])
 
-  // ✅ Antes, só o signInWithPassword (a última etapa) tinha timeout.
-  // As consultas anteriores (buscar email pelo login, ou checar status
-  // pelo email) não tinham proteção nenhuma — se travassem, o botão
-  // ficava preso pra sempre, mesmo com o timeout "existindo" no código.
-  // Agora todo o PROCESSO de login roda dentro de um único timeout.
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
     async function processoDeLogin(): Promise<string | null> {
       let emailLogin = loginOrEmail
@@ -135,19 +145,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const resultado = await Promise.race([processoDeLogin(), timeoutPromise])
 
       if (resultado === 'timeout') {
-        console.warn('Timeout no processo de login — alguma consulta travou')
-        return 'A conexão demorou demais. Recarregue a página (F5) e tente novamente.'
+        console.warn('Timeout no processo de login — limpando token preso')
+        limparTokenSessaoPresa()
+        return 'A conexão demorou demais. Tente novamente (o problema deve estar resolvido agora).'
       }
 
       return resultado
     } catch (e: any) {
       console.error('Erro inesperado na função login():', e)
+      limparTokenSessaoPresa()
       return 'Erro inesperado: ' + (e?.message || 'tente novamente.')
     }
   }
 
   async function logout() {
     try { await supabase.auth.signOut() } catch (e) { console.warn('Erro ao fazer signOut:', e) }
+    // ✅ Limpa qualquer resíduo de token ao sair — evita que um logout
+    // deixe algo pendurado que trave o próximo login na mesma aba.
+    limparTokenSessaoPresa()
     setUser(null); setPerm(''); setEmail(null)
     window.location.replace('/')
   }
