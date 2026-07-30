@@ -19,6 +19,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const [loading, setLoading]       = useState(false)
   const [loadingIA, setLoadingIA]   = useState(false)
   const [erro, setErro]             = useState('')
+  const [arrastando, setArrastando] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [placaLidaIA, setPlacaLidaIA]               = useState('')
@@ -289,9 +290,11 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   function encontrarCaminhao(p: string) { return encontrarPorPlaca(caminhoes, p) }
   function encontrarCarreta(p: string)  { return encontrarPorPlaca(carretas, p) }
 
-  async function lerComIA(e: any) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // ✅ Extraído da função lerComIA original: agora recebe o arquivo já
+  // resolvido (venha do <input type=file> OU de um drag-and-drop), em
+  // vez de depender do evento do input. Isso permite reusar a mesma
+  // lógica de leitura por IA nos dois fluxos sem duplicar código.
+  async function processarArquivoIA(file: File) {
     setLoadingIA(true); setErro('')
     setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
     setContratoLidoIA(false); setCamposIAAtivos(false)
@@ -370,15 +373,43 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     }
   }
 
+  function lerComIA(e: any) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    processarArquivoIA(file)
+  }
+
+  // ✅ Handlers de drag-and-drop. onDragOver precisa de preventDefault
+  // pra o navegador permitir o "drop"; senão ele tenta abrir o arquivo
+  // direto no navegador em vez de disparar o evento.
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    if (!loadingIA) setArrastando(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    setArrastando(false)
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setArrastando(false)
+    if (loadingIA) return
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    const tipoValido = file.type === 'application/pdf' || file.type.startsWith('image/')
+    if (!tipoValido) {
+      setErro('Arquivo inválido — envie um PDF ou uma imagem.')
+      return
+    }
+    processarArquivoIA(file)
+  }
+
   async function salvar(e: any) {
     e.preventDefault()
     setLoading(true); setErro('')
 
-    // ✅ Timeout de segurança em toda a operação de salvar (checagem de
-    // duplicidade + POST /api/contratos + criação de viagem). Antes,
-    // nenhuma dessas chamadas tinha proteção contra travamento — se
-    // qualquer uma travasse, o botão ficava preso em "Salvando..." pra
-    // sempre, sem nenhum erro visível.
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 20000)
 
@@ -489,11 +520,32 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
         <p className="text-sm font-medium text-blue-800 mb-2">🤖 Preencher automaticamente com IA</p>
         <p className="text-xs text-blue-600 mb-3">Envie um PDF ou imagem do contrato e a IA preencherá os campos automaticamente.</p>
-        <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition
-          ${loadingIA ? 'bg-blue-300 text-white cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
-          {loadingIA ? '⏳ Lendo documento...' : '📎 Selecionar PDF ou Imagem'}
+
+        <label
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`flex flex-col items-center justify-center gap-2 w-full border-2 border-dashed rounded-lg px-4 py-6 text-center transition cursor-pointer
+            ${loadingIA
+              ? 'border-blue-200 bg-blue-100 cursor-not-allowed'
+              : arrastando
+                ? 'border-blue-500 bg-blue-100'
+                : 'border-blue-300 bg-white hover:bg-blue-50'}`}
+        >
+          {loadingIA ? (
+            <span className="text-sm font-medium text-blue-700">⏳ Lendo documento...</span>
+          ) : (
+            <>
+              <span className="text-2xl">📎</span>
+              <span className="text-sm font-medium text-blue-700">
+                {arrastando ? 'Solte o arquivo aqui' : 'Arraste o PDF ou imagem aqui, ou clique para selecionar'}
+              </span>
+              <span className="text-xs text-blue-400">PDF ou imagem (JPG, PNG...)</span>
+            </>
+          )}
           <input ref={fileRef} type="file" accept=".pdf,image/*" onChange={lerComIA} disabled={loadingIA} className="hidden" />
         </label>
+
         {camposIAAtivos && (
           <p className="text-xs text-orange-600 mt-3 font-medium">
             ⚠️ Campos preenchidos pela IA — confira data, origem, destino e nº contrato antes de salvar.
