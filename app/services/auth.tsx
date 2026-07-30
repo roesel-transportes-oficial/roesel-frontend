@@ -67,26 +67,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // ✅ Se a primeira tentativa der timeout (conexão "fria" — comum logo
-    // após F5), o sistema tenta de novo automaticamente UMA vez, em vez
-    // de desistir e mostrar login direto. A segunda tentativa geralmente
-    // é rápida, porque a conexão já foi estabelecida na primeira. Isso
-    // elimina a necessidade de apertar F5 duas vezes manualmente.
     async function checkSession() {
       try {
-        let resultado = await comTimeout(checkSessionCompleta(), 12000)
+        // ✅ Single timeout de 8 segundos, sem retry automático.
+        // Se der timeout, desiste logo e mostra login. Usuário aperta F5
+        // de novo se quiser tentar (ou pode logar manualmente).
+        // Isso elimina os 24s de espera dupla.
+        const resultado = await comTimeout(checkSessionCompleta(), 8000)
 
         if (!mounted) return
 
         if (resultado === 'timeout') {
-          console.warn('Primeira tentativa deu timeout — tentando de novo automaticamente')
-          resultado = await comTimeout(checkSessionCompleta(), 12000)
-        }
-
-        if (!mounted) return
-
-        if (resultado === 'timeout') {
-          console.warn('Segunda tentativa também deu timeout — limpando token e mostrando login')
+          console.warn('Verificação de sessão deu timeout — mostrando login')
           limparTokenSessaoPresa()
           setUser(null); setPerm(''); setEmail(null)
         }
@@ -146,13 +138,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // ✅ Mesmo padrão de retry automático no login.
-      let resultado = await comTimeout(processoDeLogin(), 15000)
-
-      if (resultado === 'timeout') {
-        console.warn('Primeira tentativa de login deu timeout — tentando de novo automaticamente')
-        resultado = await comTimeout(processoDeLogin(), 15000)
-      }
+      // ✅ Login com single timeout de 10s, sem retry automático.
+      const resultado = await comTimeout(processoDeLogin(), 10000)
 
       if (resultado === 'timeout') {
         limparTokenSessaoPresa()
