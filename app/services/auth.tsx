@@ -69,16 +69,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function checkSession() {
       try {
-        // ✅ Single timeout de 8 segundos, sem retry automático.
-        // Se der timeout, desiste logo e mostra login. Usuário aperta F5
-        // de novo se quiser tentar (ou pode logar manualmente).
-        // Isso elimina os 24s de espera dupla.
-        const resultado = await comTimeout(checkSessionCompleta(), 8000)
+        // ✅ Apenas UM timeout de segurança aqui. O retry de "conexão
+        // fria" já acontece sozinho dentro do supabase.ts (fetch global
+        // com retry silencioso). Ter uma SEGUNDA camada de retry aqui
+        // em cima causava dois problemas: tempos somados demais, e a
+        // tentativa antiga continuava rodando escondida no fundo depois
+        // que essa camada desistia e começava outra — o que deixava a
+        // tela presa em estados inconsistentes (ex: botão preso em
+        // "Entrando..." mesmo depois de já ter vindo uma resposta).
+        const resultado = await comTimeout(checkSessionCompleta(), 20000)
 
         if (!mounted) return
 
         if (resultado === 'timeout') {
-          console.warn('Verificação de sessão deu timeout — mostrando login')
+          console.warn('Verificação de sessão excedeu 20s — mostrando login')
           limparTokenSessaoPresa()
           setUser(null); setPerm(''); setEmail(null)
         }
@@ -138,8 +142,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // ✅ Login com single timeout de 10s, sem retry automático.
-      const resultado = await comTimeout(processoDeLogin(), 10000)
+      // ✅ Apenas UM timeout de segurança, pelo mesmo motivo explicado
+      // no checkSession(): o retry de conexão já acontece sozinho no
+      // supabase.ts, então uma segunda camada de retry aqui só causava
+      // tempos empilhados e tentativas antigas "fantasmas" rodando
+      // escondidas, deixando o botão preso em "Entrando..." mesmo após
+      // a resposta real (como "usuário ou senha incorretos") já ter
+      // chegado por uma tentativa que a camada de fora já tinha descartado.
+      const resultado = await comTimeout(processoDeLogin(), 20000)
 
       if (resultado === 'timeout') {
         limparTokenSessaoPresa()
