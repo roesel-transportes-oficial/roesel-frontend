@@ -303,8 +303,34 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     const timeoutId = setTimeout(() => controller.abort(), 50000)
 
     try {
+      // ✅ Mesma proteção que já existia só para clientes, agora também
+      // para motoristas, caminhões e carretas: se a página ainda estava
+      // carregando esses dados quando o arquivo foi solto (comum se o
+      // usuário for rápido demais, ou se a conexão com o Supabase
+      // estiver "fria" logo após abrir a página), a lista chega vazia
+      // aqui e a IA não consegue casar nem uma placa que existe no
+      // cadastro. Agora, se qualquer uma dessas listas ainda estiver
+      // vazia neste momento, ela é recarregada antes de tentar comparar.
       let clientesAtuais = clientes
       if (clientesAtuais.length === 0) clientesAtuais = await fetchClientes()
+
+      let motoristasAtuais = motoristas
+      if (motoristasAtuais.length === 0) {
+        const { data } = await supabase.from('motoristas').select('*').order('nome')
+        if (data) { motoristasAtuais = data; setMotoristas(data) }
+      }
+
+      let caminhoesAtuais = caminhoes
+      if (caminhoesAtuais.length === 0) {
+        const { data } = await supabase.from('caminhoes').select('*').order('placa')
+        if (data) { caminhoesAtuais = data; setCaminhoes(data) }
+      }
+
+      let carretasAtuais = carretas
+      if (carretasAtuais.length === 0) {
+        const { data } = await supabase.from('carretas').select('*').order('placa')
+        if (data) { carretasAtuais = data; setCarretas(data) }
+      }
 
       const base64 = await new Promise<string>((res, rej) => {
         const r = new FileReader()
@@ -331,15 +357,15 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         throw new Error(typeof parsed._erro === 'string' ? parsed._erro : 'Erro ao processar o documento com a IA.')
       }
 
-      const motoristasAtivos    = motoristas.filter(m => m.ativo !== false)
+      const motoristasAtivos    = motoristasAtuais.filter(m => m.ativo !== false)
       const motoristaEncontrado = encontrarMotorista(motoristasAtivos, parsed.motorista || '')
       const clienteEncontrado   = encontrarClienteLista(
         clientesAtuais,
         parsed.cliente_nome_completo || parsed.cliente || '',
         parsed.cnpj || '', parsed.origem || ''
       )
-      const caminhaoEncontrado = encontrarCaminhao(parsed.placa || '')
-      const carretaEncontrada  = encontrarCarreta(parsed.placa_carreta || '')
+      const caminhaoEncontrado = encontrarPorPlaca(caminhoesAtuais, parsed.placa || '')
+      const carretaEncontrada  = encontrarPorPlaca(carretasAtuais, parsed.placa_carreta || '')
 
       const nomeCliente = clienteEncontrado?.nome || parsed.cliente_nome_completo || parsed.cliente || ''
       const destino     = parsed.destino || ''
