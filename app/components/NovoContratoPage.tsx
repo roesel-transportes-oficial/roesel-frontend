@@ -9,6 +9,7 @@ const FORM_INICIAL = {
   frota: '', contrato: '', data: '', fat_bruto: '', chapa: '',
   origem: '', destino: '', qtd_veiculos: '', adiantamento_pago: false,
   dt_pagamento: '', status: 'ABERTO', obs: '',
+  valor_adiantamento: '', dt_pagamento_adiantamento: '',
 }
 
 export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => void }) {
@@ -70,6 +71,22 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     const { data } = await supabase.from('carretas').select('*').order('placa')
     if (data) setCarretas(data)
   }
+
+  // ✅ Recalcula o valor do adiantamento automaticamente sempre que o
+  // motorista ou o valor do frete mudarem. Regra: 5% do Frete Contratado
+  // para motoristas com o campo "adiantamento" habilitado no cadastro;
+  // R$0 pros demais. Segue o mesmo padrão já usado pra "chapa" (calcula
+  // automático, mas o campo continua editável se precisar ajustar).
+  useEffect(() => {
+    const mot = motoristas.find(m => m.nome === form.motorista)
+    const habilitado = mot?.adiantamento === true
+    const freteAtual = parseFloat(form.fat_bruto) || 0
+    const valorCalculado = habilitado && freteAtual > 0 ? (freteAtual * 0.05).toFixed(2) : ''
+    if (valorCalculado !== form.valor_adiantamento) {
+      atualizarForm({ ...form, valor_adiantamento: valorCalculado })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.motorista, form.fat_bruto, motoristas])
 
   function calcularChapa(destino: string, cliente: string): string {
     const d = destino.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -436,6 +453,11 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     e.preventDefault()
     setLoading(true); setErro('')
 
+    // ✅ Timeout de segurança em toda a operação de salvar (checagem de
+    // duplicidade + POST /api/contratos + criação de viagem). Antes,
+    // nenhuma dessas chamadas tinha proteção contra travamento — se
+    // qualquer uma travasse, o botão ficava preso em "Salvando..." pra
+    // sempre, sem nenhum erro visível.
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 20000)
 
@@ -459,8 +481,10 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       payload.chapa        = parseFloat(payload.chapa) || 0
       payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
       payload.placa_carreta = payload.placa_carreta || ''
+      payload.valor_adiantamento = parseFloat(payload.valor_adiantamento) || 0
       if (!payload.data) delete payload.data
       if (!payload.dt_pagamento) delete payload.dt_pagamento
+      if (!payload.dt_pagamento_adiantamento) delete payload.dt_pagamento_adiantamento
 
       const res = await fetch('/api/contratos', {
         method: 'POST',
@@ -547,6 +571,9 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         <p className="text-sm font-medium text-blue-800 mb-2">🤖 Preencher automaticamente com IA</p>
         <p className="text-xs text-blue-600 mb-3">Envie um PDF ou imagem do contrato e a IA preencherá os campos automaticamente.</p>
 
+        {/* ✅ Área de drag-and-drop. Clicar nela também abre o seletor de
+            arquivo (igual antes), então nada do fluxo antigo se perde —
+            só ganhou a opção extra de soltar o arquivo direto aqui. */}
         <label
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -723,12 +750,31 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Dt. Pagamento</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data de Pagamento do Contrato</label>
             <input name="dt_pagamento" type="date" value={form.dt_pagamento} onChange={handle} className={IC} />
           </div>
           <div className="flex items-center gap-2 pb-2">
             <input name="adiantamento_pago" type="checkbox" checked={form.adiantamento_pago} onChange={handle} className="w-4 h-4 accent-red-600" />
             <label className="text-sm font-medium text-gray-700">Adiantamento pago</label>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Valor do Adiantamento (R$)
+              {motoristas.find(m => m.nome === form.motorista)?.adiantamento === true && form.valor_adiantamento && (
+                <span className="ml-2 text-xs text-blue-600 font-medium">🔧 5% calculado automaticamente</span>
+              )}
+              {form.motorista && motoristas.find(m => m.nome === form.motorista)?.adiantamento !== true && (
+                <span className="ml-2 text-xs text-gray-400 font-medium">motorista sem adiantamento habilitado</span>
+              )}
+            </label>
+            <input name="valor_adiantamento" type="number" step="0.01" value={form.valor_adiantamento} onChange={handle} className={IC} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data de Pagamento do Adiantamento</label>
+            <input name="dt_pagamento_adiantamento" type="date" value={form.dt_pagamento_adiantamento} onChange={handle} className={IC} />
           </div>
         </div>
 
