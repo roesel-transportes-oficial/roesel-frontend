@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight, Download, Edit2 } from 'lucide-react'
+import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight, Download, Edit2, RefreshCw } from 'lucide-react'
 
 type Motorista     = { id: string; nome: string; caminhao_id?: string }
 type Caminhao      = { id: string; placa: string }
@@ -19,6 +19,8 @@ type Fechamento    = {
 
 export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
   const [motoristas, setMotoristas]               = useState<Motorista[]>([])
+  const [carregandoMotoristas, setCarregandoMotoristas] = useState(true)
+  const [erroMotoristas, setErroMotoristas]       = useState('')
   const [motoristaId, setMotoristaId]             = useState('')
   const [motoristaNome, setMotoristaNome]         = useState('')
   const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
@@ -49,6 +51,30 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [editando, setEditando]       = useState<Fechamento | null>(null)
 
   // ─── Funções auxiliares ───────────────────────────────────────────────────
+
+  // ✅ Antes esse fetch não tinha .catch() nenhum — se a consulta falhasse
+  // por qualquer motivo (rede instável, timeout, etc.), o erro era
+  // engolido silenciosamente e a lista de motoristas ficava vazia pra
+  // sempre, sem nenhum aviso. Como essa página desmonta e remonta toda
+  // vez que você troca de aba, cada volta era uma nova tentativa "no
+  // escuro" — se a rede estivesse ruim naquele instante, travava vazio
+  // sem chance de recuperar a não ser dar F5 na página inteira. Agora
+  // tem tratamento de erro visível e um botão pra tentar de novo sem
+  // precisar recarregar tudo.
+  async function fetchMotoristas() {
+    setCarregandoMotoristas(true); setErroMotoristas('')
+    try {
+      const { data, error } = await supabase
+        .from('motoristas').select('id, nome, caminhao_id').order('nome')
+      if (error) throw error
+      setMotoristas(data || [])
+    } catch (e: any) {
+      console.error('Erro ao carregar motoristas:', e)
+      setErroMotoristas('Não foi possível carregar a lista de motoristas.')
+    } finally {
+      setCarregandoMotoristas(false)
+    }
+  }
 
   async function buscarKmInicial(camId: string) {
     const [{ data: ultimoFech }, { data: abasts }] = await Promise.all([
@@ -92,8 +118,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   // ─── Effects ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    supabase.from('motoristas').select('id, nome, caminhao_id').order('nome')
-      .then(({ data }) => data && setMotoristas(data))
+    fetchMotoristas()
   }, [])
 
   useEffect(() => {
@@ -441,16 +466,27 @@ useEffect(() => {
                     <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
                       <User size={14} className="text-red-600"/> Motorista
                     </label>
-                    <select value={motoristaId}
-                      onChange={e => {
-                        setMotoristaId(e.target.value)
-                        setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set())
-                        setKmInicial(''); setKmFinal(''); setDataInicio('')
-                      }}
-                      className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm font-bold focus:border-red-500 focus:bg-white outline-none transition-all">
-                      <option value="">Selecione o motorista</option>
-                      {motoristas.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-                    </select>
+                    {erroMotoristas ? (
+                      <div className="flex items-center gap-2 bg-red-50 border-2 border-red-100 rounded-xl px-4 py-3">
+                        <AlertCircle size={16} className="text-red-500 shrink-0"/>
+                        <span className="text-xs font-bold text-red-600 flex-1">{erroMotoristas}</span>
+                        <button onClick={fetchMotoristas}
+                          className="flex items-center gap-1 text-xs font-black text-red-600 hover:text-red-800 uppercase whitespace-nowrap">
+                          <RefreshCw size={12}/> Tentar de novo
+                        </button>
+                      </div>
+                    ) : (
+                      <select value={motoristaId} disabled={carregandoMotoristas}
+                        onChange={e => {
+                          setMotoristaId(e.target.value)
+                          setSelecionados([]); setAbastecimentos([]); setAbastSelecionados(new Set())
+                          setKmInicial(''); setKmFinal(''); setDataInicio('')
+                        }}
+                        className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm font-bold focus:border-red-500 focus:bg-white outline-none transition-all disabled:opacity-50">
+                        <option value="">{carregandoMotoristas ? 'Carregando motoristas...' : 'Selecione o motorista'}</option>
+                        {motoristas.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                      </select>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
