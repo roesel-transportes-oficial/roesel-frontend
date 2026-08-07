@@ -77,3 +77,6 @@ function Placeholder({ title, icon }: { title: string; icon: string }) {
     </div>
   )
 }
+
+
+<div className=""></div>
