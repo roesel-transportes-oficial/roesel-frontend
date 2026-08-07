@@ -160,7 +160,9 @@ export default function ContasPagarPage() {
 
   useEffect(() => { fetch_() }, [filtroStatus, filtroInicio, filtroFim])
 
-  // ✅ MutationObserver corrigido — não chama fetch_ múltiplas vezes
+  // ✅ MutationObserver com debounce (já existia) — mantido, mas o que
+  // realmente resolve a corrida entre esse observer e o efeito de
+  // filtro acima é a guarda por ID dentro do fetch_() logo abaixo.
   useEffect(() => {
     const container = containerRef.current
     const parent = container?.parentElement
@@ -177,7 +179,18 @@ export default function ContasPagarPage() {
     return () => observer.disconnect()
   }, [])
 
+  // ✅ Guarda contra corrida entre chamadas concorrentes de fetch_().
+  // Existem DOIS gatilhos que chamam fetch_() (mudança de filtro e o
+  // MutationObserver de troca de aba). Se os dois dispararem quase ao
+  // mesmo tempo, a resposta mais lenta podia "vencer" por último e
+  // travar o loading pra sempre, mesmo com os dados já carregados pela
+  // chamada mais rápida. Agora cada chamada tem um ID; só a chamada
+  // MAIS RECENTE tem permissão de atualizar o estado — respostas
+  // desatualizadas de chamadas antigas são simplesmente ignoradas.
+  const fetchIdRef = useRef(0)
+
   async function fetch_() {
+    const meuId = ++fetchIdRef.current
     setLoadingLista(true)
     try {
       let q = supabase.from('contas_pagar').select('*').order('data_vencimento', { ascending: true })
@@ -185,9 +198,17 @@ export default function ContasPagarPage() {
       if (filtroInicio) q = q.gte('data_vencimento', filtroInicio)
       if (filtroFim)    q = q.lte('data_vencimento', filtroFim)
       const { data } = await q
+
+      // Se já rodou outra chamada mais nova enquanto esta esperava a
+      // resposta, esta aqui está obsoleta — não mexe em mais nada.
+      if (meuId !== fetchIdRef.current) return
+
       setContas(data || [])
     } catch {}
-    finally { setLoadingLista(false) }
+    finally {
+      // Só a chamada mais recente pode desligar o loading.
+      if (meuId === fetchIdRef.current) setLoadingLista(false)
+    }
   }
 
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
