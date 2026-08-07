@@ -5,7 +5,8 @@ import {
   LayoutDashboard, FileText, FilePlus, User, DollarSign,
   Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown,
   ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle,
-  AlertTriangle, ShieldAlert, MapPin, Palmtree, ClipboardCheck
+  AlertTriangle, ShieldAlert, MapPin, Palmtree, ClipboardCheck,
+  FileSignature
 } from 'lucide-react'
 
 const isFinanceiro  = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
@@ -19,6 +20,7 @@ const menus = [
   { id: 'contratos', label: 'Contratos',     icon: FileText,        adminOnly: false },
   { id: 'caminhao',  label: 'Gestão de Frota', icon: Car,           adminOnly: false },
   { id: 'clientes',  label: 'Clientes',      icon: UserCircle,      adminOnly: false },
+  { id: 'cte',       label: 'CT-e',          icon: FileSignature,   adminOnly: false },
   { id: 'premios',   label: 'Prêmios',       icon: Trophy,          adminOnly: false },
   { id: 'usuarios',  label: 'Usuários',      icon: Users,           adminOnly: true  },
 ]

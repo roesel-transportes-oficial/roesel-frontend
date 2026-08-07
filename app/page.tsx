@@ -15,6 +15,7 @@ import ViagemPage from './components/ViagemPage'
 import FeriasPage from './components/FeriasPage'
 import FechamentoViagemPage from './components/FechamentoViagemPage'
 import ContasPagarPage from './components/ContasPagarPage'
+import CtePage from './components/CtePage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -56,6 +57,7 @@ export default function Home() {
         <div style={{ display: aba === 'avarias'       ? 'block' : 'none' }}><AvariasPage /></div>
         <div style={{ display: aba === 'premios'       ? 'block' : 'none' }}><PremiosPage /></div>
         <div style={{ display: aba === 'contas_pagar'  ? 'block' : 'none' }}><ContasPagarPage /></div>
+        <div style={{ display: aba === 'cte'           ? 'block' : 'none' }}><CtePage /></div>
 
         {aba === 'novo'       && <NovoContratoPage setAba={setAba} />}
         {aba === 'fechamento' && <FechamentoViagemPage setAba={setAba} />}
