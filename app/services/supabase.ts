@@ -6,29 +6,24 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY
 let _client: SupabaseClient | null = null
 
 // ✅ Lock "vazio": desativa o navigator.locks do Supabase.
-// Evita travamento quando um lock de uma aba anterior fica preso.
 async function semTrava<R>(_name: string, _acquireTimeout: number, fn: () => Promise<R>): Promise<R> {
   return fn()
 }
 
-// ✅ FETCH GLOBAL COM TIMEOUT + RETRY SILENCIOSO
-// ─────────────────────────────────────────────────────────────────────
-// Esse é o coração da correção: TODA chamada que o Supabase faz (tanto
-// consultas ao banco quanto autenticação) passa por essa função — não
-// importa em qual página. Antes, só o login/sessão tinham proteção
-// contra travamento; qualquer outra chamada (buscar motoristas,
-// clientes, caminhões etc.) podia ficar esperando pra sempre se a
-// conexão estivesse "fria" — o que acontece depois de F5 ou depois de
-// voltar de outra aba do navegador (o navegador pausa a aba em segundo
-// plano e a conexão precisa ser reestabelecida).
+// ✅ FETCH GLOBAL COM TIMEOUT + RETRY — agora cobrindo os DOIS tipos de
+// falha de conexão:
 //
-// Com isso: 1ª tentativa rápida (6s) → se travar, tenta de novo sozinho
-// (mais 10s) sem mostrar nada pro usuário → só desiste e deixa o erro
-// estourar (que cada página já trata do seu jeito) se as duas falharem.
+// 1) TRAVAMENTO (a chamada não responde) — já existia, resolvido com
+//    timeout de 6s + retry de mais 10s.
+// 2) FALHA IMEDIATA (a chamada nem chega a sair — erro de rede genuíno,
+//    comum logo depois de um reload de página, como acontece no
+//    logout que navega pra "/" e recarrega tudo do zero) — esse tipo
+//    de erro REJEITA na hora, não trava, então precisava de um retry
+//    separado. Sem isso, era exatamente por isso que trocar de usuário
+//    (logout → login de outro) às vezes precisava de várias tentativas
+//    manuais até "pegar".
 async function fetchComTimeoutERetry(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   async function tentar(timeoutMs: number): Promise<Response> {
-    // Se quem chamou já passou um signal próprio (ex: telas que usam seu
-    // próprio AbortController), respeitamos ele e não competimos com ele.
     if (init?.signal) {
       return fetch(url, init)
     }
@@ -47,11 +42,13 @@ async function fetchComTimeoutERetry(url: RequestInfo | URL, init?: RequestInit)
   try {
     return await tentar(6000)
   } catch (e: any) {
-    if (e?.name === 'AbortError') {
-      console.warn('Requisição lenta (conexão fria) — tentando de novo silenciosamente:', String(url))
-      return await tentar(10000)
-    }
-    throw e
+    // Antes só tentava de novo se fosse AbortError (timeout nosso).
+    // Agora tenta de novo pra QUALQUER falha de rede na primeira
+    // tentativa — cobre tanto travamento quanto erro imediato de
+    // conexão fria — com uma pequena pausa antes de tentar de novo.
+    console.warn('Falha na 1ª tentativa de conexão (conexão fria) — tentando de novo silenciosamente:', String(url), e?.message || e)
+    await new Promise(r => setTimeout(r, 500))
+    return await tentar(10000)
   }
 }
 
