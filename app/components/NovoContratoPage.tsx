@@ -486,9 +486,21 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       if (!payload.dt_pagamento) delete payload.dt_pagamento
       if (!payload.dt_pagamento_adiantamento) delete payload.dt_pagamento_adiantamento
 
+      // ✅ Pega o token da sessão atual e manda junto — o backend agora
+      // exige isso pra confirmar que quem está chamando está logado de
+      // verdade (antes a chamada passava sem provar identidade nenhuma).
+      const { data: sessaoAtual } = await supabase.auth.getSession()
+      const token = sessaoAtual?.session?.access_token
+      if (!token) {
+        throw new Error('Sessão expirada. Atualize a página e faça login novamente.')
+      }
+
       const res = await fetch('/api/contratos', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify(payload),
         signal: controller.signal,
       })

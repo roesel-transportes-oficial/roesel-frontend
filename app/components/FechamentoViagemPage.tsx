@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
-import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, CreditCard, Filter, AlertCircle, ArrowRight, Download, Edit2, RefreshCw } from 'lucide-react'
+import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, Filter, AlertCircle, ArrowRight, Download, Edit2, RefreshCw } from 'lucide-react'
 
 type Motorista     = { id: string; nome: string; caminhao_id?: string }
 type Caminhao      = { id: string; placa: string }
@@ -30,7 +30,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [dataFim, setDataFim]                     = useState('')
   const [kmInicial, setKmInicial]                 = useState('')
   const [kmFinal, setKmFinal]                     = useState('')
-  const [dataVencimento, setDataVencimento]       = useState('')
   const [abastDataInicio, setAbastDataInicio]     = useState('')
   const [abastDataFim, setAbastDataFim]           = useState('')
   const [buscaContrato, setBuscaContrato]         = useState('')
@@ -119,6 +118,25 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
   useEffect(() => {
     fetchMotoristas()
+  }, [])
+
+  // ✅ Refaz a busca de motoristas sempre que a aba volta a ficar
+  // visível — não importa se ficou escondida 1 minuto ou várias horas.
+  // Motivo: o navegador pode PAUSAR de verdade timers e conexões de
+  // rede quando a aba fica muito tempo em segundo plano — inclusive o
+  // próprio timeout de segurança que protege essa busca pode ficar
+  // pausado junto, então confiar na tentativa antiga não é seguro.
+  // Em vez de tentar blindar contra isso, a solução mais confiável é
+  // simplesmente iniciar uma tentativa NOVA toda vez que a aba volta,
+  // usando o fetchMotoristas() que já trata erro e mostra "Tentar de
+  // novo" se precisar — assim nunca fica preso numa tentativa velha e
+  // esquecida pelo navegador.
+  useEffect(() => {
+    function handleVisibilidade() {
+      if (!document.hidden) fetchMotoristas()
+    }
+    document.addEventListener('visibilitychange', handleVisibilidade)
+    return () => document.removeEventListener('visibilitychange', handleVisibilidade)
   }, [])
 
   useEffect(() => {
@@ -335,7 +353,11 @@ useEffect(() => {
           motorista_id: motoristaId, caminhao_id: caminhao.id,
           data_inicio: dataInicio, data_fim: dataFim,
           km_inicial: Number(kmInicial), km_final: Number(kmFinal),
-          data_vencimento: dataVencimento,
+          // ✅ Campo "Vencimento" removido do formulário e do histórico.
+          // Mantido aqui só como fallback (usa a data de retorno da
+          // viagem) caso a coluna no banco ainda seja obrigatória —
+          // não aparece mais em lugar nenhum da interface.
+          data_vencimento: dataFim,
           total_litros: resumo.litros, total_abastecimento: resumo.valor,
           total_frete: resumo.frete, comissao_motorista: resumo.comissao
         }).select().single()
@@ -356,7 +378,7 @@ useEffect(() => {
         setSucesso(false); setAbaAtiva('historico')
         setMotoristaId(''); setCaminhao(null); setCaminhaoBase(null); setSelecionados([])
         setAbastecimentos([]); setAbastSelecionados(new Set())
-        setDataInicio(''); setDataFim(''); setKmInicial(''); setKmFinal(''); setDataVencimento('')
+        setDataInicio(''); setDataFim(''); setKmInicial(''); setKmFinal('')
       }, 1500)
     } catch (e: any) {
       setErro('Erro ao salvar: ' + e.message)
@@ -380,8 +402,7 @@ useEffect(() => {
     setSalvando(true)
     const { error } = await supabase.from('fechamento_viagens').update({
       data_inicio: editando.data_inicio, data_fim: editando.data_fim,
-      km_inicial: Number(editando.km_inicial), km_final: Number(editando.km_final),
-      data_vencimento: editando.data_vencimento
+      km_inicial: Number(editando.km_inicial), km_final: Number(editando.km_final)
     }).eq('id', editando.id)
     if (error) setErro('Erro ao atualizar: ' + error.message)
     else { setEditando(null); fetchHistorico() }
@@ -389,7 +410,7 @@ useEffect(() => {
   }
 
   function exportarCSV() {
-    const headers = ['Data Lançamento','Motorista','Placa','Início','Fim','KM Inicial','KM Final','KM Rodado','Litros','Média','Vencimento','Total Frete','Comissão']
+    const headers = ['Data Lançamento','Motorista','Placa','Início','Fim','KM Inicial','KM Final','KM Rodado','Litros','Média','Total Frete','Comissão']
     const rows = historicoFiltrado.map(h => {
       const km = (h.km_final || 0) - (h.km_inicial || 0)
       const litros = h.total_litros || 0
@@ -397,7 +418,7 @@ useEffect(() => {
         new Date(h.created_at).toLocaleDateString('pt-BR'), h.motorista.nome, h.caminhao.placa,
         fmtData(h.data_inicio), fmtData(h.data_fim), h.km_inicial, h.km_final, km, litros,
         km > 0 && litros > 0 ? (km / litros).toFixed(2) : '0',
-        fmtData(h.data_vencimento), h.total_frete || 0, h.comissao_motorista || 0
+        h.total_frete || 0, h.comissao_motorista || 0
       ]
     })
     const csv = [headers, ...rows].map(e => e.join(';')).join('\n')
@@ -508,7 +529,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t border-gray-50">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-50">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-500 uppercase">Saída Viagem</label>
                     <input type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
@@ -530,13 +551,6 @@ useEffect(() => {
                     <label className="text-[10px] font-bold text-gray-500 uppercase">KM Final</label>
                     <input type="number" value={kmFinal} onChange={e => setKmFinal(e.target.value)}
                       className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-500"/>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-red-600 uppercase flex items-center gap-1">
-                      <CreditCard size={10}/> Vencimento
-                    </label>
-                    <input type="date" value={dataVencimento} onChange={e => setDataVencimento(e.target.value)}
-                      className="w-full bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-red-600"/>
                   </div>
                 </div>
 
@@ -730,16 +744,16 @@ useEffect(() => {
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50/50 border-b border-gray-100">
-                  {['Data Lançamento','Motorista / Placa','Período / KM','Vencimento',''].map(h => (
+                  {['Data Lançamento','Motorista / Placa','Período / KM',''].map(h => (
                     <th key={h} className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {carregandoHistorico ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+                  <tr><td colSpan={4} className="px-6 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
                 ) : historicoFiltrado.length === 0 ? (
-                  <tr><td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
+                  <tr><td colSpan={4} className="px-6 py-12 text-center text-sm text-gray-400">Nenhum registro</td></tr>
                 ) : historicoFiltrado.map(h => (
                   <tr key={h.id} className="hover:bg-gray-50/50 transition-colors group cursor-pointer" onClick={() => setVisualizando(h)}>
                     <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
@@ -759,6 +773,10 @@ useEffect(() => {
                             <input type="number" placeholder="KM Ini" value={editando.km_inicial} onChange={e => setEditando({...editando, km_inicial: Number(e.target.value)})} className="text-[10px] border rounded p-1 w-20"/>
                             <input type="number" placeholder="KM Fim" value={editando.km_final} onChange={e => setEditando({...editando, km_final: Number(e.target.value)})} className="text-[10px] border rounded p-1 w-20"/>
                           </div>
+                          <div className="flex items-center gap-2">
+                            <button onClick={salvarEdicao} className="text-green-600"><CheckCircle2 size={14}/></button>
+                            <button onClick={() => setEditando(null)} className="text-red-600"><X size={14}/></button>
+                          </div>
                         </div>
                       ) : (
                         <>
@@ -767,30 +785,19 @@ useEffect(() => {
                         </>
                       )}
                     </td>
-                    <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                      {editando?.id === h.id ? (
-                        <div className="flex items-center gap-2">
-                          <input type="date" value={editando.data_vencimento}
-                            onChange={e => setEditando({...editando, data_vencimento: e.target.value})}
-                            className="text-xs border rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-red-500"/>
-                          <button onClick={salvarEdicao} className="text-green-600"><CheckCircle2 size={14}/></button>
-                          <button onClick={() => setEditando(null)} className="text-red-600"><X size={14}/></button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 group/edit">
-                          <span className="text-xs font-black text-red-600">{fmtData(h.data_vencimento)}</span>
-                          <button onClick={() => setEditando(h)}
-                            className="opacity-0 group-hover/edit:opacity-100 text-gray-400 hover:text-red-600 transition-all">
-                            <Edit2 size={12}/>
-                          </button>
-                        </div>
-                      )}
-                    </td>
                     <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => setExcluindoId(h.id)}
-                        className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
-                        <X size={16}/>
-                      </button>
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        {editando?.id !== h.id && (
+                          <button onClick={() => setEditando(h)}
+                            className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                            <Edit2 size={16}/>
+                          </button>
+                        )}
+                        <button onClick={() => setExcluindoId(h.id)}
+                          className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
+                          <X size={16}/>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -818,38 +825,9 @@ useEffect(() => {
                   <p className="text-lg font-black text-red-600">{visualizando.caminhao.placa}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-6 pt-4 border-t border-gray-100">
-                <div>
-                  <p className="text-[10px] font-black text-gray-400 uppercase">Período</p>
-                  <p className="text-sm font-bold text-gray-700">{fmtData(visualizando.data_inicio)} → {fmtData(visualizando.data_fim)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Vencimento</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      defaultValue={visualizando.data_vencimento}
-                      onChange={e => setVisualizando({ ...visualizando, data_vencimento: e.target.value })}
-                      className="text-sm font-black text-red-600 border border-red-200 bg-red-50 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-red-500"
-                    />
-                    <button
-                      onClick={async () => {
-                        const { error } = await supabase
-                          .from('fechamento_viagens')
-                          .update({ data_vencimento: visualizando.data_vencimento })
-                          .eq('id', visualizando.id)
-                        if (!error) {
-                          fetchHistorico()
-                          setHistorico(prev => prev.map(h =>
-                            h.id === visualizando.id ? { ...h, data_vencimento: visualizando.data_vencimento } : h
-                          ))
-                        }
-                      }}
-                      className="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-black hover:bg-red-700 transition-all whitespace-nowrap">
-                      Salvar
-                    </button>
-                  </div>
-                </div>
+              <div className="pt-4 border-t border-gray-100">
+                <p className="text-[10px] font-black text-gray-400 uppercase">Período</p>
+                <p className="text-sm font-bold text-gray-700">{fmtData(visualizando.data_inicio)} → {fmtData(visualizando.data_fim)}</p>
               </div>
               <div className="grid grid-cols-3 gap-4 pt-4 border-t border-gray-100">
                 <div className="bg-gray-50 p-3 rounded-xl">
