@@ -189,22 +189,39 @@ export default function ContasPagarPage() {
   // desatualizadas de chamadas antigas são simplesmente ignoradas.
   const fetchIdRef = useRef(0)
 
+  // ✅ Helper pra pegar o token da sessão atual — usado em toda chamada
+  // pro backend a partir de agora, já que ele exige login validado.
+  async function pegarToken(): Promise<string> {
+    const { data } = await supabase.auth.getSession()
+    const token = data?.session?.access_token
+    if (!token) throw new Error('Sessão expirada. Atualize a página e faça login novamente.')
+    return token
+  }
+
   async function fetch_() {
     const meuId = ++fetchIdRef.current
     setLoadingLista(true)
     try {
-      let q = supabase.from('contas_pagar').select('*').order('data_vencimento', { ascending: true })
-      if (filtroStatus) q = q.eq('status', filtroStatus)
-      if (filtroInicio) q = q.gte('data_vencimento', filtroInicio)
-      if (filtroFim)    q = q.lte('data_vencimento', filtroFim)
-      const { data } = await q
+      const token = await pegarToken()
+      const params = new URLSearchParams()
+      if (filtroStatus) params.set('status', filtroStatus)
+      if (filtroInicio) params.set('venc_inicio', filtroInicio)
+      if (filtroFim)    params.set('venc_fim', filtroFim)
+
+      const res = await fetch(`/api/contas-pagar?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
 
       // Se já rodou outra chamada mais nova enquanto esta esperava a
       // resposta, esta aqui está obsoleta — não mexe em mais nada.
       if (meuId !== fetchIdRef.current) return
 
-      setContas(data || [])
-    } catch {}
+      if (!res.ok) { console.error('Erro ao buscar contas:', data); return }
+      setContas(Array.isArray(data) ? data : [])
+    } catch (e) {
+      if (meuId === fetchIdRef.current) console.error('Erro ao buscar contas:', e)
+    }
     finally {
       // Só a chamada mais recente pode desligar o loading.
       if (meuId === fetchIdRef.current) setLoadingLista(false)
@@ -245,44 +262,25 @@ export default function ContasPagarPage() {
     if (!dadosNFe || !vencimento) return
     setSalvandoNFe(true)
     try {
-      const { data: nfe, error: errNFe } = await supabase
-        .from('notas_fiscais').insert({
-          chave_acesso: dadosNFe.chave_acesso, numero_nf: dadosNFe.numero_nf,
-          serie: dadosNFe.serie, data_emissao: dadosNFe.data_emissao,
-          emitente_cnpj: dadosNFe.emitente_cnpj, emitente_nome: dadosNFe.emitente_nome,
-          emitente_fantasia: dadosNFe.emitente_fantasia, emitente_cidade: dadosNFe.emitente_cidade,
-          emitente_uf: dadosNFe.emitente_uf, valor_total: dadosNFe.valor_total,
-          natureza_operacao: dadosNFe.natureza_operacao, cfop: dadosNFe.cfop,
-          produtos: dadosNFe.produtos, info_adicional: dadosNFe.info_adicional,
-        }).select().maybeSingle()
-      if (errNFe) throw errNFe
-
-      const { error: errConta } = await supabase.from('contas_pagar').insert({
-        descricao:         `NF-e ${dadosNFe.numero_nf} — ${dadosNFe.emitente_nome}`,
-        fornecedor_nome:   dadosNFe.emitente_nome,
-        fornecedor_cnpj:   dadosNFe.emitente_cnpj,
-        valor:             dadosNFe.valor_total,
-        data_emissao:      dadosNFe.data_emissao,
-        data_vencimento:   vencimento,
-        status:            'PENDENTE',
-        nota_fiscal_id:    nfe?.id || null,
-        nota_fiscal_chave: dadosNFe.chave_acesso,
-        obs:               obsImport,
+      const token = await pegarToken()
+      const res = await fetch('/api/contas-pagar/importar-nfe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          dados_nfe: dadosNFe,
+          vencimento,
+          obs: obsImport,
+          abastecimento_id: cruzamento?.abastecimento?.id || null,
+        }),
       })
-      if (errConta) throw errConta
-
-      if (cruzamento?.abastecimento?.id && nfe?.id) {
-        await supabase.from('abastecimentos').update({
-          nota_fiscal_id:    nfe.id,
-          nota_fiscal_chave: dadosNFe.chave_acesso,
-        }).eq('id', cruzamento.abastecimento.id)
-      }
+      const resultado = await res.json()
+      if (!res.ok) throw new Error(resultado?.detail || resultado?.error || 'Erro ao importar NF-e.')
 
       showMsg('✅ NF-e importada, conta criada e abastecimento vinculado!')
       fecharImport()
       await fetch_()
     } catch (e: any) {
-      setErroImport('Erro ao salvar: ' + e.message)
+      setErroImport('Erro ao salvar: ' + (e?.message || 'erro desconhecido'))
     } finally { setSalvandoNFe(false) }
   }
 
@@ -290,19 +288,26 @@ export default function ContasPagarPage() {
     if (!novaFornNome || !novaValor || !novaVenc) return
     setLoading(true)
     try {
-      const { error } = await supabase.from('contas_pagar').insert({
-        descricao: novaDesc, fornecedor_nome: novaFornNome,
-        fornecedor_cnpj: novaFornCnpj.replace(/\D/g, ''),
-        valor: parseFloat(novaValor) || 0, data_emissao: novaEmissao,
-        data_vencimento: novaVenc, status: 'PENDENTE', obs: novaObs,
+      const token = await pegarToken()
+      const res = await fetch('/api/contas-pagar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          descricao: novaDesc, fornecedor_nome: novaFornNome,
+          fornecedor_cnpj: novaFornCnpj.replace(/\D/g, ''),
+          valor: parseFloat(novaValor) || 0, data_emissao: novaEmissao,
+          data_vencimento: novaVenc, status: 'PENDENTE', obs: novaObs,
+        }),
       })
-      if (error) throw error
+      const resultado = await res.json()
+      if (!res.ok) throw new Error(resultado?.detail || resultado?.error || 'Erro ao cadastrar.')
+
       showMsg('✅ Conta cadastrada!')
       setMostraNova(false)
       setNovaDesc(''); setNovaFornNome(''); setNovaFornCnpj('')
       setNovaValor(''); setNovaVenc(''); setNovaObs('')
       await fetch_()
-    } catch (e: any) { showMsg('❌ Erro: ' + e.message) }
+    } catch (e: any) { showMsg('❌ Erro: ' + (e?.message || 'erro desconhecido')) }
     finally { setLoading(false) }
   }
 
@@ -325,15 +330,22 @@ export default function ContasPagarPage() {
     if (!sel) return
     setLoading(true)
     try {
-      const { error } = await supabase.from('contas_pagar').update({
-        descricao: editDesc, fornecedor_nome: editFornNome,
-        fornecedor_cnpj: editFornCnpj.replace(/\D/g, ''),
-        valor: parseFloat(editValor) || 0, data_emissao: editEmissao,
-        data_vencimento: editVenc, status: editStatus, obs: editObs,
-      }).eq('id', sel.id)
-      if (error) throw error
+      const token = await pegarToken()
+      const res = await fetch(`/api/contas-pagar/${sel.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          descricao: editDesc, fornecedor_nome: editFornNome,
+          fornecedor_cnpj: editFornCnpj.replace(/\D/g, ''),
+          valor: parseFloat(editValor) || 0, data_emissao: editEmissao,
+          data_vencimento: editVenc, status: editStatus, obs: editObs,
+        }),
+      })
+      const resultado = await res.json()
+      if (!res.ok) throw new Error(resultado?.detail || resultado?.error || 'Erro ao atualizar.')
+
       showMsg('✅ Atualizado!'); setSel(null); await fetch_()
-    } catch (e: any) { showMsg('❌ Erro: ' + e.message) }
+    } catch (e: any) { showMsg('❌ Erro: ' + (e?.message || 'erro desconhecido')) }
     finally { setLoading(false) }
   }
 
@@ -341,9 +353,13 @@ export default function ContasPagarPage() {
     if (!sel) return
     setLoading(true)
     try {
-      await supabase.from('contas_pagar').delete().eq('id', sel.id)
+      const token = await pegarToken()
+      await fetch(`/api/contas-pagar/${sel.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
       showMsg('Conta excluída.'); setSel(null); await fetch_()
-    } catch {}
+    } catch (e: any) { showMsg('❌ Erro: ' + (e?.message || 'erro desconhecido')) }
     finally { setLoading(false) }
   }
 
