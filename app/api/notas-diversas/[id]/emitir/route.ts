@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const BACKEND_URL = process.env.ROESEL_BACKEND_URL
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!BACKEND_URL) {
     return NextResponse.json(
       { error: 'ROESEL_BACKEND_URL não configurada nas variáveis de ambiente da Vercel.' },
@@ -12,7 +12,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const authorization = req.headers.get('authorization')
   if (!authorization) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
-  const resposta = await fetch(`${BACKEND_URL}/notas-diversas/${params.id}/emitir`, {
+  const { id } = await params
+  const resposta = await fetch(`${BACKEND_URL}/notas-diversas/${id}/emitir`, {
     method: 'POST',
     headers: { Authorization: authorization },
   })

@@ -9,13 +9,14 @@ function semBackend() {
   )
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!BACKEND_URL) return semBackend()
   const authorization = req.headers.get('authorization')
   if (!authorization) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
+  const { id } = await params
   const body = await req.json()
-  const resposta = await fetch(`${BACKEND_URL}/ctes/${params.id}`, {
+  const resposta = await fetch(`${BACKEND_URL}/ctes/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: authorization },
     body: JSON.stringify(body),
@@ -24,12 +25,13 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json(dados, { status: resposta.status })
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!BACKEND_URL) return semBackend()
   const authorization = req.headers.get('authorization')
   if (!authorization) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
-  const resposta = await fetch(`${BACKEND_URL}/ctes/${params.id}`, {
+  const { id } = await params
+  const resposta = await fetch(`${BACKEND_URL}/ctes/${id}`, {
     method: 'DELETE',
     headers: { Authorization: authorization },
   })
