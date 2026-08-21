@@ -75,15 +75,25 @@ export default function CtePage() {
   // desde o início aqui pra não repetir o mesmo bug.
   const fetchIdRef = useRef(0)
 
+  // ✅ Helper pra pegar o token da sessão atual — usado em toda chamada
+  // pro backend, que agora exige login validado.
+  async function pegarToken(): Promise<string> {
+    const { data } = await supabase.auth.getSession()
+    const token = data?.session?.access_token
+    if (!token) throw new Error('Sessão expirada. Atualize a página e faça login novamente.')
+    return token
+  }
+
   async function fetchCtes() {
     const meuId = ++fetchIdRef.current
     setLoadingLista(true)
     try {
-      const { data, error } = await supabase
-        .from('ctes').select('*').order('created_at', { ascending: false })
+      const token = await pegarToken()
+      const res = await fetch('/api/ctes', { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
       if (meuId !== fetchIdRef.current) return
-      if (error) { console.error('Erro ao buscar CT-e:', error); return }
-      setCtes(data || [])
+      if (!res.ok) { console.error('Erro ao buscar CT-e:', data); return }
+      setCtes(Array.isArray(data) ? data : [])
     } catch (e) {
       if (meuId === fetchIdRef.current) console.error('Erro ao buscar CT-e:', e)
     } finally {
@@ -128,30 +138,41 @@ export default function CtePage() {
     setForm(prev => ({ ...prev, [name]: value }))
   }
 
+  // ✅ Monta o payload uma vez só — usado tanto por "Salvar Rascunho"
+  // quanto por "Emitir" (que precisa criar o registro antes de emitir).
+  function montarPayload() {
+    const payload: any = {
+      tipo: form.tipo,
+      status: 'rascunho',
+      remetente_nome: form.remetente_nome, remetente_cnpj: form.remetente_cnpj.replace(/\D/g, ''),
+      destinatario_nome: form.destinatario_nome, destinatario_cnpj: form.destinatario_cnpj.replace(/\D/g, ''),
+      tomador_nome: form.tomador_nome, tomador_cnpj: form.tomador_cnpj.replace(/\D/g, ''),
+      origem: form.origem, destino: form.destino,
+      valor_prestacao: parseFloat(form.valor_prestacao) || 0,
+      natureza_operacao: form.natureza_operacao,
+      placa: form.placa, motorista: form.motorista,
+      obs: form.obs,
+    }
+    if (form.tipo === 'redespacho') {
+      payload.cte_anterior_chave = form.cte_anterior_chave.replace(/\D/g, '')
+      payload.redespachante_nome = form.redespachante_nome
+      payload.redespachante_cnpj = form.redespachante_cnpj.replace(/\D/g, '')
+    }
+    return payload
+  }
+
   async function salvarRascunho() {
     if (!form.tipo) { setErro('Selecione o tipo de CT-e (Normal ou Redespacho).'); return }
     setSalvando(true); setErro('')
     try {
-      const payload: any = {
-        tipo: form.tipo,
-        status: 'rascunho',
-        remetente_nome: form.remetente_nome, remetente_cnpj: form.remetente_cnpj.replace(/\D/g, ''),
-        destinatario_nome: form.destinatario_nome, destinatario_cnpj: form.destinatario_cnpj.replace(/\D/g, ''),
-        tomador_nome: form.tomador_nome, tomador_cnpj: form.tomador_cnpj.replace(/\D/g, ''),
-        origem: form.origem, destino: form.destino,
-        valor_prestacao: parseFloat(form.valor_prestacao) || 0,
-        natureza_operacao: form.natureza_operacao,
-        placa: form.placa, motorista: form.motorista,
-        obs: form.obs,
-      }
-      if (form.tipo === 'redespacho') {
-        payload.cte_anterior_chave = form.cte_anterior_chave.replace(/\D/g, '')
-        payload.redespachante_nome = form.redespachante_nome
-        payload.redespachante_cnpj = form.redespachante_cnpj.replace(/\D/g, '')
-      }
-
-      const { error } = await supabase.from('ctes').insert(payload)
-      if (error) throw error
+      const token = await pegarToken()
+      const res = await fetch('/api/ctes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(montarPayload()),
+      })
+      const resultado = await res.json()
+      if (!res.ok) throw new Error(resultado?.detail || resultado?.error || 'Erro ao salvar.')
 
       showMsg('✅ Rascunho de CT-e salvo!')
       fecharNovo()
@@ -165,25 +186,60 @@ export default function CtePage() {
 
   // ⚠️ A emissão real ainda não está ativa — falta configurar o token
   // do provedor (Focus NFe ou similar) nas variáveis de ambiente da
-  // Vercel. Por enquanto isso só salva como rascunho e avisa.
+  // Vercel. O fluxo já está pronto: cria o CT-e como rascunho e na
+  // sequência chama o endpoint de emissão daquele registro específico
+  // — assim que o token existir no backend, isso passa a funcionar de
+  // verdade sem precisar mexer em mais nada aqui no frontend.
   async function emitir() {
+    if (!form.tipo) { setErro('Selecione o tipo de CT-e (Normal ou Redespacho).'); return }
     setEmitindo(true); setErro('')
     try {
-      const res = await fetch('/api/cte/emitir', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.erro || 'Emissão de CT-e ainda não configurada.')
+      const token = await pegarToken()
+      const resCriar = await fetch('/api/ctes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(montarPayload()),
+      })
+      const criado = await resCriar.json()
+      if (!resCriar.ok) throw new Error(criado?.detail || criado?.error || 'Erro ao salvar antes de emitir.')
+
+      const registro = Array.isArray(criado) ? criado[0] : criado
+      const resEmitir = await fetch(`/api/ctes/${registro.id}/emitir`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const resultado = await resEmitir.json()
+      if (!resEmitir.ok) throw new Error(resultado?.detail || resultado?.error || 'Emissão de CT-e ainda não configurada.')
+
       showMsg('✅ CT-e emitido com sucesso!')
+      fecharNovo()
+      await fetchCtes()
     } catch (e: any) {
       setErro(e?.message || 'Emissão de CT-e ainda não configurada — salve como rascunho por enquanto.')
+      await fetchCtes() // o rascunho pode ter sido criado mesmo com a emissão falhando
     } finally {
       setEmitindo(false)
     }
   }
 
   async function cancelar(id: string) {
-    // Placeholder — cancelamento real também depende do token do provedor.
-    setErro('Cancelamento de CT-e ainda não está configurado (depende do token do provedor).')
-    setCancelandoId(null)
+    setErro('')
+    try {
+      const token = await pegarToken()
+      const res = await fetch(`/api/ctes/${id}/cancelar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const resultado = await res.json()
+      if (!res.ok) throw new Error(resultado?.detail || resultado?.error || 'Erro ao cancelar.')
+      showMsg('✅ CT-e cancelado.')
+      setCancelandoId(null)
+      setVisualizando(null)
+      await fetchCtes()
+    } catch (e: any) {
+      setErro(e?.message || 'Cancelamento ainda não está configurado (depende do token do provedor).')
+      setCancelandoId(null)
+    }
   }
 
   const totalAutorizados = useMemo(() => ctes.filter(c => c.status === 'autorizado').length, [ctes])

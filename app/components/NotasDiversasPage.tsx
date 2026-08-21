@@ -73,16 +73,28 @@ export default function NotasDiversasPage() {
   // já usado em Contratos, Contas a Pagar e CT-e.
   const fetchIdRef = useRef(0)
 
+  // ✅ Helper pra pegar o token da sessão atual.
+  async function pegarToken(): Promise<string> {
+    const { data } = await supabase.auth.getSession()
+    const token = data?.session?.access_token
+    if (!token) throw new Error('Sessão expirada. Atualize a página e faça login novamente.')
+    return token
+  }
+
   async function fetchNotas() {
     const meuId = ++fetchIdRef.current
     setLoadingLista(true)
     try {
-      let q = supabase.from('notas_diversas').select('*').order('created_at', { ascending: false })
-      if (filtroTipo) q = q.eq('tipo', filtroTipo)
-      const { data, error } = await q
+      const token = await pegarToken()
+      const params = new URLSearchParams()
+      if (filtroTipo) params.set('tipo', filtroTipo)
+      const res = await fetch(`/api/notas-diversas?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
       if (meuId !== fetchIdRef.current) return
-      if (error) { console.error('Erro ao buscar notas:', error); return }
-      setNotas(data || [])
+      if (!res.ok) { console.error('Erro ao buscar notas:', data); return }
+      setNotas(Array.isArray(data) ? data : [])
     } catch (e) {
       if (meuId === fetchIdRef.current) console.error('Erro ao buscar notas:', e)
     } finally {
@@ -118,39 +130,50 @@ export default function NotasDiversasPage() {
     setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
   }
 
+  // ✅ Payload montado uma vez só — usado tanto por "Salvar Rascunho"
+  // quanto por "Emitir" (que cria o registro antes de tentar emitir).
+  function montarPayload() {
+    const payload: any = {
+      tipo: form.tipo,
+      status: 'rascunho',
+      destinatario_nome: form.destinatario_nome,
+      destinatario_cnpj: form.destinatario_cnpj.replace(/\D/g, ''),
+      valor: parseFloat(form.valor) || 0,
+      data_emissao: form.data_emissao,
+      obs: form.obs,
+    }
+    if (form.tipo === 'nfse') {
+      payload.descricao_servico = form.descricao_servico
+      payload.aliquota_iss = parseFloat(form.aliquota_iss) || 0
+      payload.iss_retido = form.iss_retido
+    }
+    if (form.tipo === 'devolucao') {
+      payload.nota_fiscal_original_chave = form.nota_fiscal_original_chave.replace(/\D/g, '')
+      payload.motivo_devolucao = form.motivo_devolucao
+      payload.placa = form.placa; payload.motorista = form.motorista
+      payload.origem = form.origem; payload.destino = form.destino
+    }
+    if (form.tipo === 'remessa') {
+      payload.natureza_remessa = form.natureza_remessa
+      payload.produtos_descricao = form.produtos_descricao
+      payload.placa = form.placa; payload.motorista = form.motorista
+      payload.origem = form.origem; payload.destino = form.destino
+    }
+    return payload
+  }
+
   async function salvarRascunho() {
     if (!form.tipo) { setErro('Selecione o tipo de nota (NFS-e, Devolução ou Remessa).'); return }
     setSalvando(true); setErro('')
     try {
-      const payload: any = {
-        tipo: form.tipo,
-        status: 'rascunho',
-        destinatario_nome: form.destinatario_nome,
-        destinatario_cnpj: form.destinatario_cnpj.replace(/\D/g, ''),
-        valor: parseFloat(form.valor) || 0,
-        data_emissao: form.data_emissao,
-        obs: form.obs,
-      }
-      if (form.tipo === 'nfse') {
-        payload.descricao_servico = form.descricao_servico
-        payload.aliquota_iss = parseFloat(form.aliquota_iss) || 0
-        payload.iss_retido = form.iss_retido
-      }
-      if (form.tipo === 'devolucao') {
-        payload.nota_fiscal_original_chave = form.nota_fiscal_original_chave.replace(/\D/g, '')
-        payload.motivo_devolucao = form.motivo_devolucao
-        payload.placa = form.placa; payload.motorista = form.motorista
-        payload.origem = form.origem; payload.destino = form.destino
-      }
-      if (form.tipo === 'remessa') {
-        payload.natureza_remessa = form.natureza_remessa
-        payload.produtos_descricao = form.produtos_descricao
-        payload.placa = form.placa; payload.motorista = form.motorista
-        payload.origem = form.origem; payload.destino = form.destino
-      }
-
-      const { error } = await supabase.from('notas_diversas').insert(payload)
-      if (error) throw error
+      const token = await pegarToken()
+      const res = await fetch('/api/notas-diversas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(montarPayload()),
+      })
+      const resultado = await res.json()
+      if (!res.ok) throw new Error(resultado?.detail || resultado?.error || 'Erro ao salvar.')
 
       showMsg('✅ Rascunho salvo!')
       fecharNovo()
@@ -162,29 +185,61 @@ export default function NotasDiversasPage() {
     }
   }
 
-  // ⚠️ Emissão real ainda não configurada — mesmo motivo do CT-e:
-  // falta o token do provedor (Focus NFe ou similar) nas variáveis de
-  // ambiente da Vercel. Usa a mesma rota de token pro NFS-e/Devolução/
-  // Remessa quanto pro CT-e, já que é o mesmo provedor.
+  // ⚠️ Emissão real ainda não configurada — mesmo motivo do CT-e: falta
+  // o token do provedor. O fluxo já está pronto: cria o registro como
+  // rascunho e na sequência chama o endpoint de emissão daquele
+  // registro específico — assim que o token existir no backend, isso
+  // passa a funcionar sem precisar mexer em mais nada aqui.
   async function emitir() {
+    if (!form.tipo) { setErro('Selecione o tipo de nota (NFS-e, Devolução ou Remessa).'); return }
     setEmitindo(true); setErro('')
     try {
-      const res = await fetch('/api/notas/emitir', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: form.tipo }),
+      const token = await pegarToken()
+      const resCriar = await fetch('/api/notas-diversas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(montarPayload()),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.erro || 'Emissão ainda não configurada.')
+      const criado = await resCriar.json()
+      if (!resCriar.ok) throw new Error(criado?.detail || criado?.error || 'Erro ao salvar antes de emitir.')
+
+      const registro = Array.isArray(criado) ? criado[0] : criado
+      const resEmitir = await fetch(`/api/notas-diversas/${registro.id}/emitir`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const resultado = await resEmitir.json()
+      if (!resEmitir.ok) throw new Error(resultado?.detail || resultado?.error || 'Emissão ainda não configurada.')
+
       showMsg('✅ Nota emitida com sucesso!')
+      fecharNovo()
+      await fetchNotas()
     } catch (e: any) {
       setErro(e?.message || 'Emissão ainda não configurada — salve como rascunho por enquanto.')
+      await fetchNotas() // o rascunho pode ter sido criado mesmo com a emissão falhando
     } finally {
       setEmitindo(false)
     }
   }
 
   async function cancelar(id: string) {
-    setErro('Cancelamento ainda não está configurado (depende do token do provedor).')
-    setCancelandoId(null)
+    setErro('')
+    try {
+      const token = await pegarToken()
+      const res = await fetch(`/api/notas-diversas/${id}/cancelar`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const resultado = await res.json()
+      if (!res.ok) throw new Error(resultado?.detail || resultado?.error || 'Erro ao cancelar.')
+      showMsg('✅ Nota cancelada.')
+      setCancelandoId(null)
+      setVisualizando(null)
+      await fetchNotas()
+    } catch (e: any) {
+      setErro(e?.message || 'Cancelamento ainda não está configurado (depende do token do provedor).')
+      setCancelandoId(null)
+    }
   }
 
   const totalAutorizadas = useMemo(() => notas.filter(n => n.status === 'autorizado').length, [notas])
