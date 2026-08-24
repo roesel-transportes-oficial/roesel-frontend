@@ -180,13 +180,6 @@ export default function ContasPagarPage() {
   }, [])
 
   // ✅ Guarda contra corrida entre chamadas concorrentes de fetch_().
-  // Existem DOIS gatilhos que chamam fetch_() (mudança de filtro e o
-  // MutationObserver de troca de aba). Se os dois dispararem quase ao
-  // mesmo tempo, a resposta mais lenta podia "vencer" por último e
-  // travar o loading pra sempre, mesmo com os dados já carregados pela
-  // chamada mais rápida. Agora cada chamada tem um ID; só a chamada
-  // MAIS RECENTE tem permissão de atualizar o estado — respostas
-  // desatualizadas de chamadas antigas são simplesmente ignoradas.
   const fetchIdRef = useRef(0)
 
   // ✅ Helper pra pegar o token da sessão atual — usado em toda chamada
@@ -210,11 +203,10 @@ export default function ContasPagarPage() {
 
       const res = await fetch(`/api/contas-pagar?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
       })
       const data = await res.json()
 
-      // Se já rodou outra chamada mais nova enquanto esta esperava a
-      // resposta, esta aqui está obsoleta — não mexe em mais nada.
       if (meuId !== fetchIdRef.current) return
 
       if (!res.ok) { console.error('Erro ao buscar contas:', data); return }
@@ -223,7 +215,6 @@ export default function ContasPagarPage() {
       if (meuId === fetchIdRef.current) console.error('Erro ao buscar contas:', e)
     }
     finally {
-      // Só a chamada mais recente pode desligar o loading.
       if (meuId === fetchIdRef.current) setLoadingLista(false)
     }
   }

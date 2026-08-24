@@ -89,7 +89,10 @@ export default function CtePage() {
     setLoadingLista(true)
     try {
       const token = await pegarToken()
-      const res = await fetch('/api/ctes', { headers: { Authorization: `Bearer ${token}` } })
+      const res = await fetch('/api/ctes', {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      })
       const data = await res.json()
       if (meuId !== fetchIdRef.current) return
       if (!res.ok) { console.error('Erro ao buscar CT-e:', data); return }

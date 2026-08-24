@@ -90,6 +90,7 @@ export default function NotasDiversasPage() {
       if (filtroTipo) params.set('tipo', filtroTipo)
       const res = await fetch(`/api/notas-diversas?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
       })
       const data = await res.json()
       if (meuId !== fetchIdRef.current) return
