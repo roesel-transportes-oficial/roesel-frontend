@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// ✅ Mesma correção do /api/ctes — força essa rota a nunca ficar
+// presa em cache de CDN.
+export const dynamic = 'force-dynamic'
+
 const BACKEND_URL = process.env.ROESEL_BACKEND_URL
 
 function semBackend() {

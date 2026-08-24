@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// ✅ Força essa rota a NUNCA ser armazenada em cache pela CDN da Vercel
+// (diferente do "cache: 'no-store'" no fetch do frontend, que só
+// controla o cache do NAVEGADOR — esse aqui controla o cache do
+// SERVIDOR). Sem isso, uma resposta antiga (de antes dessas rotas
+// existirem de verdade) pode ficar presa no cache de borda da Vercel
+// e continuar sendo servida pra sempre pra chamadas com a mesma
+// "assinatura" de cabeçalhos, mesmo depois do código já estar certo.
+export const dynamic = 'force-dynamic'
+
 const BACKEND_URL = process.env.ROESEL_BACKEND_URL
 
 function semBackend() {
