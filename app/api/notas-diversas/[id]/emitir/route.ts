@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const BACKEND_URL = process.env.ROESEL_BACKEND_URL
+const BACKEND_URL = (process.env.ROESEL_BACKEND_URL || '').replace(/\/+$/, '')
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!BACKEND_URL) {

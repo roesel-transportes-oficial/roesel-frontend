@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// ✅ Proxy fino pro backend — mesmo padrão do /api/contratos. Cobre
-// listar (GET), criar (POST) e o endpoint especial de importação de
-// NF-e, que fica em /api/contas-pagar/importar-nfe.
-const BACKEND_URL = process.env.ROESEL_BACKEND_URL
+export const dynamic = 'force-dynamic'
+
+const BACKEND_URL = (process.env.ROESEL_BACKEND_URL || '').replace(/\/+$/, '')
 
 function semBackend() {
   return NextResponse.json(

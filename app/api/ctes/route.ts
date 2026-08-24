@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// ✅ Força essa rota a NUNCA ser armazenada em cache pela CDN da Vercel
-// (diferente do "cache: 'no-store'" no fetch do frontend, que só
-// controla o cache do NAVEGADOR — esse aqui controla o cache do
-// SERVIDOR). Sem isso, uma resposta antiga (de antes dessas rotas
-// existirem de verdade) pode ficar presa no cache de borda da Vercel
-// e continuar sendo servida pra sempre pra chamadas com a mesma
-// "assinatura" de cabeçalhos, mesmo depois do código já estar certo.
 export const dynamic = 'force-dynamic'
 
-const BACKEND_URL = process.env.ROESEL_BACKEND_URL
+// ✅ Remove barra final da URL do backend, se existir. Se a variável
+// ROESEL_BACKEND_URL foi salva com "/" no final (ex:
+// "https://roesel-backend.vercel.app/"), montar a URL como
+// `${BACKEND_URL}/ctes/` gerava barra DUPLA ("...app//ctes/"), que o
+// backend não reconhecia — daí o 404 mesmo com tudo certo por fora.
+const BACKEND_URL = (process.env.ROESEL_BACKEND_URL || '').replace(/\/+$/, '')
 
 function semBackend() {
   return NextResponse.json(

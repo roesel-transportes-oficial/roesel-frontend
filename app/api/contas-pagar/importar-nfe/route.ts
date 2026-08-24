@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// ✅ Rota específica pra importação de NF-e — o frontend continua
-// fazendo o PARSE do XML (isso é leitura de arquivo local, não precisa
-// de backend), mas a GRAVAÇÃO no banco (nota fiscal + conta a pagar +
-// vínculo com abastecimento) agora é uma operação só, no backend.
-const BACKEND_URL = process.env.ROESEL_BACKEND_URL
+export const dynamic = 'force-dynamic'
+
+const BACKEND_URL = (process.env.ROESEL_BACKEND_URL || '').replace(/\/+$/, '')
 
 export async function POST(req: NextRequest) {
   if (!BACKEND_URL) {
