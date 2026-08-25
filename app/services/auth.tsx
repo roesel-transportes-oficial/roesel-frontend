@@ -69,20 +69,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     async function checkSession() {
       try {
-        // ✅ Apenas UM timeout de segurança aqui. O retry de "conexão
-        // fria" já acontece sozinho dentro do supabase.ts (fetch global
-        // com retry silencioso). Ter uma SEGUNDA camada de retry aqui
-        // em cima causava dois problemas: tempos somados demais, e a
-        // tentativa antiga continuava rodando escondida no fundo depois
-        // que essa camada desistia e começava outra — o que deixava a
-        // tela presa em estados inconsistentes (ex: botão preso em
-        // "Entrando..." mesmo depois de já ter vindo uma resposta).
-        const resultado = await comTimeout(checkSessionCompleta(), 20000)
+        // ✅ Timeout aumentado de 20s pra 45s. O padrão observado hoje
+        // mostrou que a conexão com o Supabase está consistentemente
+        // mais lenta que o normal (não é só "primeira vez depois de
+        // F5" — acontece o tempo todo). Nesse cenário, um timeout curto
+        // só faz desistir cedo demais e obrigar a apertar F5 de novo,
+        // quando dar mais tempo geralmente resolve sozinho.
+        const resultado = await comTimeout(checkSessionCompleta(), 45000)
 
         if (!mounted) return
 
         if (resultado === 'timeout') {
-          console.warn('Verificação de sessão excedeu 20s — mostrando login')
+          console.warn('Verificação de sessão excedeu 45s — mostrando login')
           limparTokenSessaoPresa()
           setUser(null); setPerm(''); setEmail(null)
         }
@@ -142,18 +140,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // ✅ Apenas UM timeout de segurança, pelo mesmo motivo explicado
-      // no checkSession(): o retry de conexão já acontece sozinho no
-      // supabase.ts, então uma segunda camada de retry aqui só causava
-      // tempos empilhados e tentativas antigas "fantasmas" rodando
-      // escondidas, deixando o botão preso em "Entrando..." mesmo após
-      // a resposta real (como "usuário ou senha incorretos") já ter
-      // chegado por uma tentativa que a camada de fora já tinha descartado.
-      const resultado = await comTimeout(processoDeLogin(), 20000)
+      // ✅ Mesmo motivo do checkSession: timeout de 45s em vez de 20s,
+      // pra dar tempo real de completar numa conexão consistentemente
+      // mais lenta, em vez de desistir cedo e pedir pra tentar de novo.
+      const resultado = await comTimeout(processoDeLogin(), 45000)
 
       if (resultado === 'timeout') {
         limparTokenSessaoPresa()
-        return 'A conexão está instável. Tente novamente em alguns instantes.'
+        return 'A conexão está muito lenta. Tente novamente em alguns instantes.'
       }
 
       return resultado
