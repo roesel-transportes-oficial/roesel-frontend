@@ -316,9 +316,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
     setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
     setContratoLidoIA(false); setCamposIAAtivos(false)
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 50000)
-
     try {
       // ✅ Mesma proteção que já existia só para clientes, agora também
       // para motoristas, caminhões e carretas: se a página ainda estava
@@ -356,13 +353,37 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         r.readAsDataURL(file)
       })
 
-      const response = await fetch('/api/ler-contrato', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, mediaType: file.type, isPDF: file.type === 'application/pdf' }),
-        signal: controller.signal,
-      })
-      clearTimeout(timeoutId)
+      // ✅ Chamada com retry automático e silencioso — se a primeira
+      // tentativa falhar por qualquer motivo (conexão fria, timeout
+      // parcial, etc.), tenta de novo sozinho antes de desistir e
+      // mostrar erro. Antes, qualquer falha na primeira tentativa
+      // exigia soltar o arquivo de novo manualmente.
+      async function chamarIA(timeoutMs: number): Promise<Response> {
+        const ctrl = new AbortController()
+        const tId = setTimeout(() => ctrl.abort(), timeoutMs)
+        try {
+          const res = await fetch('/api/ler-contrato', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base64, mediaType: file.type, isPDF: file.type === 'application/pdf' }),
+            signal: ctrl.signal,
+          })
+          clearTimeout(tId)
+          return res
+        } catch (e) {
+          clearTimeout(tId)
+          throw e
+        }
+      }
+
+      let response: Response
+      try {
+        response = await chamarIA(50000)
+      } catch (e: any) {
+        if (e?.name === 'AbortError') throw e // 50s é tempo suficiente pra não valer tentar de novo
+        console.warn('1ª tentativa de leitura por IA falhou (conexão fria) — tentando de novo silenciosamente')
+        response = await chamarIA(50000)
+      }
 
       if (!response.ok) {
         throw new Error(`Erro ${response.status} ao chamar a IA.`)
@@ -404,9 +425,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       }
       atualizarForm(novoForm)
     } catch (err: any) {
-      clearTimeout(timeoutId)
       if (err?.name === 'AbortError') {
-        setErro('⏱️ A IA demorou demais para responder (mais de 50s). Tente novamente ou preencha manualmente.')
+        setErro('⏱️ A IA demorou demais pra responder, mesmo tentando duas vezes. Tente novamente ou preencha manualmente.')
       } else {
         setErro(err?.message || 'Não foi possível ler o documento. Preencha manualmente.')
       }
