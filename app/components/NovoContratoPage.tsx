@@ -2,8 +2,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../services/supabase'
 
-const FORM_STORAGE_KEY = 'novo_contrato_form'
-
 const FORM_INICIAL = {
   motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
   frota: '', contrato: '', data: '', fat_bruto: '', chapa: '',
@@ -28,17 +26,15 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const [contratoLidoIA, setContratoLidoIA]         = useState(false)
   const [camposIAAtivos, setCamposIAAtivos]         = useState(false)
 
-  const [form, setForm] = useState(() => {
-    if (typeof window === 'undefined') return FORM_INICIAL
-    try {
-      const saved = sessionStorage.getItem(FORM_STORAGE_KEY)
-      return saved ? JSON.parse(saved) : FORM_INICIAL
-    } catch { return FORM_INICIAL }
-  })
+  const [form, setForm] = useState(FORM_INICIAL)
 
+  // ✅ O formulário NÃO salva mais rascunho automático — sempre começa
+  // vazio, mesmo que a página seja recarregada (F5) no meio do
+  // preenchimento. Isso foi um pedido explícito: preferiu perder o
+  // preenchimento em progresso a ver dados "sobrando" de uma sessão
+  // anterior sem entender por quê.
   function atualizarForm(novoForm: typeof FORM_INICIAL) {
     setForm(novoForm)
-    try { sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(novoForm)) } catch {}
   }
 
   useEffect(() => {
@@ -565,7 +561,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         }
       }
 
-      try { sessionStorage.removeItem(FORM_STORAGE_KEY) } catch {}
       setForm(FORM_INICIAL)
       setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
       setContratoLidoIA(false); setCamposIAAtivos(false)
@@ -818,7 +813,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         <div className="flex items-center justify-between">
           <button type="button"
             onClick={() => {
-              try { sessionStorage.removeItem(FORM_STORAGE_KEY) } catch {}
               setForm(FORM_INICIAL)
               setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
               setContratoLidoIA(false); setCamposIAAtivos(false)
