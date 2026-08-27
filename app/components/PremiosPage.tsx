@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { Trophy, CheckCircle, XCircle, Fuel, FileText, AlertTriangle, ShieldAlert, Download, Clock, CheckCircle2 } from 'lucide-react'
+import { Trophy, CheckCircle, XCircle, Fuel, FileText, AlertTriangle, ShieldAlert } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -12,82 +12,15 @@ interface MotoristaRanking {
   nome: string; faturamento: number; media_km_l: number
   tem_multa: boolean; tem_avaria: boolean; aprovado: boolean
 }
-interface Premio {
-  id: string; motorista: string; status: string; valor: number; obs: string; updated_at: string
-}
 
 export default function PremiosPage() {
   const hoje = new Date()
-  const [tab, setTab]       = useState<'folhas' | 'ranking'>('folhas')
   const [mes, setMes]       = useState(String(hoje.getMonth() + 1).padStart(2, '0'))
   const [ano, setAno]       = useState(String(hoje.getFullYear()))
   const [ranking, setRanking]   = useState<MotoristaRanking[]>([])
-  const [premios, setPremios]   = useState<Premio[]>([])
   const [loading, setLoading]   = useState(false)
-  const [loadingPremios, setLoadingPremios] = useState(false)
 
-  useEffect(() => { fetchPremios() }, [])
-  useEffect(() => { if (tab === 'ranking') calcular() }, [tab, mes, ano])
-
-  async function fetchPremios() {
-    setLoadingPremios(true)
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/premios?order=updated_at.desc`, {
-        headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-      })
-      const data = await res.json()
-      if (Array.isArray(data)) setPremios(data)
-    } catch {}
-    setLoadingPremios(false)
-  }
-
-  async function toggleStatus(premio: Premio) {
-    const novoStatus = premio.status === 'pago' ? 'pendente' : 'pago'
-    await fetch(`${SUPABASE_URL}/rest/v1/premios?id=eq.${premio.id}`, {
-      method: 'PATCH',
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-      body: JSON.stringify({ status: novoStatus })
-    })
-    setPremios(prev => prev.map(p => p.id === premio.id ? { ...p, status: novoStatus } : p))
-  }
-
-  function baixarFolha(p: Premio) {
-    const fmtV = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-    const data = new Date(p.updated_at).toLocaleDateString('pt-BR')
-    const linhas = p.obs.split(' | ')
-    const campos = Object.fromEntries(linhas.map(l => { const [k, ...v] = l.split(': '); return [k?.trim(), v.join(': ')?.trim()] }))
-    const csv = [
-      ['FOLHA DE PAGAMENTO - ROESEL TRANSPORTES'],
-      [''], ['Motorista', p.motorista], ['Data Geração', data], ['Status', p.status.toUpperCase()],
-      [''], ['DETALHES DA VIAGEM'],
-      ['Período',       campos['Período']      || '—'],
-      ['Vencimento',    campos['Vencimento']   || '—'],
-      ['Placa',         campos['Placa']        || '—'],
-      ['KM Rodado',     campos['KM Rodado']    || '—'],
-      ['Contratos',     campos['Contratos']    || '—'],
-      ['Abastecimento', campos['Abastecimento']|| '—'],
-      ['Média',         campos['Média']        || '—'],
-      [''], ['FINANCEIRO'], ['Comissão (10%)', `R$ ${fmtV(p.valor)}`],
-    ].map(r => r.join(';')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `folha_${p.motorista.replace(/ /g,'_')}_${data.replace(/\//g,'-')}.csv`
-    link.click()
-  }
-
-  function baixarTodasFolhas() {
-    const fmtV = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-    const csv = [
-      ['Motorista','Data','Status','Comissão','Detalhes'],
-      ...premios.map(p => [p.motorista, new Date(p.updated_at).toLocaleDateString('pt-BR'), p.status.toUpperCase(), `R$ ${fmtV(p.valor)}`, p.obs])
-    ].map(r => r.join(';')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `todas_folhas_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.csv`
-    link.click()
-  }
+  useEffect(() => { calcular() }, [mes, ano])
 
   async function hdr() {
     return { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
@@ -197,8 +130,6 @@ export default function PremiosPage() {
   const anos      = ['2024','2025','2026','2027']
   const fmt       = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
   const aprovados = ranking.filter(r => r.aprovado)
-  const pendentes = premios.filter(p => p.status === 'pendente')
-  const pagos     = premios.filter(p => p.status === 'pago')
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -207,117 +138,9 @@ export default function PremiosPage() {
           <Trophy size={28} className="text-yellow-500"/>
           <h1 className="text-2xl font-bold text-gray-900">Prêmios</h1>
         </div>
-        <div className="flex bg-gray-100 p-1 rounded-xl">
-          <button onClick={() => setTab('folhas')}
-            className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
-              ${tab === 'folhas' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-            Folhas Geradas
-          </button>
-          <button onClick={() => setTab('ranking')}
-            className={`px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all
-              ${tab === 'ranking' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-            Ranking
-          </button>
-        </div>
       </div>
 
-      {tab === 'folhas' ? (
-        <>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
-              <p className="text-xs text-gray-400 font-bold uppercase mb-1">Total Geradas</p>
-              <p className="text-2xl font-black text-gray-900">{premios.length}</p>
-            </div>
-            <div className="bg-yellow-50 rounded-2xl border border-yellow-100 shadow-sm p-4 text-center">
-              <Clock size={18} className="mx-auto text-yellow-500 mb-1"/>
-              <p className="text-xs text-yellow-600 font-bold uppercase mb-1">Pendentes</p>
-              <p className="text-2xl font-black text-yellow-700">{pendentes.length}</p>
-            </div>
-            <div className="bg-green-50 rounded-2xl border border-green-100 shadow-sm p-4 text-center">
-              <CheckCircle2 size={18} className="mx-auto text-green-500 mb-1"/>
-              <p className="text-xs text-green-600 font-bold uppercase mb-1">Pagos</p>
-              <p className="text-2xl font-black text-green-700">{pagos.length}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-black text-gray-700 uppercase tracking-widest">Folhas de Pagamento</h2>
-            {premios.length > 0 && (
-              <button onClick={baixarTodasFolhas}
-                className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition">
-                <Download size={14}/> Baixar Todas
-              </button>
-            )}
-          </div>
-
-          {loadingPremios ? (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
-              <p className="text-sm text-gray-400">Carregando...</p>
-            </div>
-          ) : premios.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
-              <Trophy size={32} className="mx-auto text-gray-200 mb-2"/>
-              <p className="text-sm text-gray-400">Nenhuma folha gerada ainda.</p>
-              <p className="text-xs text-gray-300 mt-1">As folhas são criadas ao finalizar um Fechamento de Viagem.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {premios.map(p => (
-                <div key={p.id}
-                  className={`bg-white rounded-2xl border shadow-sm overflow-hidden
-                    ${p.status === 'pago' ? 'border-green-100' : 'border-gray-100'}`}>
-                  <div className="p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <p className="text-base font-black text-gray-900">{p.motorista}</p>
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full
-                            ${p.status === 'pago' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                            {p.status}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 mt-3">
-                          {p.obs.split(' | ').map((item, i) => {
-                            const [label, ...rest] = item.split(': ')
-                            const valor = rest.join(': ')
-                            if (!label || !valor) return null
-                            return (
-                              <div key={i}>
-                                <p className="text-[9px] font-black text-gray-400 uppercase">{label}</p>
-                                <p className="text-xs font-bold text-gray-700">{valor}</p>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-[10px] font-black text-gray-400 uppercase mb-1">Comissão</p>
-                        <p className="text-2xl font-black text-green-600">R$ {fmt(p.valor)}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{new Date(p.updated_at).toLocaleDateString('pt-BR')}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-50">
-                      <button onClick={() => toggleStatus(p)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase transition-all
-                          ${p.status === 'pago'
-                            ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            : 'bg-green-600 text-white hover:bg-green-700'}`}>
-                        {p.status === 'pago' ? <><Clock size={13}/> Marcar Pendente</> : <><CheckCircle2 size={13}/> Marcar como Pago</>}
-                      </button>
-                      <button onClick={() => baixarFolha(p)}
-                        className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase hover:bg-gray-800 transition">
-                        <Download size={13}/> Baixar Folha
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
-      ) : (
-        /* ── RANKING ── */
-        <>
+      <>
           <div className="flex gap-3 mb-6 flex-wrap">
             <select value={mes} onChange={e => setMes(e.target.value)}
               className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
@@ -420,7 +243,6 @@ export default function PremiosPage() {
             </div>
           )}
         </>
-      )}
     </div>
   )
 }
