@@ -242,6 +242,25 @@ export default function ContratosPage() {
   // de novo), então a resposta é instantânea. O servidor já foi
   // atualizado de verdade antes disso — só não perdemos tempo
   // buscando tudo de novo pra mostrar o que já sabemos que mudou.
+  // ✅ CORRIGIDO: o .abortSignal() usado antes desligava sem querer o
+  // retry automático que já existe pra conexão fria (services/supabase.ts)
+  // — passar um "signal" próprio faz aquele sistema pular a própria
+  // tentativa extra e fazer só UMA tentativa. Trocado por um timeout
+  // "por fora" (Promise.race), que não interfere no retry — assim a
+  // chamada continua tentando de novo sozinha se a rede estiver fria,
+  // e só mostra erro se REALMENTE não conseguir depois de tentar.
+  async function comTimeout<T>(promessa: Promise<T>, ms: number): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout>
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('TIMEOUT')), ms)
+    })
+    try {
+      return await Promise.race([promessa, timeoutPromise])
+    } finally {
+      clearTimeout(timeoutId!)
+    }
+  }
+
   async function salvar() {
     if (!sel) return
     setLoading(true)
@@ -267,7 +286,10 @@ export default function ContratosPage() {
       }
 
       if (perm !== 'demo') {
-        const { error } = await supabase.from('contratos').update(dadosAtualizados).eq('id', sel.id)
+        const { error } = await comTimeout(
+          supabase.from('contratos').update(dadosAtualizados).eq('id', sel.id),
+          25000
+        )
         if (error) throw error
       }
 
@@ -276,7 +298,11 @@ export default function ContratosPage() {
       voltar()
     } catch (error: any) {
       console.error(error)
-      showMsg('❌ Erro ao salvar: ' + (error?.message || ''))
+      if (error?.message === 'TIMEOUT') {
+        showMsg('⏱️ Demorou demais pra salvar. Verifique sua conexão e tente novamente.')
+      } else {
+        showMsg('❌ Erro ao salvar: ' + (error?.message || ''))
+      }
     } finally {
       setLoading(false)
     }
@@ -287,14 +313,21 @@ export default function ContratosPage() {
     setLoading(true)
     try {
       if (perm !== 'demo') {
-        const { error } = await supabase.from('contratos').delete().eq('id', sel.id)
+        const { error } = await comTimeout(
+          supabase.from('contratos').delete().eq('id', sel.id),
+          25000
+        )
         if (error) throw error
       }
       setContratos(prev => prev.filter(c => c.id !== sel.id))
       showMsg('Contrato excluído.')
       voltar()
     } catch (error: any) {
-      showMsg('❌ Erro ao excluir: ' + (error?.message || ''))
+      if (error?.message === 'TIMEOUT') {
+        showMsg('⏱️ Demorou demais pra excluir. Verifique sua conexão e tente novamente.')
+      } else {
+        showMsg('❌ Erro ao excluir: ' + (error?.message || ''))
+      }
     } finally {
       setLoading(false)
     }
