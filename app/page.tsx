@@ -1,4 +1,5 @@
 'use client'
+
 import ContratosPage from './components/ContratosPage'
 import MotoristaPage from './components/MotoristaPage'
 import NovoContratoPage from './components/NovoContratoPage'
@@ -23,9 +24,22 @@ import { useAuth } from './services/auth'
 import Login from './components/Login'
 import Sidebar from './components/Sidebar'
 
+const ABAS_INICIAIS = new Set(['dashboard'])
+
 export default function Home() {
   const { user, loading } = useAuth()
   const [aba, setAba] = useState('dashboard')
+  const [abasVisitadas, setAbasVisitadas] = useState<Set<string>>(ABAS_INICIAIS)
+
+  function navegarPara(novaAba: string) {
+    setAba(novaAba)
+    setAbasVisitadas((atuais) => {
+      if (atuais.has(novaAba)) return atuais
+      const atualizadas = new Set(atuais)
+      atualizadas.add(novaAba)
+      return atualizadas
+    })
+  }
 
   if (loading) {
     return (
@@ -42,35 +56,47 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar aba={aba} setAba={setAba} />
+      <Sidebar aba={aba} setAba={navegarPara} />
       <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
-
-        <div style={{ display: aba === 'dashboard'     ? 'block' : 'none' }}><DashboardPage /></div>
-        <div style={{ display: aba === 'contratos'     ? 'block' : 'none' }}><ContratosPage /></div>
-        <div style={{ display: aba === 'motorista'     ? 'block' : 'none' }}><MotoristaPage /></div>
-        <div style={{ display: aba === 'caminhao'      ? 'block' : 'none' }}><CaminhaoPage /></div>
-        <div style={{ display: aba === 'viagens'       ? 'block' : 'none' }}><ViagemPage /></div>
-        <div style={{ display: aba === 'ferias'        ? 'block' : 'none' }}><FeriasPage /></div>
-        <div style={{ display: aba === 'clientes'      ? 'block' : 'none' }}><ClientePage /></div>
-        <div style={{ display: aba === 'abastecimento' ? 'block' : 'none' }}><AbastecimentoPage /></div>
-        <div style={{ display: aba === 'fornecedor'    ? 'block' : 'none' }}><FornecedorPage /></div>
-        <div style={{ display: aba === 'comissoes'     ? 'block' : 'none' }}><ComissoesPage /></div>
-        <div style={{ display: aba === 'multas'        ? 'block' : 'none' }}><MultasPage /></div>
-        <div style={{ display: aba === 'avarias'       ? 'block' : 'none' }}><AvariasPage /></div>
-        <div style={{ display: aba === 'premios'       ? 'block' : 'none' }}><PremiosPage /></div>
-        <div style={{ display: aba === 'contas_pagar'  ? 'block' : 'none' }}><ContasPagarPage /></div>
-        <div style={{ display: aba === 'cte'           ? 'block' : 'none' }}><CtePage /></div>
-        <div style={{ display: aba === 'notas'         ? 'block' : 'none' }}><NotasDiversasPage /></div>
-        <div style={{ display: aba === 'historico'     ? 'block' : 'none' }}><HistoricoMotoristaCaminhaoPage /></div>
-
-        {aba === 'novo'       && <NovoContratoPage setAba={setAba} />}
-        {aba === 'fechamento' && <FechamentoViagemPage setAba={setAba} />}
-
-        {aba === 'usuarios'       && <Placeholder title="Usuários" icon="👥" />}
-        {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
+        {Array.from(abasVisitadas).map((abaVisitada) => (
+          <div
+            key={abaVisitada}
+            style={{ display: aba === abaVisitada ? 'block' : 'none' }}
+            aria-hidden={aba !== abaVisitada}
+          >
+            {renderizarAba(abaVisitada, navegarPara)}
+          </div>
+        ))}
       </main>
     </div>
   )
+}
+
+function renderizarAba(aba: string, setAba: (novaAba: string) => void) {
+  switch (aba) {
+    case 'dashboard': return <DashboardPage />
+    case 'contratos': return <ContratosPage />
+    case 'motorista': return <MotoristaPage />
+    case 'caminhao': return <CaminhaoPage />
+    case 'viagens': return <ViagemPage />
+    case 'ferias': return <FeriasPage />
+    case 'clientes': return <ClientePage />
+    case 'abastecimento': return <AbastecimentoPage />
+    case 'fornecedor': return <FornecedorPage />
+    case 'comissoes': return <ComissoesPage />
+    case 'multas': return <MultasPage />
+    case 'avarias': return <AvariasPage />
+    case 'premios': return <PremiosPage />
+    case 'contas_pagar': return <ContasPagarPage />
+    case 'cte': return <CtePage />
+    case 'notas': return <NotasDiversasPage />
+    case 'historico': return <HistoricoMotoristaCaminhaoPage />
+    case 'novo': return <NovoContratoPage setAba={setAba} />
+    case 'fechamento': return <FechamentoViagemPage setAba={setAba} />
+    case 'usuarios': return <Placeholder title="Usuários" icon="👥" />
+    case 'contas_receber': return <Placeholder title="Contas a Receber" icon="📈" />
+    default: return <DashboardPage />
+  }
 }
 
 function Placeholder({ title, icon }: { title: string; icon: string }) {
