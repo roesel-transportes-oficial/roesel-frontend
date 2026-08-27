@@ -1,6 +1,19 @@
 'use client'
-import { createContext, useContext, useEffect, useState } from 'react'
+
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
+
+const SESSION_TIMEOUT_MS = 15_000
+const PROFILE_TIMEOUT_MS = 10_000
+const LOGIN_TIMEOUT_MS = 20_000
+
+type PerfilUsuario = {
+  nome: string | null
+  login: string | null
+  perm: string | null
+  email: string | null
+  status: string | null
+}
 
 interface AuthContextType {
   user: string | null
@@ -12,22 +25,25 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType>({
-  user: null, perm: '', email: null,
-  login: async () => null, logout: () => {}, loading: true
+  user: null,
+  perm: '',
+  email: null,
+  login: async () => null,
+  logout: () => {},
+  loading: true,
 })
 
-function limparTokenSessaoPresa() {
-  if (typeof window === 'undefined') return
-  try {
-    Object.keys(window.sessionStorage)
-      .filter(k => k.startsWith('sb-'))
-      .forEach(k => window.sessionStorage.removeItem(k))
-  } catch {}
-}
+async function comTimeout<T>(promessa: PromiseLike<T>, ms: number): Promise<T | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), ms)
+  })
 
-async function comTimeout<T>(promessa: Promise<T>, ms: number): Promise<T | 'timeout'> {
-  const timeoutPromise = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), ms))
-  return Promise.race([promessa, timeoutPromise])
+  try {
+    return await Promise.race([promessa, timeoutPromise])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -35,86 +51,142 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [perm, setPerm] = useState('')
   const [email, setEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const mountedRef = useRef(false)
+  const perfilRequestRef = useRef(0)
 
-  async function carregarUsuario(emailAuth: string) {
-    const { data, error } = await supabase
-      .from('usuarios')
-      .select('nome, login, perm, email, status')
-      .eq('email', emailAuth)
-      .maybeSingle()
+  const limparUsuario = useCallback(() => {
+    if (!mountedRef.current) return
+    setUser(null)
+    setPerm('')
+    setEmail(null)
+  }, [])
 
-    if (error) {
-      console.warn('Erro ao buscar usuário:', error)
-      return
-    }
+  const carregarUsuario = useCallback(async (emailAuth: string): Promise<boolean> => {
+    const requestId = ++perfilRequestRef.current
 
-    if (data) {
+    try {
+      const resultado = await comTimeout(
+        supabase
+          .from('usuarios')
+          .select('nome, login, perm, email, status')
+          .eq('email', emailAuth)
+          .maybeSingle(),
+        PROFILE_TIMEOUT_MS,
+      )
+
+      if (!resultado) {
+        console.warn('Busca do perfil excedeu o limite de tempo.')
+        return false
+      }
+
+      const { data, error } = resultado as {
+        data: PerfilUsuario | null
+        error: { message?: string } | null
+      }
+
+      // Uma resposta antiga não pode sobrescrever um perfil mais recente.
+      if (!mountedRef.current || requestId !== perfilRequestRef.current) return true
+
+      if (error) {
+        console.warn('Erro ao buscar usuário:', error)
+        return false
+      }
+
+      if (!data) {
+        limparUsuario()
+        return false
+      }
+
       setUser(data.nome || data.login)
-      setPerm(data.perm)
-      setEmail(data.email)
-    } else {
-      setUser(null); setPerm(''); setEmail(null)
+      setPerm(data.perm || '')
+      setEmail(data.email || emailAuth)
+      return true
+    } catch (error) {
+      console.warn('Erro ao carregar perfil do usuário:', error)
+      return false
     }
-  }
+  }, [limparUsuario])
+
+  const processarSessao = useCallback(async (session: { user?: { email?: string | null } } | null): Promise<boolean> => {
+    const emailSessao = session?.user?.email
+    if (!emailSessao) {
+      limparUsuario()
+      return false
+    }
+
+    const perfilCarregado = await carregarUsuario(emailSessao)
+    if (!perfilCarregado) limparUsuario()
+    return perfilCarregado
+  }, [carregarUsuario, limparUsuario])
 
   useEffect(() => {
-    let mounted = true
-
-    async function checkSessionCompleta() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user?.email) {
-        await carregarUsuario(session.user.email)
-      }
-    }
+    mountedRef.current = true
 
     async function checkSession() {
       try {
-        // ✅ Timeout aumentado de 20s pra 45s. O padrão observado hoje
-        // mostrou que a conexão com o Supabase está consistentemente
-        // mais lenta que o normal (não é só "primeira vez depois de
-        // F5" — acontece o tempo todo). Nesse cenário, um timeout curto
-        // só faz desistir cedo demais e obrigar a apertar F5 de novo,
-        // quando dar mais tempo geralmente resolve sozinho.
-        const resultado = await comTimeout(checkSessionCompleta(), 45000)
+        const resultado = await comTimeout(supabase.auth.getSession(), SESSION_TIMEOUT_MS)
 
-        if (!mounted) return
+        if (!mountedRef.current) return
 
-        if (resultado === 'timeout') {
-          console.warn('Verificação de sessão excedeu 45s — mostrando login')
-          limparTokenSessaoPresa()
-          setUser(null); setPerm(''); setEmail(null)
+        if (!resultado) {
+          console.warn('Verificação de sessão excedeu o limite de tempo.')
+          limparUsuario()
+          return
         }
-      } catch (e) {
-        console.warn('Erro ao verificar sessão:', e)
-        limparTokenSessaoPresa()
+
+        const { data, error } = resultado
+        if (error) {
+          console.warn('Erro ao verificar sessão:', error)
+          limparUsuario()
+          return
+        }
+
+        await processarSessao(data.session)
+      } catch (error) {
+        console.warn('Erro ao verificar sessão:', error)
+        if (mountedRef.current) limparUsuario()
       } finally {
-        if (mounted) setLoading(false)
+        if (mountedRef.current) setLoading(false)
       }
     }
 
-    checkSession()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mountedRef.current) return
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (session?.user?.email) await carregarUsuario(session.user.email)
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null); setPerm(''); setEmail(null)
-        }
+      if (event === 'SIGNED_OUT') {
+        limparUsuario()
+        return
       }
-    )
 
-    return () => { mounted = false; subscription.unsubscribe() }
-  }, [])
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // O callback do Supabase precisa retornar imediatamente. Fazer uma
+        // consulta assíncrona diretamente aqui pode bloquear o lock interno
+        // de autenticação e deixar a aplicação presa em "Carregando...".
+        window.setTimeout(() => {
+          if (mountedRef.current) void processarSessao(session)
+        }, 0)
+      }
+    })
+
+    void checkSession()
+
+    return () => {
+      mountedRef.current = false
+      subscription.unsubscribe()
+    }
+  }, [limparUsuario, processarSessao])
 
   async function login(loginOrEmail: string, senha: string): Promise<string | null> {
     async function processoDeLogin(): Promise<string | null> {
-      let emailLogin = loginOrEmail
+      let emailLogin = loginOrEmail.trim()
 
       if (!loginOrEmail.includes('@')) {
         const { data, error: errBusca } = await supabase
-          .from('usuarios').select('email, status').eq('login', loginOrEmail).limit(1)
+          .from('usuarios')
+          .select('email, status')
+          .eq('login', loginOrEmail)
+          .limit(1)
+
         if (errBusca) return 'Erro ao verificar usuário. Tente novamente.'
         if (!data || data.length === 0) return 'Usuário não encontrado'
         if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
@@ -122,7 +194,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         emailLogin = data[0].email
       } else {
         const { data, error: errBusca } = await supabase
-          .from('usuarios').select('status').eq('email', loginOrEmail).limit(1)
+          .from('usuarios')
+          .select('status')
+          .eq('email', emailLogin)
+          .limit(1)
+
         if (errBusca) return 'Erro ao verificar usuário. Tente novamente.'
         if (data && data.length > 0) {
           if (data[0].status === 'pendente') return 'Conta aguardando aprovação do administrador'
@@ -130,39 +206,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: loginData, error } = await supabase.auth.signInWithPassword({
         email: emailLogin,
         password: senha,
       })
 
       if (error) return 'Usuário ou senha incorretos'
+
+      const emailSessao = loginData.user?.email || emailLogin
+      const perfilCarregado = await carregarUsuario(emailSessao)
+      if (!perfilCarregado) return 'Login realizado, mas não foi possível carregar seu perfil. Tente novamente.'
+
       return null
     }
 
-    try {
-      // ✅ Mesmo motivo do checkSession: timeout de 45s em vez de 20s,
-      // pra dar tempo real de completar numa conexão consistentemente
-      // mais lenta, em vez de desistir cedo e pedir pra tentar de novo.
-      const resultado = await comTimeout(processoDeLogin(), 45000)
-
-      if (resultado === 'timeout') {
-        limparTokenSessaoPresa()
-        return 'A conexão está muito lenta. Tente novamente em alguns instantes.'
-      }
-
-      return resultado
-    } catch (e: any) {
-      console.error('Erro inesperado na função login():', e)
-      limparTokenSessaoPresa()
-      return 'Erro inesperado: ' + (e?.message || 'tente novamente.')
+    const resultado = await comTimeout(processoDeLogin(), LOGIN_TIMEOUT_MS)
+    if (resultado === null) {
+      return 'A conexão está muito lenta. Tente novamente em alguns instantes.'
     }
+
+    return resultado
   }
 
   async function logout() {
-    try { await supabase.auth.signOut() } catch (e) { console.warn('Erro ao fazer signOut:', e) }
-    limparTokenSessaoPresa()
-    setUser(null); setPerm(''); setEmail(null)
-    window.location.replace('/')
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      console.warn('Erro ao fazer signOut:', error)
+    } finally {
+      limparUsuario()
+      window.location.replace('/')
+    }
   }
 
   return (

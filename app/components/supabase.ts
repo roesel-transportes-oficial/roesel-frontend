@@ -2,50 +2,38 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY
+const FETCH_TIMEOUT_MS = 10_000
 
 let _client: SupabaseClient | null = null
 
-// ✅ Lock "vazio": desativa o navigator.locks do Supabase.
-async function semTrava<R>(_name: string, _acquireTimeout: number, fn: () => Promise<R>): Promise<R> {
-  return fn()
-}
+/**
+ * Evita que uma requisição de rede fique pendurada indefinidamente.
+ * O AbortSignal recebido pelo Supabase continua sendo respeitado; quando
+ * ele existir, o timeout deste cliente é combinado com o cancelamento externo.
+ */
+async function fetchComTimeout(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const signalExterno = init?.signal
+  let cancelarPorSinalExterno: (() => void) | undefined
 
-// ✅ FETCH GLOBAL COM TIMEOUT + RETRY — janelas mais curtas.
-//
-// Antes eram 6s + 10s = até 16s por chamada. Isso parecia ok isoladamente,
-// mas o carregamento inicial da sessão faz DUAS chamadas em sequência
-// (getSession + busca do usuário) — no pior caso, 16s + 16s = 32s de
-// espera, o que o usuário sentia como "carregando muito tempo".
-//
-// Reduzido pra 4s + 6s = até 10s por chamada. Isso ainda cobre bem o
-// caso de "conexão fria" real (que normalmente resolve em 1-3s na
-// 2ª tentativa), mas evita que duas chamadas em sequência somem tempo
-// demais. Se ainda assim demorar muito, o problema não é mais conexão
-// fria — é a rede genuinamente instável, e nesse caso esperar mais
-// não ajudaria de qualquer forma.
-async function fetchComTimeoutERetry(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  async function tentar(timeoutMs: number): Promise<Response> {
-    if (init?.signal) {
-      return fetch(url, init)
-    }
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-    try {
-      const resposta = await fetch(url, { ...init, signal: controller.signal })
-      clearTimeout(timeoutId)
-      return resposta
-    } catch (e) {
-      clearTimeout(timeoutId)
-      throw e
+  if (signalExterno) {
+    if (signalExterno.aborted) {
+      controller.abort()
+    } else {
+      cancelarPorSinalExterno = () => controller.abort()
+      signalExterno.addEventListener('abort', cancelarPorSinalExterno, { once: true })
     }
   }
 
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
   try {
-    return await tentar(8000)
-  } catch (e: any) {
-    console.warn('Falha na 1ª tentativa de conexão (conexão fria) — tentando de novo silenciosamente:', String(url), e?.message || e)
-    await new Promise(r => setTimeout(r, 300))
-    return await tentar(15000)
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeoutId)
+    if (signalExterno && cancelarPorSinalExterno) {
+      signalExterno.removeEventListener('abort', cancelarPorSinalExterno)
+    }
   }
 }
 
@@ -60,15 +48,18 @@ function getClient(): SupabaseClient {
 
   _client = createClient(supabaseUrl, supabaseKey, {
     auth: {
-      storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
+      // O localStorage mantém a sessão disponível depois de uma aba ser
+      // suspensa/restaurada e também evita uma nova autenticação acidental.
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
       flowType: 'implicit',
-      lock: semTrava,
+      // Não substituir o lock interno do Supabase. Ele serializa a leitura
+      // e a renovação da sessão com segurança.
     },
     global: {
-      fetch: fetchComTimeoutERetry,
+      fetch: fetchComTimeout,
     },
   })
 
@@ -78,7 +69,7 @@ function getClient(): SupabaseClient {
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     const client = getClient()
-    const value = (client as any)[prop]
+    const value = Reflect.get(client, prop)
     return typeof value === 'function' ? value.bind(client) : value
-  }
+  },
 })
