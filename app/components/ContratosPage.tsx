@@ -2,7 +2,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
-import { Search, Save, Trash2, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle, Loader2 } from 'lucide-react'
+import { Search, Save, Trash2, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle, Loader2, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 interface Contrato {
   id: string; contrato: string; data: string; cliente: string
@@ -16,8 +17,6 @@ interface Contrato {
 interface Motorista { id: string; nome: string; cpf?: string; caminhao_id?: string }
 interface Cliente { id: string; nome: string; cnpj: string }
 interface Carreta { id: string; placa: string }
-
-const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
 const InputClass = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LabelClass = "text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1.5"
@@ -35,8 +34,9 @@ export default function ContratosPage() {
   const [msg, setMsg] = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
   const [busca, setBusca] = useState('')
-  const [filtroMes, setFiltroMes] = useState(0)
-  const [filtroAno, setFiltroAno] = useState(new Date().getFullYear())
+  const [filtroMotorista, setFiltroMotorista] = useState('')
+  const [filtroInicio, setFiltroInicio] = useState('')
+  const [filtroFim, setFiltroFim] = useState('')
 
   const [editData, setEditData] = useState('')
   const [editCliente, setEditCliente] = useState('')
@@ -72,20 +72,7 @@ export default function ContratosPage() {
       let query = supabase
         .from('contratos')
         .select('id, contrato, data, cliente, cliente_nome_completo, cnpj, motorista, cpf_motorista, placa, placa_carreta, frota, origem, destino, fat_bruto, qtd_veiculos, chapa, status, obs, adiantamento_pago, dt_pagamento')
-        .order('data', { ascending: false })
-
-      if (filtroAno) {
-        query = query
-          .gte('data', `${filtroAno}-01-01`)
-          .lte('data', `${filtroAno}-12-31`)
-      }
-      if (filtroMes) {
-        const mesStr = String(filtroMes).padStart(2, '0')
-        const ultimoDia = new Date(filtroAno, filtroMes, 0).getDate()
-        query = query
-          .gte('data', `${filtroAno}-${mesStr}-01`)
-          .lte('data', `${filtroAno}-${mesStr}-${ultimoDia}`)
-      }
+        .order('data', { ascending: true })
 
       const { data, error } = await query
 
@@ -127,11 +114,6 @@ export default function ContratosPage() {
 
     carregarDadosEstaticos()
   }, []) // Sem dependências - carrega apenas uma vez
-
-  // Carrega contratos quando os filtros mudam
-  useEffect(() => {
-    fetch_()
-  }, [filtroMes, filtroAno])
 
   // ✅ Detecta quando a aba volta a ficar visível (saiu do display:none no page.tsx)
   // e recarrega a lista — resolve o "contrato novo não aparece na lista"
@@ -201,14 +183,19 @@ export default function ContratosPage() {
   }
 
   const filtrados = useMemo(() => {
-    if (!busca.trim()) return contratos
-    const b = busca.toLowerCase()
-    return contratos.filter(c =>
-      c.motorista?.toLowerCase().includes(b) ||
-      c.cliente?.toLowerCase().includes(b) ||
-      c.contrato?.toLowerCase().includes(b)
-    )
-  }, [contratos, busca])
+    const b = busca.trim().toLowerCase()
+    return contratos
+      .filter(c => {
+        if (b && ![
+          c.motorista, c.cliente, c.contrato,
+        ].some(valor => valor?.toLowerCase().includes(b))) return false
+        if (filtroMotorista && c.motorista !== filtroMotorista) return false
+        if (filtroInicio && c.data < filtroInicio) return false
+        if (filtroFim && c.data > filtroFim) return false
+        return true
+      })
+      .sort((a, b) => a.data.localeCompare(b.data))
+  }, [contratos, busca, filtroMotorista, filtroInicio, filtroFim])
 
   function selecionar(c: Contrato) {
     setSel(c)
@@ -358,6 +345,61 @@ export default function ContratosPage() {
       .replace(/\.(\d{3})(\d)/, ".$1/$2")
       .replace(/(\d{4})(\d)/, "$1-$2")
       .substring(0, 18)
+  }
+
+  function exportarExcel() {
+    if (filtrados.length === 0) {
+      showMsg('⚠️ Não há contratos para exportar com os filtros atuais.')
+      return
+    }
+
+    const dados = filtrados.map(c => ({
+      'Nº Contrato': c.contrato || '',
+      Data: c.data ? new Date(`${c.data}T00:00:00`) : null,
+      Motorista: c.motorista || '',
+      'CPF Motorista': c.cpf_motorista || '',
+      Cliente: c.cliente_nome_completo || c.cliente || '',
+      CNPJ: c.cnpj || '',
+      'Placa Cavalo': c.placa || '',
+      'Placa Carreta': c.placa_carreta || '',
+      Frota: c.frota || '',
+      Origem: c.origem || '',
+      Destino: c.destino || '',
+      'Faturamento Bruto': Number(c.fat_bruto || 0),
+      'Qtd. Veículos': Number(c.qtd_veiculos || 0),
+      Chapa: Number(c.chapa || 0),
+      Status: c.status || '',
+      'Adiantamento Pago': c.adiantamento_pago ? 'Sim' : 'Não',
+      'Data de Pagamento': c.dt_pagamento ? new Date(`${c.dt_pagamento}T00:00:00`) : null,
+      Observações: c.obs || '',
+    }))
+
+    const planilha = XLSX.utils.json_to_sheet(dados)
+    const ultimaLinha = dados.length + 1
+    planilha['!cols'] = [
+      { wch: 16 }, { wch: 12 }, { wch: 28 }, { wch: 18 }, { wch: 32 }, { wch: 18 },
+      { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 22 }, { wch: 22 }, { wch: 20 },
+      { wch: 15 }, { wch: 12 }, { wch: 14 }, { wch: 20 }, { wch: 20 }, { wch: 42 },
+    ]
+    planilha['!autofilter'] = { ref: `A1:R${ultimaLinha}` }
+
+    for (let linha = 2; linha <= ultimaLinha; linha++) {
+      for (const coluna of ['B', 'Q']) {
+        const celula = planilha[`${coluna}${linha}`]
+        if (celula?.v instanceof Date) celula.z = 'dd/mm/yyyy'
+      }
+      const faturamento = planilha[`L${linha}`]
+      if (faturamento) faturamento.z = '#,##0.00'
+      for (const coluna of ['M', 'N']) {
+        const celula = planilha[`${coluna}${linha}`]
+        if (celula) celula.z = '#,##0'
+      }
+    }
+
+    const livro = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(livro, planilha, 'Contratos')
+    XLSX.writeFile(livro, `contratos_${new Date().toISOString().split('T')[0]}.xlsx`)
+    showMsg(`✅ Excel exportado com ${filtrados.length} contrato(s).`)
   }
 
   return (
@@ -574,7 +616,7 @@ export default function ContratosPage() {
                 <h1 className="text-4xl font-black text-gray-900 tracking-tighter mb-2">Contratos</h1>
                 <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Gerencie todos os contratos de fretes</p>
               </div>
-              <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
+              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto flex-wrap">
                 <div className="relative flex-1 md:flex-none">
                   <Search size={16} className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <input
@@ -585,21 +627,21 @@ export default function ContratosPage() {
                     className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
                   />
                 </div>
-                <select
-                  value={filtroMes}
-                  onChange={e => setFiltroMes(parseInt(e.target.value))}
-                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
-                >
-                  <option value={0}>Todos os meses</option>
-                  {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+                <select value={filtroMotorista} onChange={e => setFiltroMotorista(e.target.value)}
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
+                  <option value="">Todos os motoristas</option>
+                  {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
                 </select>
-                <select
-                  value={filtroAno}
-                  onChange={e => setFiltroAno(parseInt(e.target.value))}
-                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
-                >
-                  {[2024, 2025, 2026].map(a => <option key={a} value={a}>{a}</option>)}
-                </select>
+                <input type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)}
+                  aria-label="Data inicial"
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white" />
+                <input type="date" value={filtroFim} onChange={e => setFiltroFim(e.target.value)}
+                  aria-label="Data final"
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white" />
+                <button onClick={exportarExcel} disabled={filtrados.length === 0}
+                  className="flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-sm font-black uppercase hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                  <Download size={16}/> Excel
+                </button>
               </div>
             </div>
 
