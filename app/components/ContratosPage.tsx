@@ -263,7 +263,7 @@ export default function ContratosPage() {
         status: editStatus,
         obs: editObs,
         adiantamento_pago: editAdiantamentoPago,
-        dt_pagamento: editDtPagamento || null,
+        dt_pagamento: editDtPagamento || '',
       }
 
       if (perm !== 'demo') {
