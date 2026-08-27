@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
+import { useDraftPersistente } from '../services/useDraftPersistente'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Truck, Wrench, X } from 'lucide-react'
 
 interface Caminhao {
@@ -62,6 +63,7 @@ export default function CaminhaoPage() {
 
   const [busca, setBusca]         = useState('')
   const [sel, setSel]             = useState<Caminhao | null>(null)
+  const [selIdAberto, setSelIdAberto] = useDraftPersistente<string>('caminhao_sel_id', '')
   const [mostraCad, setMostraCad] = useState(false)
   const [aba, setAba]             = useState<'info' | 'licencas'>('info')
   const [licencas, setLicencas]   = useState<Licenca[]>([])
@@ -171,6 +173,7 @@ export default function CaminhaoPage() {
 
   function selecionar(c: Caminhao) {
     setSel(c)
+    setSelIdAberto(c.id)
     setEditPlaca(c.placa || ''); setEditPlacaCarreta(c.placa_carreta || '')
     setEditModelo(c.modelo || ''); setEditAno(c.ano || '')
     setEditStatus(c.status || 'rodando'); setEditMotivo(c.motivo_parado || '')
@@ -180,6 +183,17 @@ export default function CaminhaoPage() {
     setEditVencPermisso(c.vencimento_permisso || '')
     setAba('info'); fetchLicencas(c.id)
   }
+
+  // ✅ Mesmo padrão do MotoristaPage — se a aba recarregar sozinha
+  // enquanto você editava um caminhão, reabre automaticamente o mesmo
+  // cadastro assim que a lista carregar.
+  useEffect(() => {
+    if (selIdAberto && !sel && caminhoes.length > 0) {
+      const c = caminhoes.find(cc => cc.id === selIdAberto)
+      if (c) selecionar(c)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caminhoes])
 
   // ✅ NOVO: sempre que o motorista_atual de um caminhão muda, registra
   // isso na tabela historico_motorista_caminhao — fecha o período do
@@ -231,7 +245,7 @@ export default function CaminhaoPage() {
     await registrarTrocaMotoristaNoHistorico(sel.id, editPlaca.toUpperCase(), editMotorista, motoristaAntigo)
 
     await fetch_()
-    setLoading(false); setSel(null); showMsg('✅ Atualizado!')
+    setLoading(false); setSel(null); setSelIdAberto(''); showMsg('✅ Atualizado!')
   }
 
   async function cadastrar() {
@@ -504,7 +518,7 @@ export default function CaminhaoPage() {
           ) : sel ? (
             <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-gray-100 max-w-5xl mx-auto">
               <div className="flex items-center justify-between mb-8">
-                <button onClick={() => setSel(null)} className="flex items-center gap-2 text-gray-400 hover:text-red-600 font-black text-xs uppercase tracking-widest">
+                <button onClick={() => { setSel(null); setSelIdAberto('') }} className="flex items-center gap-2 text-gray-400 hover:text-red-600 font-black text-xs uppercase tracking-widest">
                   <ArrowLeft size={16}/> Voltar
                 </button>
                 <button onClick={salvar} disabled={loading}

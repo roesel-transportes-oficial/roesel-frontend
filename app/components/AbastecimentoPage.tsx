@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
+import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download, X } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -80,23 +81,23 @@ export default function AbastecimentoPage() {
   const [editViagemId, setEditViagemId]             = useState('')
   const [editDesconto, setEditDesconto]             = useState('')
 
-  const [cadData, setCadData]                       = useState(new Date().toISOString().split('T')[0])
-  const [cadCaminhaoId, setCadCaminhaoId]           = useState('')
-  const [cadCaminhaoPlaca, setCadCaminhaoPlaca]     = useState('')
-  const [cadMotorista, setCadMotorista]             = useState('')
-  const [cadPosto, setCadPosto]                     = useState('')
-  const [cadCnpjPosto, setCadCnpjPosto]             = useState('')
-  const [cadEstado, setCadEstado]                   = useState('')
-  const [cadCidade, setCadCidade]                   = useState('')
-  const [cadLitrosComb, setCadLitrosComb]           = useState('')
-  const [cadValorLitroComb, setCadValorLitroComb]   = useState('')
-  const [cadLitrosArla, setCadLitrosArla]           = useState('')
-  const [cadValorLitroArla, setCadValorLitroArla]   = useState('')
-  const [cadKm, setCadKm]                           = useState('')
-  const [cadObs, setCadObs]                         = useState('')
-  const [usaArla, setUsaArla]                       = useState(false)
-  const [cadViagemId, setCadViagemId]               = useState('')
-  const [cadDesconto, setCadDesconto]               = useState('')
+  const [cadData, setCadData]                       = useDraftPersistente('abast_cadData', new Date().toISOString().split('T')[0])
+  const [cadCaminhaoId, setCadCaminhaoId]           = useDraftPersistente('abast_cadCaminhaoId', '')
+  const [cadCaminhaoPlaca, setCadCaminhaoPlaca]     = useDraftPersistente('abast_cadCaminhaoPlaca', '')
+  const [cadMotorista, setCadMotorista]             = useDraftPersistente('abast_cadMotorista', '')
+  const [cadPosto, setCadPosto]                     = useDraftPersistente('abast_cadPosto', '')
+  const [cadCnpjPosto, setCadCnpjPosto]             = useDraftPersistente('abast_cadCnpjPosto', '')
+  const [cadEstado, setCadEstado]                   = useDraftPersistente('abast_cadEstado', '')
+  const [cadCidade, setCadCidade]                   = useDraftPersistente('abast_cadCidade', '')
+  const [cadLitrosComb, setCadLitrosComb]           = useDraftPersistente('abast_cadLitrosComb', '')
+  const [cadValorLitroComb, setCadValorLitroComb]   = useDraftPersistente('abast_cadValorLitroComb', '')
+  const [cadLitrosArla, setCadLitrosArla]           = useDraftPersistente('abast_cadLitrosArla', '')
+  const [cadValorLitroArla, setCadValorLitroArla]   = useDraftPersistente('abast_cadValorLitroArla', '')
+  const [cadKm, setCadKm]                           = useDraftPersistente('abast_cadKm', '')
+  const [cadObs, setCadObs]                         = useDraftPersistente('abast_cadObs', '')
+  const [usaArla, setUsaArla]                       = useDraftPersistente('abast_usaArla', false)
+  const [cadViagemId, setCadViagemId]               = useDraftPersistente('abast_cadViagemId', '')
+  const [cadDesconto, setCadDesconto]               = useDraftPersistente('abast_cadDesconto', '')
 
   // ✅ NOVO: motorista histórico sugerido, quando a data + caminhão
   // selecionados batem com um período diferente do motorista atual.

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
+import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, User, AlertTriangle, Clock, History } from 'lucide-react'
 
 interface Motorista {
@@ -98,6 +99,7 @@ export default function MotoristaPage() {
   const [busca, setBusca] = useState('')
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
   const [sel, setSel] = useState<Motorista | null>(null)
+  const [selIdAberto, setSelIdAberto] = useDraftPersistente<string>('motorista_sel_id', '')
   const [mostraCad, setMostraCad] = useState(false)
   const [mostraHistorico, setMostraHistorico] = useState(false)
   const [historico, setHistorico] = useState<HistoricoFerias[]>([])
@@ -231,6 +233,7 @@ export default function MotoristaPage() {
 
   function selecionar(m: Motorista) {
     setSel(m)
+    setSelIdAberto(m.id)
     setEditNome(m.nome)
     setEditCpf(m.cpf || '')
     setEditRg(m.rg || '')
@@ -258,7 +261,22 @@ export default function MotoristaPage() {
     fetchHistorico(m.id)
   }
 
-  function voltar() { setSel(null); setBusca(''); setConfirmExcluir(false); setMostraHistorico(false) }
+  // ✅ Se a aba recarregar sozinha (Chrome descartando aba em segundo
+  // plano) enquanto você estava editando um motorista, essa tela
+  // reabre automaticamente o mesmo cadastro assim que a lista
+  // carregar — em vez de te devolver pra lista, tendo que procurar de
+  // novo qual motorista você estava mexendo.
+  useEffect(() => {
+    if (selIdAberto && !sel && motoristas.length > 0) {
+      const m = motoristas.find(mm => mm.id === selIdAberto)
+      if (m) selecionar(m)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motoristas])
+
+  function voltar() {
+    setSel(null); setSelIdAberto(''); setBusca(''); setConfirmExcluir(false); setMostraHistorico(false)
+  }
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
   async function salvar() {

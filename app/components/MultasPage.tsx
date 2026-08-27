@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
 import { supabase } from '../services/supabase'
+import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, AlertTriangle } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -275,23 +276,23 @@ export default function MultasPage() {
   const mesAtual = String(new Date().getMonth() + 1).padStart(2, '0')
 
   // Campos cadastro
-  const [cadMotorista, setCadMotorista] = useState('')
-  const [cadPlaca, setCadPlaca] = useState('')
-  const [cadData, setCadData] = useState(new Date().toISOString().split('T')[0])
-  const [cadHora, setCadHora] = useState('')
-  const [cadInfracao, setCadInfracao] = useState('')
-  const [cadVelPermitida, setCadVelPermitida] = useState('')
-  const [cadVelRegistrada, setCadVelRegistrada] = useState('')
-  const [cadNumero, setCadNumero] = useState('')
-  const [cadValor, setCadValor] = useState('')
-  const [cadStatus, setCadStatus] = useState('PENDENTE')
-  const [cadOrgao, setCadOrgao] = useState('')
-  const [cadIdentificado, setCadIdentificado] = useState(true)
-  const [cadValorNaoId, setCadValorNaoId] = useState('')
-  const [cadFolhaMes, setCadFolhaMes] = useState(mesAtual)
-  const [cadFolhaAno, setCadFolhaAno] = useState(String(anoAtual))
-  const [cadVencimento, setCadVencimento] = useState('')
-  const [cadPagamento, setCadPagamento] = useState('')
+  const [cadMotorista, setCadMotorista] = useDraftPersistente('multa_cadMotorista', '')
+  const [cadPlaca, setCadPlaca] = useDraftPersistente('multa_cadPlaca', '')
+  const [cadData, setCadData] = useDraftPersistente('multa_cadData', new Date().toISOString().split('T')[0])
+  const [cadHora, setCadHora] = useDraftPersistente('multa_cadHora', '')
+  const [cadInfracao, setCadInfracao] = useDraftPersistente('multa_cadInfracao', '')
+  const [cadVelPermitida, setCadVelPermitida] = useDraftPersistente('multa_cadVelPermitida', '')
+  const [cadVelRegistrada, setCadVelRegistrada] = useDraftPersistente('multa_cadVelRegistrada', '')
+  const [cadNumero, setCadNumero] = useDraftPersistente('multa_cadNumero', '')
+  const [cadValor, setCadValor] = useDraftPersistente('multa_cadValor', '')
+  const [cadStatus, setCadStatus] = useDraftPersistente('multa_cadStatus', 'PENDENTE')
+  const [cadOrgao, setCadOrgao] = useDraftPersistente('multa_cadOrgao', '')
+  const [cadIdentificado, setCadIdentificado] = useDraftPersistente('multa_cadIdentificado', true)
+  const [cadValorNaoId, setCadValorNaoId] = useDraftPersistente('multa_cadValorNaoId', '')
+  const [cadFolhaMes, setCadFolhaMes] = useDraftPersistente('multa_cadFolhaMes', mesAtual)
+  const [cadFolhaAno, setCadFolhaAno] = useDraftPersistente('multa_cadFolhaAno', String(anoAtual))
+  const [cadVencimento, setCadVencimento] = useDraftPersistente('multa_cadVencimento', '')
+  const [cadPagamento, setCadPagamento] = useDraftPersistente('multa_cadPagamento', '')
 
   // Campos edição
   const [editMotorista, setEditMotorista] = useState('')
