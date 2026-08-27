@@ -249,13 +249,13 @@ export default function ContratosPage() {
   // "por fora" (Promise.race), que não interfere no retry — assim a
   // chamada continua tentando de novo sozinha se a rede estiver fria,
   // e só mostra erro se REALMENTE não conseguir depois de tentar.
-  async function comTimeout<T>(promessa: Promise<T>, ms: number): Promise<T> {
+  async function comTimeout<T = any>(promessa: PromiseLike<T>, ms: number): Promise<T> {
     let timeoutId: ReturnType<typeof setTimeout>
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => reject(new Error('TIMEOUT')), ms)
     })
     try {
-      return await Promise.race([promessa, timeoutPromise])
+      return await Promise.race([Promise.resolve(promessa), timeoutPromise])
     } finally {
       clearTimeout(timeoutId!)
     }
@@ -292,7 +292,7 @@ export default function ContratosPage() {
         // enquanto o estado local (dadosAtualizados) continua com
         // string vazia pra bater com o tipo do TypeScript.
         const dadosParaBanco = { ...dadosAtualizados, dt_pagamento: editDtPagamento || null }
-        const { error } = await comTimeout(
+        const { error } = await comTimeout<any>(
           supabase.from('contratos').update(dadosParaBanco).eq('id', sel.id),
           25000
         )
@@ -319,7 +319,7 @@ export default function ContratosPage() {
     setLoading(true)
     try {
       if (perm !== 'demo') {
-        const { error } = await comTimeout(
+        const { error } = await comTimeout<any>(
           supabase.from('contratos').delete().eq('id', sel.id),
           25000
         )
