@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../services/supabase'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, Filter, AlertCircle, ArrowRight, Download, Edit2, RefreshCw } from 'lucide-react'
@@ -16,6 +16,21 @@ type Fechamento    = {
   data_vencimento: string; total_litros?: number; total_abastecimento?: number;
   total_frete?: number; comissao_motorista?: number;
   contratos?: { contrato: { contrato: string; origem: string; destino: string; fat_bruto?: number } }[]
+}
+
+const CONSULTA_TIMEOUT_MS = 12_000
+
+async function comTimeout<T>(promessa: PromiseLike<T>, ms = CONSULTA_TIMEOUT_MS): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('CONSULTA_TIMEOUT')), ms)
+  })
+
+  try {
+    return await Promise.race([Promise.resolve(promessa), timeoutPromise])
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId)
+  }
 }
 
 export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
@@ -50,6 +65,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [excluindoId, setExcluindoId] = useState<string | null>(null)
   const [visualizando, setVisualizando] = useState<Fechamento | null>(null)
   const [editando, setEditando]       = useState<Fechamento | null>(null)
+  const motoristaRequestRef = useRef(0)
+  const montadoRef = useRef(true)
 
   // ─── Funções auxiliares ───────────────────────────────────────────────────
 
@@ -63,17 +80,36 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   // tem tratamento de erro visível e um botão pra tentar de novo sem
   // precisar recarregar tudo.
   async function fetchMotoristas() {
+    const requestId = ++motoristaRequestRef.current
+    const controller = new AbortController()
     setCarregandoMotoristas(true); setErroMotoristas('')
+
     try {
-      const { data, error } = await supabase
-        .from('motoristas').select('id, nome, caminhao_id').order('nome')
+      const resultado = await comTimeout(
+        supabase
+          .from('motoristas')
+          .select('id, nome, caminhao_id')
+          .order('nome')
+          .abortSignal(controller.signal),
+      )
+
+      if (!montadoRef.current || requestId !== motoristaRequestRef.current) return
+      const { data, error } = resultado
       if (error) throw error
       setMotoristas(data || [])
     } catch (e: any) {
+      if (!montadoRef.current || requestId !== motoristaRequestRef.current) return
       console.error('Erro ao carregar motoristas:', e)
-      setErroMotoristas('Não foi possível carregar a lista de motoristas.')
+      setErroMotoristas(
+        e?.message === 'CONSULTA_TIMEOUT'
+          ? 'A lista de motoristas demorou para responder.'
+          : 'Não foi possível carregar a lista de motoristas.',
+      )
     } finally {
-      setCarregandoMotoristas(false)
+      controller.abort()
+      if (montadoRef.current && requestId === motoristaRequestRef.current) {
+        setCarregandoMotoristas(false)
+      }
     }
   }
 
@@ -135,10 +171,28 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   // esquecida pelo navegador.
   useEffect(() => {
     function handleVisibilidade() {
-      if (!document.hidden) fetchMotoristas()
+      if (!document.hidden) {
+        // Ao retornar de uma aba suspensa, deixa o Supabase restaurar ou
+        // renovar a sessão antes de refazer a consulta dos motoristas.
+        void comTimeout(supabase.auth.getSession(), 8_000)
+          .catch(error => console.warn('Não foi possível revalidar a sessão:', error))
+          .finally(() => {
+            if (montadoRef.current && !document.hidden) void fetchMotoristas()
+          })
+      }
     }
+
+    function handleOnline() {
+      if (montadoRef.current) void fetchMotoristas()
+    }
+
     document.addEventListener('visibilitychange', handleVisibilidade)
-    return () => document.removeEventListener('visibilitychange', handleVisibilidade)
+    window.addEventListener('online', handleOnline)
+    return () => {
+      montadoRef.current = false
+      document.removeEventListener('visibilitychange', handleVisibilidade)
+      window.removeEventListener('online', handleOnline)
+    }
   }, [])
 
   useEffect(() => {
