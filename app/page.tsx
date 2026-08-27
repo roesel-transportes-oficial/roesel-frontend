@@ -17,6 +17,7 @@ import FechamentoViagemPage from './components/FechamentoViagemPage'
 import ContasPagarPage from './components/ContasPagarPage'
 import CtePage from './components/CtePage'
 import NotasDiversasPage from './components/NotasDiversasPage'
+import HistoricoMotoristaCaminhaoPage from './components/HistoricoMotoristaCaminhaoPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -60,6 +61,7 @@ export default function Home() {
         <div style={{ display: aba === 'contas_pagar'  ? 'block' : 'none' }}><ContasPagarPage /></div>
         <div style={{ display: aba === 'cte'           ? 'block' : 'none' }}><CtePage /></div>
         <div style={{ display: aba === 'notas'         ? 'block' : 'none' }}><NotasDiversasPage /></div>
+        <div style={{ display: aba === 'historico'     ? 'block' : 'none' }}><HistoricoMotoristaCaminhaoPage /></div>
 
         {aba === 'novo'       && <NovoContratoPage setAba={setAba} />}
         {aba === 'fechamento' && <FechamentoViagemPage setAba={setAba} />}
