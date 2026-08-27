@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../services/supabase'
+import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import {
   FileText, Plus, ArrowLeft, Save, X, AlertCircle, Loader2,
   CheckCircle2, XCircle, Ban, Truck, User
@@ -62,7 +63,7 @@ export default function CtePage() {
   const [mostraNovo, setMostraNovo]     = useState(false)
   const [motoristas, setMotoristas]     = useState<any[]>([])
   const [caminhoes, setCaminhoes]       = useState<any[]>([])
-  const [form, setForm]                 = useState(FORM_INICIAL)
+  const [form, setForm]                 = useDraftPersistente('cte_novo', FORM_INICIAL)
   const [salvando, setSalvando]         = useState(false)
   const [emitindo, setEmitindo]         = useState(false)
   const [erro, setErro]                 = useState('')
@@ -178,6 +179,7 @@ export default function CtePage() {
       if (!res.ok) throw new Error(resultado?.detail || resultado?.error || 'Erro ao salvar.')
 
       showMsg('✅ Rascunho de CT-e salvo!')
+      limparDraft('cte_novo')
       fecharNovo()
       await fetchCtes()
     } catch (e: any) {
@@ -215,6 +217,7 @@ export default function CtePage() {
       if (!resEmitir.ok) throw new Error(resultado?.detail || resultado?.error || 'Emissão de CT-e ainda não configurada.')
 
       showMsg('✅ CT-e emitido com sucesso!')
+      limparDraft('cte_novo')
       fecharNovo()
       await fetchCtes()
     } catch (e: any) {

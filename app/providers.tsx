@@ -2,47 +2,41 @@
 import { useEffect, useRef } from 'react'
 import { AuthProvider } from './services/auth'
 
-// ✅ Recarrega a página inteira sozinha se ela ficou muito tempo em
-// segundo plano (aba minimizada, trocou de aba do navegador, PC
-// hibernou etc) — cobre TODAS as páginas do sistema de uma vez,
-// sem precisar mexer em cada uma individualmente.
-//
-// Por que isso resolve de vez: o navegador pode PAUSAR de verdade
-// timers e conexões de rede quando uma aba fica muito tempo escondida
-// — inclusive os timeouts de segurança que já protegem cada
-// busca podem ficar pausados junto. Não dá pra "blindar" contra isso
-// com mais timeout, porque o próprio timeout pode ser pausado. A
-// solução confiável é recomeçar do zero quando a aba volta a ficar
-// visível depois de tempo demais escondida.
-//
-// ⚠️ Essa é a ÚNICA lógica de recarregamento automático no sistema.
-// Da outra vez que isso foi tentado, havia DOIS mecanismos brigando
-// entre si (esse + uma checagem de sessão separada), e cada um podia
-// disparar o outro de novo — isso é que causou o loop de
-// recarregamento. Removendo a duplicação, não tem mais como entrar
-// em loop: essa função só reage a "ficou escondida > 2 minutos e
-// voltou", nada mais aciona reload em lugar nenhum do sistema.
-function AutoReloadAposInatividade() {
-  const escondidoDesde = useRef<number | null>(null)
-  const LIMITE_MS = 2 * 60 * 1000 // 2 minutos
+// ✅ ÚNICO mecanismo de recarregamento automático no sistema — de
+// propósito, pra nunca mais entrar naquele loop que já tivemos
+// (quando dois mecanismos diferentes ficavam se disparando um ao
+// outro). Esse aqui só faz uma coisa: se a checagem de login (que já
+// tem seu próprio limite de 45s dentro do auth.tsx) passar muito
+// tempo "Carregando..." depois da aba voltar a ficar visível, força
+// um reload — porque isso normalmente significa que o Chrome
+// descartou a aba por falta de memória e o JavaScript ficou num
+// estado zumbi, sem conseguir se recuperar sozinho.
+function RecarregaSeTravado() {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     function handleVisibilidade() {
       if (document.hidden) {
-        escondidoDesde.current = Date.now()
+        if (timeoutRef.current) clearTimeout(timeoutRef.current)
         return
       }
-      if (escondidoDesde.current) {
-        const tempoEscondido = Date.now() - escondidoDesde.current
-        escondidoDesde.current = null
-        if (tempoEscondido > LIMITE_MS) {
+      // Aba voltou a ficar visível: dá uma folga de 50s (mais que o
+      // limite interno de 45s do auth.tsx) — se depois disso a tela
+      // ainda estiver mostrando "Carregando...", força reload.
+      timeoutRef.current = setTimeout(() => {
+        const aindaCarregando = document.body.innerText.includes('Carregando...')
+        if (aindaCarregando) {
+          console.warn('Tela travada em "Carregando..." por mais de 50s após voltar — recarregando.')
           window.location.reload()
         }
-      }
+      }, 50000)
     }
 
     document.addEventListener('visibilitychange', handleVisibilidade)
-    return () => document.removeEventListener('visibilitychange', handleVisibilidade)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilidade)
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
   }, [])
 
   return null
@@ -51,7 +45,7 @@ function AutoReloadAposInatividade() {
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <AutoReloadAposInatividade />
+      <RecarregaSeTravado />
       {children}
     </AuthProvider>
   )

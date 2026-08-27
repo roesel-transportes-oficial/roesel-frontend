@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
+import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, Filter, AlertCircle, ArrowRight, Download, Edit2, RefreshCw } from 'lucide-react'
 
 type Motorista     = { id: string; nome: string; caminhao_id?: string }
@@ -21,21 +22,21 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [motoristas, setMotoristas]               = useState<Motorista[]>([])
   const [carregandoMotoristas, setCarregandoMotoristas] = useState(true)
   const [erroMotoristas, setErroMotoristas]       = useState('')
-  const [motoristaId, setMotoristaId]             = useState('')
+  const [motoristaId, setMotoristaId]             = useDraftPersistente('fechamento_motoristaId', '')
   const [motoristaNome, setMotoristaNome]         = useState('')
   const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
   const [caminhaoBase, setCaminhaoBase]           = useState<Caminhao | null>(null)
   const [isSubstituto, setIsSubstituto]           = useState(false)
   const [motoristaHistorico, setMotoristaHistorico] = useState<string | null>(null)
-  const [dataInicio, setDataInicio]               = useState('')
-  const [dataFim, setDataFim]                     = useState('')
-  const [kmInicial, setKmInicial]                 = useState('')
-  const [kmFinal, setKmFinal]                     = useState('')
-  const [abastDataInicio, setAbastDataInicio]     = useState('')
-  const [abastDataFim, setAbastDataFim]           = useState('')
+  const [dataInicio, setDataInicio]               = useDraftPersistente('fechamento_dataInicio', '')
+  const [dataFim, setDataFim]                     = useDraftPersistente('fechamento_dataFim', '')
+  const [kmInicial, setKmInicial]                 = useDraftPersistente('fechamento_kmInicial', '')
+  const [kmFinal, setKmFinal]                     = useDraftPersistente('fechamento_kmFinal', '')
+  const [abastDataInicio, setAbastDataInicio]     = useDraftPersistente('fechamento_abastDataInicio', '')
+  const [abastDataFim, setAbastDataFim]           = useDraftPersistente('fechamento_abastDataFim', '')
   const [buscaContrato, setBuscaContrato]         = useState('')
   const [contratosDisponiveis, setContratosDisponiveis] = useState<Contrato[]>([])
-  const [selecionados, setSelecionados]           = useState<Contrato[]>([])
+  const [selecionados, setSelecionados]           = useDraftPersistente<Contrato[]>('fechamento_selecionados', [])
   const [abastecimentos, setAbastecimentos]       = useState<Abastecimento[]>([])
   const [abastSelecionados, setAbastSelecionados] = useState<Set<string>>(new Set())
   const [carregandoAbast, setCarregandoAbast]     = useState(false)
@@ -422,6 +423,16 @@ useEffect(() => {
         setMotoristaId(''); setCaminhao(null); setCaminhaoBase(null); setSelecionados([])
         setAbastecimentos([]); setAbastSelecionados(new Set())
         setDataInicio(''); setDataFim(''); setKmInicial(''); setKmFinal('')
+        // ✅ Fechamento salvo com sucesso — limpa todos os rascunhos
+        // guardados, pra próxima vez começar limpo de verdade.
+        limparDraft('fechamento_motoristaId')
+        limparDraft('fechamento_dataInicio')
+        limparDraft('fechamento_dataFim')
+        limparDraft('fechamento_kmInicial')
+        limparDraft('fechamento_kmFinal')
+        limparDraft('fechamento_abastDataInicio')
+        limparDraft('fechamento_abastDataFim')
+        limparDraft('fechamento_selecionados')
       }, 1500)
     } catch (e: any) {
       setErro('Erro ao salvar: ' + e.message)
