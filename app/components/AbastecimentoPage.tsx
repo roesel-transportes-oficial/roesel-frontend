@@ -60,6 +60,7 @@ export default function AbastecimentoPage() {
   const [resultadoImport, setResultadoImport]   = useState<{ importados: number; ignorados: number; total: number } | null>(null)
 
   const [filtroMotorista, setFiltroMotorista] = useState('')
+  const [filtroPlaca, setFiltroPlaca]         = useState('')
   const [filtroInicio, setFiltroInicio]       = useState('')
   const [filtroFim, setFiltroFim]             = useState('')
 
@@ -115,7 +116,7 @@ export default function AbastecimentoPage() {
 
   async function fetch_() {
     try {
-      const data = await supaFetch('abastecimentos?order=data.desc')
+      const data = await supaFetch('abastecimentos?order=data.asc')
       setAbastecimentos(Array.isArray(data) ? data : [])
     } catch {}
   }
@@ -286,14 +287,58 @@ export default function AbastecimentoPage() {
     [...new Set(abastecimentos.map(a => a.motorista).filter(Boolean))].sort()
   , [abastecimentos])
 
-  const filtrados = useMemo(() => abastecimentos.filter(a => {
-    if (filtroMotorista && a.motorista !== filtroMotorista) return false
-    if (filtroInicio && a.data < filtroInicio) return false
-    if (filtroFim   && a.data > filtroFim)   return false
-    return true
-  }), [abastecimentos, filtroMotorista, filtroInicio, filtroFim])
+  const placasUnicas = useMemo(() =>
+    [...new Set(abastecimentos.map(a => a.caminhao_placa).filter(Boolean))].sort()
+  , [abastecimentos])
+
+  const filtrados = useMemo(() => abastecimentos
+    .filter(a => {
+      if (filtroMotorista && a.motorista !== filtroMotorista) return false
+      if (filtroPlaca && a.caminhao_placa !== filtroPlaca) return false
+      if (filtroInicio && a.data < filtroInicio) return false
+      if (filtroFim   && a.data > filtroFim)   return false
+      return true
+    })
+    .sort((a, b) => a.data.localeCompare(b.data)),
+    [abastecimentos, filtroMotorista, filtroPlaca, filtroInicio, filtroFim]
+  )
 
   const totalGeral = useMemo(() => filtrados.reduce((s, a) => s + (a.total||0), 0), [filtrados])
+
+  function csvValor(valor: unknown) {
+    return `"${String(valor ?? '').replace(/"/g, '""')}"`
+  }
+
+  function exportarCSV() {
+    if (filtrados.length === 0) {
+      showMsg('⚠️ Não há registros para exportar com os filtros atuais.')
+      return
+    }
+
+    const cabecalho = [
+      'Data', 'Placa', 'Motorista', 'Posto', 'CNPJ Posto', 'Estado', 'Cidade',
+      'Litros Combustível', 'Valor Litro Combustível', 'Litros ARLA', 'Valor Litro ARLA',
+      'KM', 'Desconto', 'Total', 'Observações',
+    ]
+    const linhas = filtrados.map(a => [
+      fmtData(a.data), a.caminhao_placa, a.motorista, a.posto, a.cnpj_posto,
+      a.estado, a.cidade, a.litros_combustivel, a.valor_litro_combustivel,
+      a.litros_arla, a.valor_litro_arla, a.km, a.desconto, a.total, a.obs,
+    ])
+    const csv = [cabecalho, ...linhas]
+      .map(linha => linha.map(csvValor).join(';'))
+      .join('\\r\\n')
+    const blob = new Blob(['\\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `abastecimentos_${new Date().toISOString().split('T')[0]}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    showMsg(`✅ CSV exportado com ${filtrados.length} registro(s).`)
+  }
 
   async function selecionar(a: Abastecimento) {
     setSel(a)
@@ -574,6 +619,10 @@ export default function AbastecimentoPage() {
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition">
             <Download size={16}/> Importar Profrotas
           </button>
+          <button onClick={exportarCSV} disabled={filtrados.length === 0}
+            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+            <Download size={16}/> CSV
+          </button>
           <button onClick={() => setMostraCad(true)}
             className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase hover:bg-red-700 transition">
             <Plus size={16}/> Novo
@@ -581,13 +630,21 @@ export default function AbastecimentoPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
         <div>
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 mb-1"><Filter size={11}/> Motorista</label>
           <select value={filtroMotorista} onChange={e => setFiltroMotorista(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
             <option value="">Todos</option>
             {motoristasUnicos.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 mb-1"><Filter size={11}/> Placa</label>
+          <select value={filtroPlaca} onChange={e => setFiltroPlaca(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
+            <option value="">Todas</option>
+            {placasUnicas.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
         <div>
@@ -600,9 +657,9 @@ export default function AbastecimentoPage() {
           <input type="date" value={filtroFim} onChange={e => setFiltroFim(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"/>
         </div>
-        {(filtroMotorista || filtroInicio || filtroFim) && (
-          <div className="md:col-span-3 flex justify-end">
-            <button onClick={() => { setFiltroMotorista(''); setFiltroInicio(''); setFiltroFim('') }}
+        {(filtroMotorista || filtroPlaca || filtroInicio || filtroFim) && (
+          <div className="md:col-span-4 flex justify-end">
+            <button onClick={() => { setFiltroMotorista(''); setFiltroPlaca(''); setFiltroInicio(''); setFiltroFim('') }}
               className="text-xs text-red-600 hover:underline font-semibold">Limpar filtros</button>
           </div>
         )}
