@@ -20,6 +20,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
   const [erro, setErro]             = useState('')
   const [arrastando, setArrastando] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const salvandoRef = useRef(false)
 
   const [placaLidaIA, setPlacaLidaIA]               = useState('')
   const [placaCarretaLidaIA, setPlacaCarretaLidaIA] = useState('')
@@ -467,19 +468,25 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
   async function salvar(e: any) {
     e.preventDefault()
+    if (salvandoRef.current) return
+    salvandoRef.current = true
     setLoading(true); setErro('')
 
-    // ✅ Timeout de segurança em toda a operação de salvar (checagem de
-    // duplicidade + POST /api/contratos + criação de viagem). Antes,
-    // nenhuma dessas chamadas tinha proteção contra travamento — se
-    // qualquer uma travasse, o botão ficava preso em "Salvando..." pra
-    // sempre, sem nenhum erro visível.
+    // O timeout cobre a operação inteira, inclusive as consultas feitas
+    // depois do POST. Assim, nenhuma promessa consegue deixar o botão
+    // preso em "Salvando..." indefinidamente.
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 20000)
+    let safetyTimeoutId: ReturnType<typeof setTimeout> | undefined
+    const safetyTimeout = new Promise<never>((_, reject) => {
+      safetyTimeoutId = setTimeout(() => reject(new Error('SAVE_TIMEOUT')), 30000)
+    })
 
     try {
-      const { data: existente, error: errExiste } = await supabase
-        .from('contratos').select('id').eq('contrato', form.contrato).limit(1).maybeSingle()
+      await Promise.race([
+        (async () => {
+          const { data: existente, error: errExiste } = await supabase
+        .from('contratos').select('id').eq('contrato', form.contrato).limit(1).abortSignal(controller.signal).maybeSingle()
 
       if (errExiste) {
         throw new Error('Erro ao verificar contrato existente: ' + errExiste.message)
@@ -487,8 +494,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
       if (existente) {
         setErro(`⚠️ Contrato #${form.contrato} já está cadastrado. Verifique o número.`)
-        setLoading(false)
-        clearTimeout(timeoutId)
         return
       }
 
@@ -520,7 +525,6 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         body: JSON.stringify(payload),
         signal: controller.signal,
       })
-      clearTimeout(timeoutId)
 
       if (!res.ok) {
         const textoErro = await res.text()
@@ -529,14 +533,14 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
       const { data: contratoData } = await supabase
         .from('contratos').select('id').eq('contrato', form.contrato)
-        .order('created_at', { ascending: false }).limit(1).maybeSingle()
+        .order('created_at', { ascending: false }).limit(1).abortSignal(controller.signal).maybeSingle()
       const contratoId = contratoData?.id || null
 
       if (contratoId) {
         let caminhaoId: string | null = null
         if (form.placa) {
           const { data: camData } = await supabase
-            .from('caminhoes').select('id').eq('placa', form.placa).limit(1).maybeSingle()
+            .from('caminhoes').select('id').eq('placa', form.placa).limit(1).abortSignal(controller.signal).maybeSingle()
           if (camData) caminhaoId = camData.id
         }
 
@@ -550,7 +554,7 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
           valor_contrato: payload.fat_bruto,
           status:         'EM ANDAMENTO',
           obs:            `Gerado do contrato #${form.contrato}`
-        }).select().maybeSingle()
+        }).select().abortSignal(controller.signal).maybeSingle()
 
         if (viagemData?.id) {
           await supabase.from('viagem_contratos').insert({
@@ -561,18 +565,25 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         }
       }
 
-      setForm(FORM_INICIAL)
-      setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
-      setContratoLidoIA(false); setCamposIAAtivos(false)
-      setAba('contratos')
+          setForm(FORM_INICIAL)
+          setPlacaLidaIA(''); setPlacaCarretaLidaIA('')
+          setContratoLidoIA(false); setCamposIAAtivos(false)
+          setAba('contratos')
+        })(),
+        safetyTimeout,
+      ])
     } catch (err: any) {
-      clearTimeout(timeoutId)
       console.error('Erro ao salvar contrato:', err)
-      if (err?.name === 'AbortError') {
-        setErro('⏱️ A operação demorou demais (mais de 20s). Verifique sua conexão e tente novamente.')
+      if (err?.message === 'SAVE_TIMEOUT' || err?.name === 'AbortError') {
+        setErro('⏱️ A operação demorou demais. Verifique sua conexão e tente novamente.')
       } else {
         setErro('Erro ao salvar contrato: ' + (err?.message || 'erro desconhecido'))
       }
+    } finally {
+      controller.abort()
+      clearTimeout(timeoutId)
+      if (safetyTimeoutId) clearTimeout(safetyTimeoutId)
+      salvandoRef.current = false
       setLoading(false)
     }
   }
@@ -635,7 +646,13 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
       {erro && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-lg text-sm">{erro}</div>}
 
-      <form onSubmit={salvar} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+      <form
+        onSubmit={salvar}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') e.preventDefault()
+        }}
+        className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6"
+      >
 
         <div className="grid grid-cols-2 gap-4">
           <div>
