@@ -12,6 +12,7 @@ interface Motorista {
   vencimento_periodico: string
   caminhao_id: string; caminhao_temp_id: string; de_ferias: boolean
   ferias_inicio: string; ferias_fim: string; substituto_id: string
+  de_afastamento: boolean; afastamento_inicio: string; afastamento_fim: string; afastamento_motivo: string
 }
 
 interface Caminhao { id: string; placa: string; modelo: string; motorista_atual: string }
@@ -20,6 +21,8 @@ interface HistoricoFerias {
   id: string; motorista_nome: string; substituto_nome: string
   caminhao_placa: string; ferias_inicio: string; ferias_fim: string; created_at: string
 }
+
+const MOTIVOS_AFASTAMENTO = ['Atestado médico', 'Licença', 'Suspensão', 'Acidente de trabalho', 'Outro']
 
 function fmtCpf(v: string) {
   const d = v.replace(/\D/g,'').slice(0,11)
@@ -120,6 +123,10 @@ export default function MotoristaPage() {
   const [editFeriasInicio, setEditFeriasInicio] = useState('')
   const [editFeriasFim, setEditFeriasFim] = useState('')
   const [editSubstitutoId, setEditSubstitutoId] = useState('')
+  const [editDeAfastamento, setEditDeAfastamento] = useState(false)
+  const [editAfastamentoInicio, setEditAfastamentoInicio] = useState('')
+  const [editAfastamentoFim, setEditAfastamentoFim] = useState('')
+  const [editAfastamentoMotivo, setEditAfastamentoMotivo] = useState('')
 
   const [cadNome, setCadNome] = useState('')
   const [cadCpf, setCadCpf] = useState('')
@@ -155,6 +162,31 @@ export default function MotoristaPage() {
     setHistorico(data || [])
   }
 
+  // ✅ NOVO: mesma lógica usada no CaminhaoPage.tsx — registra no
+  // historico_motorista_caminhao a troca temporária de motorista num
+  // caminhão (usado tanto por Férias quanto por Afastamento agora).
+  // Fecha o período do motorista original (data_fim = ontem) e abre
+  // um novo período pro substituto (data_inicio = hoje).
+  async function registrarTrocaNoHistoricoCaminhao(caminhaoId: string, caminhaoPlaca: string, motoristaNovo: string, motoristaAntigo: string) {
+    if (!caminhaoId || motoristaNovo === motoristaAntigo) return
+    const hoje = new Date().toISOString().split('T')[0]
+    const ontem = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+
+    if (motoristaAntigo) {
+      await supabase.from('historico_motorista_caminhao')
+        .update({ data_fim: ontem })
+        .eq('caminhao_id', caminhaoId)
+        .eq('motorista_nome', motoristaAntigo)
+        .is('data_fim', null)
+    }
+    if (motoristaNovo) {
+      await supabase.from('historico_motorista_caminhao').insert({
+        caminhao_id: caminhaoId, caminhao_placa: caminhaoPlaca,
+        motorista_nome: motoristaNovo, data_inicio: hoje, data_fim: null,
+      })
+    }
+  }
+
   async function registrarHistorico(motorista: Motorista, substitutoNome: string, caminhaoPlaca: string) {
     await supabase.from('historico_ferias').insert({
       motorista_id: motorista.id,
@@ -164,6 +196,21 @@ export default function MotoristaPage() {
       caminhao_placa: caminhaoPlaca,
       ferias_inicio: editFeriasInicio || null,
       ferias_fim: editFeriasFim || null,
+    })
+  }
+
+  // ✅ NOVO: mesmo padrão da função de férias, só que grava em
+  // historico_afastamentos em vez de historico_ferias.
+  async function registrarHistoricoAfastamento(motorista: Motorista, substitutoNome: string, caminhaoPlaca: string) {
+    await supabase.from('historico_afastamentos').insert({
+      motorista_id: motorista.id,
+      motorista_nome: motorista.nome,
+      motivo: editAfastamentoMotivo || null,
+      substituto_id: editSubstitutoId || null,
+      substituto_nome: substitutoNome,
+      caminhao_placa: caminhaoPlaca,
+      afastamento_inicio: editAfastamentoInicio || null,
+      afastamento_fim: editAfastamentoFim || null,
     })
   }
 
@@ -202,6 +249,10 @@ export default function MotoristaPage() {
     setEditFeriasInicio(m.ferias_inicio || '')
     setEditFeriasFim(m.ferias_fim || '')
     setEditSubstitutoId(m.substituto_id || '')
+    setEditDeAfastamento(m.de_afastamento || false)
+    setEditAfastamentoInicio(m.afastamento_inicio || '')
+    setEditAfastamentoFim(m.afastamento_fim || '')
+    setEditAfastamentoMotivo(m.afastamento_motivo || '')
     setConfirmExcluir(false)
     setMostraHistorico(false)
     fetchHistorico(m.id)
@@ -216,17 +267,24 @@ export default function MotoristaPage() {
 
     try {
       const feriasFoiAtivado = editDeFerias && !sel.de_ferias
+      const feriasFoiEncerrado = !editDeFerias && sel.de_ferias
+      const afastamentoFoiAtivado = editDeAfastamento && !sel.de_afastamento
+      const afastamentoFoiEncerrado = !editDeAfastamento && sel.de_afastamento
 
-      if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeFerias) {
+      if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeFerias && !editDeAfastamento) {
         if (sel.caminhao_id) {
           const { error: e1 } = await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', sel.caminhao_id)
           if (e1) throw e1
         }
         const { error: e2 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
         if (e2) throw e2
+        await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, caminhoes.find(c => c.id === editCaminhaoId)?.placa || '', editNome.toUpperCase(), '')
       }
 
-      if (editDeFerias && editSubstitutoId && editCaminhaoId) {
+      // ✅ Início de férias: vincula o substituto ao caminhão
+      // temporariamente e registra no histórico de férias + no
+      // histórico do caminhão (novo).
+      if (feriasFoiAtivado && editSubstitutoId && editCaminhaoId) {
         const substituto = motoristas.find(m => m.id === editSubstitutoId)
         if (substituto) {
           const { error: e3 } = await supabase.from('motoristas').update({ caminhao_temp_id: editCaminhaoId }).eq('id', editSubstitutoId)
@@ -234,19 +292,51 @@ export default function MotoristaPage() {
           const { error: e4 } = await supabase.from('caminhoes').update({ motorista_atual: substituto.nome }).eq('id', editCaminhaoId)
           if (e4) throw e4
           const cam = caminhoes.find(c => c.id === editCaminhaoId)
-          if (feriasFoiAtivado) {
-            await registrarHistorico(sel, substituto.nome, cam?.placa || '')
-          }
+          await registrarHistorico(sel, substituto.nome, cam?.placa || '')
+          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, cam?.placa || '', substituto.nome, editNome.toUpperCase())
         }
       }
 
-      if (!editDeFerias && sel.de_ferias && sel.substituto_id && editCaminhaoId) {
+      // ✅ Fim de férias: devolve o caminhão pro motorista original,
+      // registrando a troca de volta no histórico do caminhão também.
+      if (feriasFoiEncerrado && sel.substituto_id && editCaminhaoId) {
         const substituto = motoristas.find(m => m.id === sel.substituto_id)
         if (substituto) {
           const { error: e5 } = await supabase.from('motoristas').update({ caminhao_temp_id: null }).eq('id', sel.substituto_id)
           if (e5) throw e5
           const { error: e6 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
           if (e6) throw e6
+          const cam = caminhoes.find(c => c.id === editCaminhaoId)
+          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, cam?.placa || '', editNome.toUpperCase(), substituto.nome)
+        }
+      }
+
+      // ✅ NOVO — Início de afastamento: mesma lógica de férias, só
+      // que grava em historico_afastamentos em vez de historico_ferias.
+      if (afastamentoFoiAtivado && editSubstitutoId && editCaminhaoId) {
+        const substituto = motoristas.find(m => m.id === editSubstitutoId)
+        if (substituto) {
+          const { error: e3 } = await supabase.from('motoristas').update({ caminhao_temp_id: editCaminhaoId }).eq('id', editSubstitutoId)
+          if (e3) throw e3
+          const { error: e4 } = await supabase.from('caminhoes').update({ motorista_atual: substituto.nome }).eq('id', editCaminhaoId)
+          if (e4) throw e4
+          const cam = caminhoes.find(c => c.id === editCaminhaoId)
+          await registrarHistoricoAfastamento(sel, substituto.nome, cam?.placa || '')
+          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, cam?.placa || '', substituto.nome, editNome.toUpperCase())
+        }
+      }
+
+      // ✅ NOVO — Fim de afastamento: devolve o caminhão pro
+      // motorista original.
+      if (afastamentoFoiEncerrado && sel.substituto_id && editCaminhaoId) {
+        const substituto = motoristas.find(m => m.id === sel.substituto_id)
+        if (substituto) {
+          const { error: e5 } = await supabase.from('motoristas').update({ caminhao_temp_id: null }).eq('id', sel.substituto_id)
+          if (e5) throw e5
+          const { error: e6 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
+          if (e6) throw e6
+          const cam = caminhoes.find(c => c.id === editCaminhaoId)
+          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, cam?.placa || '', editNome.toUpperCase(), substituto.nome)
         }
       }
 
@@ -265,7 +355,11 @@ export default function MotoristaPage() {
           de_ferias: editDeFerias,
           ferias_inicio: editDeFerias ? editFeriasInicio || null : null,
           ferias_fim: editDeFerias ? editFeriasFim || null : null,
-          substituto_id: editDeFerias ? editSubstitutoId || null : null,
+          de_afastamento: editDeAfastamento,
+          afastamento_inicio: editDeAfastamento ? editAfastamentoInicio || null : null,
+          afastamento_fim: editDeAfastamento ? editAfastamentoFim || null : null,
+          afastamento_motivo: editDeAfastamento ? editAfastamentoMotivo || null : null,
+          substituto_id: (editDeFerias || editDeAfastamento) ? editSubstitutoId || null : null,
         }).eq('id', sel.id)
         if (e7) throw e7
       }
@@ -631,8 +725,12 @@ export default function MotoristaPage() {
               <div className="border-t border-gray-100 pt-4 space-y-3">
                 <Toggle value={editDeFerias} onChange={() => {
                   setEditDeFerias(!editDeFerias)
-                  if (!editDeFerias && !editFeriasInicio)
-                    setEditFeriasInicio(new Date().toISOString().split('T')[0])
+                  if (!editDeFerias) {
+                    if (!editFeriasInicio) setEditFeriasInicio(new Date().toISOString().split('T')[0])
+                    setEditDeAfastamento(false) // não pode estar afastado e de férias ao mesmo tempo
+                  } else {
+                    setEditSubstitutoId('')
+                  }
                 }} label="De férias" />
 
                 {editDeFerias && (
@@ -671,6 +769,64 @@ export default function MotoristaPage() {
                       </div>
                     )}
                   </>
+                )}
+              </div>
+
+              {/* ✅ NOVA SEÇÃO — Afastamento (mesmo padrão de Férias) */}
+              <div className="border-t border-gray-100 pt-4">
+                <Toggle value={editDeAfastamento} onChange={() => {
+                  setEditDeAfastamento(!editDeAfastamento)
+                  if (!editDeAfastamento) {
+                    if (!editAfastamentoInicio) setEditAfastamentoInicio(new Date().toISOString().split('T')[0])
+                    setEditDeFerias(false) // não pode estar de férias e afastado ao mesmo tempo
+                  } else {
+                    setEditSubstitutoId('')
+                  }
+                }} label="Afastado" />
+
+                {editDeAfastamento && (
+                  <div className="space-y-3 mt-3">
+                    <div>
+                      <label className={LabelClass}>Motivo</label>
+                      <select value={editAfastamentoMotivo} onChange={e => setEditAfastamentoMotivo(e.target.value)} className={InputClass}>
+                        <option value="">Selecione...</option>
+                        {MOTIVOS_AFASTAMENTO.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={LabelClass}>Início do afastamento</label>
+                        <input type="date" value={editAfastamentoInicio} onChange={e => setEditAfastamentoInicio(e.target.value)} className={InputClass} />
+                      </div>
+                      <div>
+                        <label className={LabelClass}>Fim do afastamento</label>
+                        <input type="date" value={editAfastamentoFim} onChange={e => setEditAfastamentoFim(e.target.value)} className={InputClass} />
+                      </div>
+                    </div>
+                    {editAfastamentoInicio && editAfastamentoFim && (
+                      <div className="bg-orange-50 rounded-xl p-3">
+                        <p className="text-sm text-orange-700 font-medium">
+                          🏥 {diasFerias(editAfastamentoInicio, editAfastamentoFim)} dia(s) de afastamento
+                        </p>
+                      </div>
+                    )}
+                    <div>
+                      <label className={LabelClass}>Motorista substituto</label>
+                      <select value={editSubstitutoId} onChange={e => setEditSubstitutoId(e.target.value)} className={InputClass}>
+                        <option value="">Selecione...</option>
+                        {motoristas.filter(m => m.id !== sel.id && m.ativo).map(m => (
+                          <option key={m.id} value={m.id}>{m.nome}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {editSubstitutoId && editCaminhaoId && (
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                        <p className="text-xs text-orange-700">
+                          🔄 O caminhão <strong>{caminhoes.find(c => c.id === editCaminhaoId)?.placa}</strong> será vinculado temporariamente a <strong>{motoristas.find(m => m.id === editSubstitutoId)?.nome}</strong> — essa troca fica registrada no histórico do caminhão.
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -787,6 +943,7 @@ export default function MotoristaPage() {
                       {caminhao && ` · 🚛 ${caminhao.placa}`}
                       {caminhaoTemp && ` · 🚛 ${caminhaoTemp.placa} (temp)`}
                       {m.de_ferias && ` · 🏖️ Férias`}
+                      {m.de_afastamento && ` · 🏥 Afastado`}
                       {m.freelancer && ` · 🧾 Freelancer`}
                     </p>
                   </div>
