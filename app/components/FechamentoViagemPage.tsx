@@ -26,6 +26,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
   const [caminhaoBase, setCaminhaoBase]           = useState<Caminhao | null>(null)
   const [isSubstituto, setIsSubstituto]           = useState(false)
+  const [motoristaHistorico, setMotoristaHistorico] = useState<string | null>(null)
   const [dataInicio, setDataInicio]               = useState('')
   const [dataFim, setDataFim]                     = useState('')
   const [kmInicial, setKmInicial]                 = useState('')
@@ -208,6 +209,48 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
     checkManutencao()
   }, [dataInicio, caminhaoBase])
+
+  // ✅ Effect 2.5: fechamento retroativo — checa se, na data da SAÍDA
+  // da viagem, o caminhão estava com um motorista DIFERENTE do que
+  // está selecionado agora. Isso resolve o caso de fazer fechamento
+  // de meses atrás onde o motorista já trocou de caminhão desde então
+  // — sem isso, o sistema silenciosamente assumia que o motorista
+  // atual sempre foi quem dirigiu, o que é errado em fechamento
+  // retroativo. Só avisa e sugere — não troca sozinho, porque trocar
+  // o motorista automaticamente re-dispara toda a cadeia de busca de
+  // caminhão/contratos, o que poderia confundir mais do que ajudar.
+  useEffect(() => {
+    setMotoristaHistorico(null)
+    if (!caminhao?.id || !dataInicio || !motoristaNome) return
+
+    async function checkHistorico() {
+      const { data } = await supabase
+        .from('historico_motorista_caminhao')
+        .select('motorista_nome')
+        .eq('caminhao_id', caminhao!.id)
+        .lte('data_inicio', dataInicio)
+        .or(`data_fim.is.null,data_fim.gte.${dataInicio}`)
+        .order('data_inicio', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (data?.motorista_nome && data.motorista_nome !== motoristaNome) {
+        setMotoristaHistorico(data.motorista_nome)
+      }
+    }
+
+    checkHistorico()
+  }, [caminhao?.id, dataInicio, motoristaNome])
+
+  // Troca o motorista selecionado pelo motorista histórico sugerido
+  function usarMotoristaHistorico() {
+    if (!motoristaHistorico) return
+    const mot = motoristas.find(m => m.nome === motoristaHistorico)
+    if (mot) {
+      setMotoristaId(mot.id)
+      setMotoristaHistorico(null)
+    }
+  }
 
  // Effect 3: abastecimentos por período — filtra os já usados em fechamentos anteriores
 useEffect(() => {
@@ -528,6 +571,18 @@ useEffect(() => {
                     )}
                   </div>
                 </div>
+
+                {motoristaHistorico && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                    <p className="text-xs text-orange-700 font-bold">
+                      🕐 Nessa data ({fmtData(dataInicio)}), esse caminhão estava com <strong>{motoristaHistorico}</strong>, não com {motoristaNome}.
+                    </p>
+                    <button onClick={usarMotoristaHistorico}
+                      className="shrink-0 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-all">
+                      Usar {motoristaHistorico}
+                    </button>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-50">
                   <div className="space-y-2">

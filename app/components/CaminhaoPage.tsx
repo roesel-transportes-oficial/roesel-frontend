@@ -181,9 +181,43 @@ export default function CaminhaoPage() {
     setAba('info'); fetchLicencas(c.id)
   }
 
+  // ✅ NOVO: sempre que o motorista_atual de um caminhão muda, registra
+  // isso na tabela historico_motorista_caminhao — fecha o período do
+  // motorista antigo (data_fim = ontem) e abre um período novo pro
+  // motorista novo (data_inicio = hoje, data_fim = null). É esse
+  // histórico que o Fechamento de Viagem usa depois pra saber quem
+  // dirigia o caminhão numa data específica no passado.
+  async function registrarTrocaMotoristaNoHistorico(caminhaoId: string, placa: string, motoristaNovo: string, motoristaAntigo: string) {
+    if (motoristaNovo === motoristaAntigo) return // não mudou, não precisa registrar nada
+
+    const hoje = new Date().toISOString().split('T')[0]
+    const ontem = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+
+    // Fecha o período do motorista anterior, se existir um em aberto
+    if (motoristaAntigo) {
+      await supabase.from('historico_motorista_caminhao')
+        .update({ data_fim: ontem })
+        .eq('caminhao_id', caminhaoId)
+        .eq('motorista_nome', motoristaAntigo)
+        .is('data_fim', null)
+    }
+
+    // Abre um período novo pro motorista novo, se houver um
+    if (motoristaNovo) {
+      await supabase.from('historico_motorista_caminhao').insert({
+        caminhao_id: caminhaoId,
+        caminhao_placa: placa,
+        motorista_nome: motoristaNovo,
+        data_inicio: hoje,
+        data_fim: null,
+      })
+    }
+  }
+
   async function salvar() {
     if (!sel) return
     setLoading(true)
+    const motoristaAntigo = sel.motorista_atual || ''
     await supabase.from('caminhoes').update({
       placa: editPlaca.toUpperCase(), placa_carreta: editPlacaCarreta.toUpperCase(),
       modelo: editModelo, ano: editAno, status: editStatus, frota: editFrota,
@@ -193,6 +227,9 @@ export default function CaminhaoPage() {
       vencimento_cronotacografo: editVencCronotacografo || null,
       vencimento_permisso: editVencPermisso || null,
     }).eq('id', sel.id)
+
+    await registrarTrocaMotoristaNoHistorico(sel.id, editPlaca.toUpperCase(), editMotorista, motoristaAntigo)
+
     await fetch_()
     setLoading(false); setSel(null); showMsg('✅ Atualizado!')
   }
@@ -200,11 +237,17 @@ export default function CaminhaoPage() {
   async function cadastrar() {
     if (!cadPlaca.trim()) return
     setLoading(true)
-    await supabase.from('caminhoes').insert({
+    const { data: novoCaminhao } = await supabase.from('caminhoes').insert({
       placa: cadPlaca.toUpperCase(), placa_carreta: cadPlacaCarreta.toUpperCase(),
       modelo: cadModelo, ano: cadAno, status: cadStatus, frota: cadFrota,
       motivo_parado: '', dt_parado: null, motorista_atual: cadMotorista, obs_documentos: cadObs
-    })
+    }).select().maybeSingle()
+
+    // ✅ Já entra no histórico também, se veio com motorista definido
+    if (novoCaminhao?.id && cadMotorista) {
+      await registrarTrocaMotoristaNoHistorico(novoCaminhao.id, cadPlaca.toUpperCase(), cadMotorista, '')
+    }
+
     await fetch_()
     setLoading(false); setMostraCad(false); showMsg('✅ Cadastrado!')
   }
@@ -499,6 +542,11 @@ export default function CaminhaoPage() {
                       <option value="">Sem motorista</option>
                       {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
                     </select>
+                    {editMotorista !== (sel.motorista_atual || '') && (
+                      <p className="text-[10px] text-blue-500 font-bold mt-1">
+                        🕐 Essa troca será registrada no histórico a partir de hoje.
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-1"><label className={LC}>Frota</label>
                     <select value={editFrota} onChange={e => setEditFrota(e.target.value)} className={IC}>
