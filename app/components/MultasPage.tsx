@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
+import { supabase } from '../services/supabase'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, AlertTriangle } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -68,6 +69,196 @@ async function lancarContaPagar(multa: any) {
   })
 }
 
+const anos = ['2024', '2025', '2026', '2027']
+
+// ✅ CORREÇÃO CRÍTICA: esse componente de formulário ANTES estava
+// definido DENTRO do MultasPage — isso é um erro clássico do React
+// que causa o formulário inteiro ser desmontado e remontado do zero
+// a cada letra digitada (porque a função é recriada em toda
+// renderização, e o React trata isso como um componente "novo").
+// Era exatamente esse o motivo do campo de valor "sair" — na
+// verdade ele estava perdendo o foco a cada tecla. Agora o
+// componente vive FORA do MultasPage, então mantém sua identidade
+// entre renderizações e o foco não se perde mais.
+function CamposComuns(p: {
+  motorista: string; setMotorista: (v: string) => void
+  placa: string; setPlaca: (v: string) => void
+  data: string; setData: (v: string) => void
+  hora: string; setHora: (v: string) => void
+  infracao: string; setInfracao: (v: string) => void
+  velPerm: string; setVelPerm: (v: string) => void
+  velReg: string; setVelReg: (v: string) => void
+  numero: string; setNumero: (v: string) => void
+  valor: string; setValor: (v: string) => void
+  status: string; setStatus: (v: string) => void
+  orgao: string; setOrgao: (v: string) => void
+  identificado: boolean; setIdentificado: (v: boolean) => void
+  valorNaoId: string; setValorNaoId: (v: string) => void
+  folhaMes: string; setFolhaMes: (v: string) => void
+  folhaAno: string; setFolhaAno: (v: string) => void
+  vencimento: string; setVencimento: (v: string) => void
+  pagamento: string; setPagamento: (v: string) => void
+  motoristas: Motorista[]; caminhoes: Caminhao[]
+  motoristaHistorico: string | null
+  onUsarMotoristaHistorico: () => void
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Motorista *</label>
+          <select value={p.motorista} onChange={e => {
+            const cam = p.caminhoes.find(c => c.motorista_atual === e.target.value)
+            p.setMotorista(e.target.value)
+            if (cam) p.setPlaca(cam.placa)
+          }} className={InputClass}>
+            <option value="">Selecione...</option>
+            {p.motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LabelClass}>Placa</label>
+          <select value={p.placa} onChange={e => p.setPlaca(e.target.value)} className={InputClass}>
+            <option value="">Selecione...</option>
+            {p.caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* ✅ Aviso de motorista histórico — mesmo padrão do Fechamento
+          de Viagem e Abastecimentos: se a data da infração bater com
+          um período em que o caminhão estava com outro motorista
+          (segundo o histórico), avisa e sugere trocar num clique. */}
+      {p.motoristaHistorico && (
+        <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-orange-700 font-bold">
+            🕐 Nessa data, esse caminhão estava com <strong>{p.motoristaHistorico}</strong>, não com {p.motorista || 'o motorista selecionado'}.
+          </p>
+          <button type="button" onClick={p.onUsarMotoristaHistorico}
+            className="shrink-0 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-all">
+            Usar {p.motoristaHistorico}
+          </button>
+        </div>
+      )}
+
+      {/* Motorista identificado */}
+      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+        <div className="flex items-center justify-between">
+          <label className={LabelClass}>Motorista identificado?</label>
+          <div className="flex gap-2">
+            <button onClick={() => p.setIdentificado(true)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${p.identificado ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+              SIM
+            </button>
+            <button onClick={() => p.setIdentificado(false)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${!p.identificado ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+              NÃO
+            </button>
+          </div>
+        </div>
+        {!p.identificado && (
+          <div className="mt-3">
+            <label className={LabelClass}>Valor de não identificação (R$)</label>
+            <input type="number" step="0.01" value={p.valorNaoId}
+              onChange={e => p.setValorNaoId(e.target.value)}
+              placeholder="0,00" className={InputClass} />
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Data da Infração</label>
+          <input type="date" value={p.data} onChange={e => p.setData(e.target.value)} className={InputClass} />
+        </div>
+        <div>
+          <label className={LabelClass}>Hora</label>
+          <input type="time" value={p.hora} onChange={e => p.setHora(e.target.value)} className={InputClass} />
+        </div>
+      </div>
+
+      <div>
+        <label className={LabelClass}>Infração (Motivo)</label>
+        <select value={p.infracao} onChange={e => p.setInfracao(e.target.value)} className={InputClass}>
+          <option value="">Selecione...</option>
+          {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
+        </select>
+      </div>
+
+      {isVelocidade(p.infracao) && (
+        <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LabelClass}>Velocidade Permitida (km/h)</label>
+              <input type="number" value={p.velPerm} onChange={e => p.setVelPerm(e.target.value)} placeholder="Ex: 80" className={InputClass} />
+            </div>
+            <div>
+              <label className={LabelClass}>Velocidade Registrada (km/h)</label>
+              <input type="number" value={p.velReg} onChange={e => p.setVelReg(e.target.value)} placeholder="Ex: 110" className={InputClass} />
+            </div>
+          </div>
+          {p.velPerm && p.velReg && (
+            <p className="text-xs text-yellow-700 font-medium">
+              Excesso: <span className="font-bold">{parseInt(p.velReg) - parseInt(p.velPerm)} km/h acima do limite</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Nº Auto de Infração</label>
+          <input value={p.numero} onChange={e => p.setNumero(e.target.value)} placeholder="Ex: 1DJ4817991" className={InputClass} />
+        </div>
+        <div>
+          <label className={LabelClass}>Valor da Multa (R$)</label>
+          <input type="number" step="0.01" value={p.valor} onChange={e => p.setValor(e.target.value)} placeholder="0,00" className={InputClass} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Órgão</label>
+          <select value={p.orgao} onChange={e => p.setOrgao(e.target.value)} className={InputClass}>
+            <option value="">Selecione...</option>
+            {ORGAOS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LabelClass}>Status</label>
+          <select value={p.status} onChange={e => p.setStatus(e.target.value)} className={InputClass}>
+            <option value="PENDENTE">PENDENTE</option>
+            <option value="PAGO">PAGO</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={LabelClass}>Vencimento</label>
+          <input type="date" value={p.vencimento} onChange={e => p.setVencimento(e.target.value)} className={InputClass} />
+        </div>
+        <div>
+          <label className={LabelClass}>Data de Pagamento</label>
+          <input type="date" value={p.pagamento} onChange={e => p.setPagamento(e.target.value)} className={InputClass} />
+        </div>
+      </div>
+
+      <div>
+        <label className={LabelClass}>Folha de Pagamento (desconto)</label>
+        <div className="grid grid-cols-2 gap-3 mt-1">
+          <select value={p.folhaMes} onChange={e => p.setFolhaMes(e.target.value)} className={InputClass.replace('mt-1 ', '')}>
+            {MESES.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+          </select>
+          <select value={p.folhaAno} onChange={e => p.setFolhaAno(e.target.value)} className={InputClass.replace('mt-1 ', '')}>
+            {anos.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function MultasPage() {
   const { perm } = useAuth()
   const [multas, setMultas] = useState<Multa[]>([])
@@ -122,6 +313,10 @@ export default function MultasPage() {
   const [editPagamento, setEditPagamento] = useState('')
   const [statusAnterior, setStatusAnterior] = useState('')
 
+  // ✅ NOVO: estado do motorista histórico sugerido (cad e edit)
+  const [cadMotoristaHistorico, setCadMotoristaHistorico]   = useState<string | null>(null)
+  const [editMotoristaHistorico, setEditMotoristaHistorico] = useState<string | null>(null)
+
   useEffect(() => { fetch_(); fetchMotoristas(); fetchCaminhoes() }, [])
 
   async function fetch_() {
@@ -153,6 +348,42 @@ export default function MultasPage() {
       setCaminhoes(Array.isArray(data) ? data : [])
     } catch {}
   }
+
+  // ✅ NOVO: mesmo padrão do Fechamento de Viagem e Abastecimentos —
+  // checa se, na data da infração, o caminhão estava com um
+  // motorista diferente do que está selecionado agora (a placa é
+  // achada pelo nome, já que aqui não guardamos caminhao_id direto).
+  async function checarMotoristaHistorico(placa: string, data: string): Promise<string | null> {
+    if (!placa || !data) return null
+    const cam = caminhoes.find(c => c.placa === placa)
+    if (!cam) return null
+    const { data: hist } = await supabase
+      .from('historico_motorista_caminhao')
+      .select('motorista_nome')
+      .eq('caminhao_id', (cam as any).id)
+      .lte('data_inicio', data)
+      .or(`data_fim.is.null,data_fim.gte.${data}`)
+      .order('data_inicio', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    return hist?.motorista_nome || null
+  }
+
+  useEffect(() => {
+    let ativo = true
+    checarMotoristaHistorico(cadPlaca, cadData).then(m => {
+      if (ativo) setCadMotoristaHistorico(m && m !== cadMotorista ? m : null)
+    })
+    return () => { ativo = false }
+  }, [cadPlaca, cadData, cadMotorista, caminhoes])
+
+  useEffect(() => {
+    let ativo = true
+    checarMotoristaHistorico(editPlaca, editData).then(m => {
+      if (ativo) setEditMotoristaHistorico(m && m !== editMotorista ? m : null)
+    })
+    return () => { ativo = false }
+  }, [editPlaca, editData, editMotorista, caminhoes])
 
   function resetCad() {
     setCadMotorista(''); setCadPlaca(''); setCadData(new Date().toISOString().split('T')[0])
@@ -292,158 +523,6 @@ export default function MultasPage() {
       )
     : multas
 
-  const anos = ['2024', '2025', '2026', '2027']
-
-  const CamposComuns = (p: {
-    motorista: string; setMotorista: any; placa: string; setPlaca: any
-    data: string; setData: any; hora: string; setHora: any
-    infracao: string; setInfracao: any; velPerm: string; setVelPerm: any
-    velReg: string; setVelReg: any; numero: string; setNumero: any
-    valor: string; setValor: any; status: string; setStatus: any
-    orgao: string; setOrgao: any; identificado: boolean; setIdentificado: any
-    valorNaoId: string; setValorNaoId: any; folhaMes: string; setFolhaMes: any
-    folhaAno: string; setFolhaAno: any; vencimento: string; setVencimento: any
-    pagamento: string; setPagamento: any
-  }) => (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={LabelClass}>Motorista *</label>
-          <select value={p.motorista} onChange={e => {
-            const cam = caminhoes.find(c => c.motorista_atual === e.target.value)
-            p.setMotorista(e.target.value)
-            if (cam) p.setPlaca(cam.placa)
-          }} className={InputClass}>
-            <option value="">Selecione...</option>
-            {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={LabelClass}>Placa</label>
-          <select value={p.placa} onChange={e => p.setPlaca(e.target.value)} className={InputClass}>
-            <option value="">Selecione...</option>
-            {caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* Motorista identificado */}
-      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-        <div className="flex items-center justify-between">
-          <label className={LabelClass}>Motorista identificado?</label>
-          <div className="flex gap-2">
-            <button onClick={() => p.setIdentificado(true)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${p.identificado ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
-              SIM
-            </button>
-            <button onClick={() => p.setIdentificado(false)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${!p.identificado ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
-              NÃO
-            </button>
-          </div>
-        </div>
-        {!p.identificado && (
-          <div className="mt-3">
-            <label className={LabelClass}>Valor de não identificação (R$)</label>
-            <input type="number" step="0.01" value={p.valorNaoId}
-              onChange={e => p.setValorNaoId(e.target.value)}
-              placeholder="0,00" className={InputClass} />
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={LabelClass}>Data da Infração</label>
-          <input type="date" value={p.data} onChange={e => p.setData(e.target.value)} className={InputClass} />
-        </div>
-        <div>
-          <label className={LabelClass}>Hora</label>
-          <input type="time" value={p.hora} onChange={e => p.setHora(e.target.value)} className={InputClass} />
-        </div>
-      </div>
-
-      <div>
-        <label className={LabelClass}>Infração (Motivo)</label>
-        <select value={p.infracao} onChange={e => p.setInfracao(e.target.value)} className={InputClass}>
-          <option value="">Selecione...</option>
-          {INFRACOES.map(i => <option key={i} value={i}>{i}</option>)}
-        </select>
-      </div>
-
-      {isVelocidade(p.infracao) && (
-        <div className="p-3 bg-yellow-50 rounded-xl border border-yellow-100 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={LabelClass}>Velocidade Permitida (km/h)</label>
-              <input type="number" value={p.velPerm} onChange={e => p.setVelPerm(e.target.value)} placeholder="Ex: 80" className={InputClass} />
-            </div>
-            <div>
-              <label className={LabelClass}>Velocidade Registrada (km/h)</label>
-              <input type="number" value={p.velReg} onChange={e => p.setVelReg(e.target.value)} placeholder="Ex: 110" className={InputClass} />
-            </div>
-          </div>
-          {p.velPerm && p.velReg && (
-            <p className="text-xs text-yellow-700 font-medium">
-              Excesso: <span className="font-bold">{parseInt(p.velReg) - parseInt(p.velPerm)} km/h acima do limite</span>
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={LabelClass}>Nº Auto de Infração</label>
-          <input value={p.numero} onChange={e => p.setNumero(e.target.value)} placeholder="Ex: 1DJ4817991" className={InputClass} />
-        </div>
-        <div>
-          <label className={LabelClass}>Valor da Multa (R$)</label>
-          <input type="number" step="0.01" value={p.valor} onChange={e => p.setValor(e.target.value)} placeholder="0,00" className={InputClass} />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={LabelClass}>Órgão</label>
-          <select value={p.orgao} onChange={e => p.setOrgao(e.target.value)} className={InputClass}>
-            <option value="">Selecione...</option>
-            {ORGAOS.map(o => <option key={o} value={o}>{o}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className={LabelClass}>Status</label>
-          <select value={p.status} onChange={e => p.setStatus(e.target.value)} className={InputClass}>
-            <option value="PENDENTE">PENDENTE</option>
-            <option value="PAGO">PAGO</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={LabelClass}>Vencimento</label>
-          <input type="date" value={p.vencimento} onChange={e => p.setVencimento(e.target.value)} className={InputClass} />
-        </div>
-        <div>
-          <label className={LabelClass}>Data de Pagamento</label>
-          <input type="date" value={p.pagamento} onChange={e => p.setPagamento(e.target.value)} className={InputClass} />
-        </div>
-      </div>
-
-      <div>
-        <label className={LabelClass}>Folha de Pagamento (desconto)</label>
-        <div className="grid grid-cols-2 gap-3 mt-1">
-          <select value={p.folhaMes} onChange={e => p.setFolhaMes(e.target.value)} className={InputClass.replace('mt-1 ', '')}>
-            {MESES.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
-          </select>
-          <select value={p.folhaAno} onChange={e => p.setFolhaAno(e.target.value)} className={InputClass.replace('mt-1 ', '')}>
-            {anos.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </div>
-      </div>
-    </div>
-  )
-
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
       <button onClick={() => { setMostraCad(false); resetCad() }} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
@@ -469,6 +548,9 @@ export default function MultasPage() {
           folhaAno={cadFolhaAno} setFolhaAno={setCadFolhaAno}
           vencimento={cadVencimento} setVencimento={setCadVencimento}
           pagamento={cadPagamento} setPagamento={setCadPagamento}
+          motoristas={motoristas} caminhoes={caminhoes}
+          motoristaHistorico={cadMotoristaHistorico}
+          onUsarMotoristaHistorico={() => { if (cadMotoristaHistorico) { setCadMotorista(cadMotoristaHistorico); setCadMotoristaHistorico(null) } }}
         />
         <div className="flex gap-2 pt-4">
           <button onClick={cadastrar} disabled={loading || !cadMotorista}
@@ -526,6 +608,9 @@ export default function MultasPage() {
                 folhaAno={editFolhaAno} setFolhaAno={setEditFolhaAno}
                 vencimento={editVencimento} setVencimento={setEditVencimento}
                 pagamento={editPagamento} setPagamento={setEditPagamento}
+                motoristas={motoristas} caminhoes={caminhoes}
+                motoristaHistorico={editMotoristaHistorico}
+                onUsarMotoristaHistorico={() => { if (editMotoristaHistorico) { setEditMotorista(editMotoristaHistorico); setEditMotoristaHistorico(null) } }}
               />
               <div className="flex gap-2 pt-4">
                 <button onClick={salvar} disabled={loading}
