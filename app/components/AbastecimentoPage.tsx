@@ -4,6 +4,7 @@ import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download, X } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
@@ -305,39 +306,54 @@ export default function AbastecimentoPage() {
 
   const totalGeral = useMemo(() => filtrados.reduce((s, a) => s + (a.total||0), 0), [filtrados])
 
-  function csvValor(valor: unknown) {
-    return `"${String(valor ?? '').replace(/"/g, '""')}"`
-  }
-
-  function exportarCSV() {
+  function exportarExcel() {
     if (filtrados.length === 0) {
       showMsg('⚠️ Não há registros para exportar com os filtros atuais.')
       return
     }
 
-    const cabecalho = [
-      'Data', 'Placa', 'Motorista', 'Posto', 'CNPJ Posto', 'Estado', 'Cidade',
-      'Litros Combustível', 'Valor Litro Combustível', 'Litros ARLA', 'Valor Litro ARLA',
-      'KM', 'Desconto', 'Total', 'Observações',
+    const dados = filtrados.map(a => ({
+      Data: a.data ? new Date(`${a.data}T00:00:00`) : null,
+      Placa: a.caminhao_placa || '',
+      Motorista: a.motorista || '',
+      Posto: a.posto || '',
+      'CNPJ Posto': a.cnpj_posto || '',
+      Estado: a.estado || '',
+      Cidade: a.cidade || '',
+      'Litros Combustível': Number(a.litros_combustivel || 0),
+      'Valor Litro Combustível': Number(a.valor_litro_combustivel || 0),
+      'Litros ARLA': Number(a.litros_arla || 0),
+      'Valor Litro ARLA': Number(a.valor_litro_arla || 0),
+      KM: Number(a.km || 0),
+      Desconto: Number(a.desconto || 0),
+      Total: Number(a.total || 0),
+      Observações: a.obs || '',
+    }))
+
+    const planilha = XLSX.utils.json_to_sheet(dados)
+    const ultimaLinha = dados.length + 1
+    planilha['!cols'] = [
+      { wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 30 }, { wch: 18 },
+      { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 14 },
+      { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 42 },
     ]
-    const linhas = filtrados.map(a => [
-      fmtData(a.data), a.caminhao_placa, a.motorista, a.posto, a.cnpj_posto,
-      a.estado, a.cidade, a.litros_combustivel, a.valor_litro_combustivel,
-      a.litros_arla, a.valor_litro_arla, a.km, a.desconto, a.total, a.obs,
-    ])
-    const csv = [cabecalho, ...linhas]
-      .map(linha => linha.map(csvValor).join(';'))
-      .join('\\r\\n')
-    const blob = new Blob(['\\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `abastecimentos_${new Date().toISOString().split('T')[0]}.csv`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    showMsg(`✅ CSV exportado com ${filtrados.length} registro(s).`)
+    planilha['!autofilter'] = { ref: `A1:O${ultimaLinha}` }
+
+    for (let linha = 2; linha <= ultimaLinha; linha++) {
+      const celulaData = planilha[`A${linha}`]
+      if (celulaData?.v instanceof Date) celulaData.z = 'dd/mm/yyyy'
+      for (const coluna of ['H', 'I', 'J', 'K', 'M', 'N']) {
+        const celula = planilha[`${coluna}${linha}`]
+        if (celula) celula.z = '#,##0.00'
+      }
+      const celulaKm = planilha[`L${linha}`]
+      if (celulaKm) celulaKm.z = '#,##0'
+    }
+
+    const livro = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(livro, planilha, 'Abastecimentos')
+    XLSX.writeFile(livro, `abastecimentos_${new Date().toISOString().split('T')[0]}.xlsx`)
+    showMsg(`✅ Excel exportado com ${filtrados.length} registro(s).`)
   }
 
   async function selecionar(a: Abastecimento) {
@@ -619,9 +635,9 @@ export default function AbastecimentoPage() {
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition">
             <Download size={16}/> Importar Profrotas
           </button>
-          <button onClick={exportarCSV} disabled={filtrados.length === 0}
+          <button onClick={exportarExcel} disabled={filtrados.length === 0}
             className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-            <Download size={16}/> CSV
+            <Download size={16}/> Excel
           </button>
           <button onClick={() => setMostraCad(true)}
             className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase hover:bg-red-700 transition">
