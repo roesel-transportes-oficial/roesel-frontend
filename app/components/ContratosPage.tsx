@@ -286,8 +286,14 @@ export default function ContratosPage() {
       }
 
       if (perm !== 'demo') {
+        // ✅ O banco exige NULL pra campo de data vazio (não aceita
+        // string vazia "" — dá erro "invalid input syntax for type
+        // date"). Por isso manda um objeto separado pro Supabase,
+        // enquanto o estado local (dadosAtualizados) continua com
+        // string vazia pra bater com o tipo do TypeScript.
+        const dadosParaBanco = { ...dadosAtualizados, dt_pagamento: editDtPagamento || null }
         const { error } = await comTimeout(
-          supabase.from('contratos').update(dadosAtualizados).eq('id', sel.id),
+          supabase.from('contratos').update(dadosParaBanco).eq('id', sel.id),
           25000
         )
         if (error) throw error
