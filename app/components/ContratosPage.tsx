@@ -160,13 +160,43 @@ export default function ContratosPage() {
     }
   }
 
-  function handleSelectMotorista(nome: string) {
+  // ✅ CORRIGIDO: antes pegava o caminhão ATUAL do motorista
+  // (motoristas.caminhao_id), o que está errado pra contratos
+  // antigos — se o motorista já trocou de caminhão desde então, vinha
+  // a placa errada. Agora consulta o historico_motorista_caminhao
+  // pela DATA do contrato, achando o caminhão que ele realmente
+  // dirigia naquele dia. Só cai pro caminhão atual se não achar nada
+  // no histórico pra aquela data (ex: contrato de hoje mesmo).
+  async function handleSelectMotorista(nome: string, dataContrato?: string) {
     setEditMotorista(nome)
+    if (!nome) { setEditPlaca(''); return }
+
+    const dataParaBuscar = dataContrato !== undefined ? dataContrato : editData
+
+    if (dataParaBuscar) {
+      const { data: hist } = await supabase
+        .from('historico_motorista_caminhao')
+        .select('caminhao_placa')
+        .eq('motorista_nome', nome)
+        .lte('data_inicio', dataParaBuscar)
+        .or(`data_fim.is.null,data_fim.gte.${dataParaBuscar}`)
+        .order('data_inicio', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (hist?.caminhao_placa) {
+        setEditPlaca(hist.caminhao_placa)
+        return
+      }
+    }
+
+    // Sem histórico pra essa data — usa o caminhão atual do motorista como último recurso
     const mot = motoristas.find(m => m.nome === nome)
     if (mot?.caminhao_id) {
-      supabase.from('caminhoes').select('placa').eq('id', mot.caminhao_id).maybeSingle().then(({ data }) => {
-        if (data) setEditPlaca(data.placa)
-      })
+      const { data } = await supabase.from('caminhoes').select('placa').eq('id', mot.caminhao_id).maybeSingle()
+      if (data) setEditPlaca(data.placa)
+    } else {
+      setEditPlaca('')
     }
   }
 
@@ -204,38 +234,44 @@ export default function ContratosPage() {
   function voltar() { setSel(null); setConfirmExcluir(false) }
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
 
+  // ✅ CORRIGIDO: antes, salvar() e excluir() esperavam um fetch_()
+  // completo (busca TODOS os contratos de novo) antes de mostrar
+  // qualquer resultado — com 130+ contratos novos da importação
+  // AUTOPORT, isso ficou visivelmente lento. Agora atualiza a lista
+  // que já está na tela diretamente (sem esperar o servidor confirmar
+  // de novo), então a resposta é instantânea. O servidor já foi
+  // atualizado de verdade antes disso — só não perdemos tempo
+  // buscando tudo de novo pra mostrar o que já sabemos que mudou.
   async function salvar() {
     if (!sel) return
     setLoading(true)
     try {
-      if (perm !== 'demo') {
-        // Direto no Supabase — sem passar pelo FastAPI
-        const { error } = await supabase
-          .from('contratos')
-          .update({
-            data: editData,
-            cliente: editCliente,
-            cliente_nome_completo: editCliente,
-            cnpj: editCnpj.replace(/\D/g, ''),
-            motorista: editMotorista,
-            placa: editPlaca,
-            placa_carreta: editPlacaCarreta,
-            frota: editFrota,
-            origem: editOrigem,
-            destino: editDestino,
-            fat_bruto: parseFloat(editFatBruto) || 0,
-            qtd_veiculos: parseInt(editQtdVeiculos) || 0,
-            chapa: parseInt(editChapa) || null,
-            status: editStatus,
-            obs: editObs,
-            adiantamento_pago: editAdiantamentoPago,
-            dt_pagamento: editDtPagamento || null,
-          })
-          .eq('id', sel.id)
+      const dadosAtualizados = {
+        data: editData,
+        cliente: editCliente,
+        cliente_nome_completo: editCliente,
+        cnpj: editCnpj.replace(/\D/g, ''),
+        motorista: editMotorista,
+        placa: editPlaca,
+        placa_carreta: editPlacaCarreta,
+        frota: editFrota,
+        origem: editOrigem,
+        destino: editDestino,
+        fat_bruto: parseFloat(editFatBruto) || 0,
+        qtd_veiculos: parseInt(editQtdVeiculos) || 0,
+        chapa: parseInt(editChapa) || null,
+        status: editStatus,
+        obs: editObs,
+        adiantamento_pago: editAdiantamentoPago,
+        dt_pagamento: editDtPagamento || null,
+      }
 
+      if (perm !== 'demo') {
+        const { error } = await supabase.from('contratos').update(dadosAtualizados).eq('id', sel.id)
         if (error) throw error
       }
-      await fetch_()
+
+      setContratos(prev => prev.map(c => c.id === sel.id ? { ...c, ...dadosAtualizados } : c))
       showMsg('✅ Atualizado!')
       voltar()
     } catch (error: any) {
@@ -254,7 +290,7 @@ export default function ContratosPage() {
         const { error } = await supabase.from('contratos').delete().eq('id', sel.id)
         if (error) throw error
       }
-      await fetch_()
+      setContratos(prev => prev.filter(c => c.id !== sel.id))
       showMsg('Contrato excluído.')
       voltar()
     } catch (error: any) {
@@ -325,7 +361,7 @@ export default function ContratosPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className={LabelClass}><Calendar size={12}/> Data do Contrato</label>
-                    <input type="date" value={editData} onChange={e => setEditData(e.target.value)} className={InputClass} />
+                    <input type="date" value={editData} onChange={e => { setEditData(e.target.value); if (editMotorista) handleSelectMotorista(editMotorista, e.target.value) }} className={InputClass} />
                   </div>
                   <div className="space-y-1">
                     <label className={LabelClass}><Clock size={12}/> Status</label>
