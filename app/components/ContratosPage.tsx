@@ -259,7 +259,7 @@ export default function ContratosPage() {
         destino: editDestino,
         fat_bruto: parseFloat(editFatBruto) || 0,
         qtd_veiculos: parseInt(editQtdVeiculos) || 0,
-        chapa: parseInt(editChapa) || null,
+        chapa: parseInt(editChapa) || 0,
         status: editStatus,
         obs: editObs,
         adiantamento_pago: editAdiantamentoPago,
