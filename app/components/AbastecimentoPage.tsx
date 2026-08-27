@@ -98,6 +98,11 @@ export default function AbastecimentoPage() {
   const [cadViagemId, setCadViagemId]               = useState('')
   const [cadDesconto, setCadDesconto]               = useState('')
 
+  // ✅ NOVO: motorista histórico sugerido, quando a data + caminhão
+  // selecionados batem com um período diferente do motorista atual.
+  const [cadMotoristaHistorico, setCadMotoristaHistorico]   = useState<string | null>(null)
+  const [editMotoristaHistorico, setEditMotoristaHistorico] = useState<string | null>(null)
+
   useEffect(() => {
     Promise.all([
       fetch_(),
@@ -128,6 +133,41 @@ export default function AbastecimentoPage() {
       setViagensCaminhao(Array.isArray(data) ? data : [])
     } catch { setViagensCaminhao([]) }
   }
+
+  // ✅ NOVO: mesmo padrão do Fechamento de Viagem — checa se, na data
+  // do abastecimento, o caminhão estava com um motorista DIFERENTE do
+  // que está preenchido agora. Isso ajuda quando você registra um
+  // abastecimento retroativo (de meses atrás) e o motorista já trocou
+  // de caminhão desde então.
+  async function checarMotoristaHistorico(caminhaoId: string, data: string): Promise<string | null> {
+    if (!caminhaoId || !data) return null
+    const { data: hist } = await supabase
+      .from('historico_motorista_caminhao')
+      .select('motorista_nome')
+      .eq('caminhao_id', caminhaoId)
+      .lte('data_inicio', data)
+      .or(`data_fim.is.null,data_fim.gte.${data}`)
+      .order('data_inicio', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    return hist?.motorista_nome || null
+  }
+
+  useEffect(() => {
+    let ativo = true
+    checarMotoristaHistorico(cadCaminhaoId, cadData).then(m => {
+      if (ativo) setCadMotoristaHistorico(m && m !== cadMotorista ? m : null)
+    })
+    return () => { ativo = false }
+  }, [cadCaminhaoId, cadData, cadMotorista])
+
+  useEffect(() => {
+    let ativo = true
+    checarMotoristaHistorico(editCaminhaoId, editData).then(m => {
+      if (ativo) setEditMotoristaHistorico(m && m !== editMotorista ? m : null)
+    })
+    return () => { ativo = false }
+  }, [editCaminhaoId, editData, editMotorista])
 
   // ── Importar Profrotas ───────────────────────────────────────────────
   async function importarProfrotas() {
@@ -411,6 +451,23 @@ export default function AbastecimentoPage() {
           </select>
         </div>
         {motorista && <div className="bg-blue-50 rounded-xl p-3"><p className="text-xs text-blue-600 font-medium">Motorista: <span className="text-blue-800">{motorista}</span></p></div>}
+        {(() => {
+          const motoristaHist = modo === 'cad' ? cadMotoristaHistorico : editMotoristaHistorico
+          if (!motoristaHist) return null
+          return (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+              <p className="text-xs text-orange-700 font-bold">
+                🕐 Nessa data, esse caminhão estava com <strong>{motoristaHist}</strong>, não com {motorista || 'o motorista atual'}.
+              </p>
+              <button type="button" onClick={() => {
+                if (modo === 'cad') { setCadMotorista(motoristaHist); setCadMotoristaHistorico(null) }
+                else { setEditMotorista(motoristaHist); setEditMotoristaHistorico(null) }
+              }} className="shrink-0 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-all">
+                Usar {motoristaHist}
+              </button>
+            </div>
+          )
+        })()}
         <div className="border-t border-gray-100 pt-3">
           <p className={LC + " mb-3"}>Combustível</p>
           <div className="grid grid-cols-2 gap-3">
