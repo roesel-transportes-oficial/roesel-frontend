@@ -37,6 +37,7 @@ export default function ContratosPage() {
   const [loadingLista, setLoadingLista] = useState(false)
   const [msg, setMsg] = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
+  const [filtroContrato, setFiltroContrato] = useState('')
   const [filtroMotorista, setFiltroMotorista] = useState('')
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
   const [filtroInicio, setFiltroInicio] = useState('')
@@ -188,6 +189,8 @@ export default function ContratosPage() {
 
   const filtrados = useMemo(() => contratos
     .filter(c => {
+        const numeroBusca = filtroContrato.trim().toLowerCase()
+        if (numeroBusca && !String(c.contrato || '').toLowerCase().includes(numeroBusca)) return false
         if (filtroMotorista && c.motorista !== filtroMotorista) return false
         if (filtroEmpresa && empresaDoContrato(c) !== filtroEmpresa) return false
         if (filtroInicio && c.data < filtroInicio) return false
@@ -195,7 +198,7 @@ export default function ContratosPage() {
       return true
     })
     .sort((a, b) => a.data.localeCompare(b.data)),
-    [contratos, filtroMotorista, filtroEmpresa, filtroInicio, filtroFim]
+    [contratos, filtroContrato, filtroMotorista, filtroEmpresa, filtroInicio, filtroFim]
   )
 
   const empresasUnicas = useMemo(() =>
@@ -622,6 +625,14 @@ export default function ContratosPage() {
                 <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Gerencie todos os contratos de fretes</p>
               </div>
               <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto flex-wrap">
+                <input
+                  type="search"
+                  value={filtroContrato}
+                  onChange={e => setFiltroContrato(e.target.value)}
+                  placeholder="Buscar nº do contrato..."
+                  aria-label="Buscar pelo número do contrato"
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white md:w-56"
+                />
                 <select value={filtroMotorista} onChange={e => setFiltroMotorista(e.target.value)}
                   className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
                   <option value="">Todos os motoristas</option>
