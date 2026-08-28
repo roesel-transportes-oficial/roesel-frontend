@@ -18,7 +18,6 @@ import FechamentoViagemPage from './components/FechamentoViagemPage'
 import ContasPagarPage from './components/ContasPagarPage'
 import CtePage from './components/CtePage'
 import NotasDiversasPage from './components/NotasDiversasPage'
-import HistoricoMotoristaCaminhaoPage from './components/HistoricoMotoristaCaminhaoPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
@@ -90,7 +89,6 @@ function renderizarAba(aba: string, setAba: (novaAba: string) => void) {
     case 'contas_pagar': return <ContasPagarPage />
     case 'cte': return <CtePage />
     case 'notas': return <NotasDiversasPage />
-    case 'historico': return <HistoricoMotoristaCaminhaoPage />
     case 'novo': return <NovoContratoPage setAba={setAba} />
     case 'fechamento': return <FechamentoViagemPage setAba={setAba} />
     case 'usuarios': return <Placeholder title="Usuários" icon="👥" />

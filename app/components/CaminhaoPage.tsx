@@ -23,6 +23,10 @@ interface Manutencao {
   motorista_nome?: string | null
 }
 interface Licenca { id: string; caminhao_id: string; estado: string; vencimento: string }
+interface HistoricoMotorista {
+  id: string; caminhao_id: string; caminhao_placa: string
+  motorista_nome: string; data_inicio: string; data_fim: string | null
+}
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 const ESTADOS_NOMES: Record<string, string> = {
@@ -65,8 +69,9 @@ export default function CaminhaoPage() {
   const [sel, setSel]             = useState<Caminhao | null>(null)
   const [selIdAberto, setSelIdAberto] = useDraftPersistente<string>('caminhao_sel_id', '')
   const [mostraCad, setMostraCad] = useState(false)
-  const [aba, setAba]             = useState<'info' | 'licencas'>('info')
+  const [aba, setAba]             = useState<'info' | 'licencas' | 'historico'>('info')
   const [licencas, setLicencas]   = useState<Licenca[]>([])
+  const [historicoMotoristas, setHistoricoMotoristas] = useState<HistoricoMotorista[]>([])
 
   const [editPlaca, setEditPlaca]               = useState('')
   const [editPlacaCarreta, setEditPlacaCarreta] = useState('')
@@ -159,6 +164,15 @@ export default function CaminhaoPage() {
     if (data) setLicencas(data)
   }
 
+  async function fetchHistoricoMotoristas(caminhaoId: string) {
+    const { data } = await supabase
+      .from('historico_motorista_caminhao')
+      .select('id, caminhao_id, caminhao_placa, motorista_nome, data_inicio, data_fim')
+      .eq('caminhao_id', caminhaoId)
+      .order('data_inicio', { ascending: false })
+    setHistoricoMotoristas(data || [])
+  }
+
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
 
   const filtrados = useMemo(() => {
@@ -181,7 +195,7 @@ export default function CaminhaoPage() {
     setEditFrota(c.frota || ''); setEditObs(c.obs_documentos || '')
     setEditVencCronotacografo(c.vencimento_cronotacografo || '')
     setEditVencPermisso(c.vencimento_permisso || '')
-    setAba('info'); fetchLicencas(c.id)
+    setAba('info'); fetchLicencas(c.id); fetchHistoricoMotoristas(c.id)
   }
 
   // ✅ Mesmo padrão do MotoristaPage — se a aba recarregar sozinha
@@ -536,6 +550,10 @@ export default function CaminhaoPage() {
                   className={`pb-4 text-xs font-black uppercase tracking-widest transition-all ${aba === 'licencas' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-400'}`}>
                   Documentos
                 </button>
+                <button onClick={() => setAba('historico')}
+                  className={`pb-4 text-xs font-black uppercase tracking-widest transition-all ${aba === 'historico' ? 'text-red-600 border-b-2 border-red-600' : 'text-gray-400'}`}>
+                  Histórico de Motoristas
+                </button>
               </div>
 
               {aba === 'info' ? (
@@ -576,7 +594,7 @@ export default function CaminhaoPage() {
                   )}
                   <div className="space-y-1 md:col-span-3"><label className={LC}>Observações</label><textarea value={editObs} onChange={e => setEditObs(e.target.value)} className={IC + " h-20 resize-none"}/></div>
                 </div>
-              ) : (
+              ) : aba === 'licencas' ? (
                 <div className="space-y-6">
                   {/* ── Cronotacógrafo e Permisso: vencimento único por caminhão ── */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -636,6 +654,42 @@ export default function CaminhaoPage() {
                         </div>
                       )
                     })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Histórico de Motoristas</h3>
+                        <p className="text-xs text-gray-500 mt-1">Motoristas vinculados ao caminhão ao longo do tempo.</p>
+                      </div>
+                      <span className="text-xs font-bold text-gray-400">{historicoMotoristas.length} registro(s)</span>
+                    </div>
+                    {historicoMotoristas.length === 0 ? (
+                      <div className="bg-white rounded-xl p-6 text-center text-sm text-gray-400">
+                        Nenhum motorista registrado para este caminhão.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {historicoMotoristas.map(h => (
+                          <div key={h.id} className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-black text-gray-900">{h.motorista_nome || 'Sem motorista'}</p>
+                              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Caminhão {h.caminhao_placa || editPlaca}</p>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="font-bold text-gray-600">{fmtData(h.data_inicio)}</span>
+                              <span className="text-gray-300">→</span>
+                              <span className={`font-bold ${h.data_fim ? 'text-gray-600' : 'text-green-600'}`}>
+                                {fmtData(h.data_fim || '')}
+                              </span>
+                              {!h.data_fim && <span className="ml-1 text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-lg font-black uppercase">Atual</span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

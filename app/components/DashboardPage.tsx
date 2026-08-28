@@ -60,10 +60,10 @@ export default function DashboardPage() {
   const deFerias = motoristas.filter((m: any) => m.de_ferias)
   const parados = caminhoes.filter((c: any) => c.status !== 'rodando')
 
-  const alertasVenc: { nome: string; campo: string; dias: number; status: string; tipo: 'motorista' | 'caminhao' }[] = []
+  const alertasVenc: { nome: string; campo: string; data: string; dias: number; status: string; tipo: 'motorista' | 'caminhao' }[] = []
 
   // ── Documentos do motorista ──
-  motoristas.filter((m: any) => m.ativo).forEach((m: any) => {
+  motoristas.forEach((m: any) => {
     const campos = [
       { label: 'CNH', data: m.vencimento_cnh },
       { label: 'Permisso', data: m.vencimento_permisso },
@@ -72,10 +72,11 @@ export default function DashboardPage() {
     ]
     campos.forEach(c => {
       const s = vencStatus(c.data)
-      if (s && s !== 'ok') {
+      if (s) {
         alertasVenc.push({
           nome: m.nome,
           campo: c.label,
+          data: c.data,
           dias: diasParaVencer(c.data) || 0,
           status: s,
           tipo: 'motorista',
@@ -92,10 +93,11 @@ export default function DashboardPage() {
     ]
     campos.forEach(campo => {
       const s = vencStatus(campo.data)
-      if (s && s !== 'ok') {
+      if (s) {
         alertasVenc.push({
           nome: c.placa,
           campo: campo.label,
+          data: campo.data,
           dias: diasParaVencer(campo.data) || 0,
           status: s,
           tipo: 'caminhao',
@@ -172,35 +174,43 @@ export default function DashboardPage() {
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <AlertTriangle size={16} className="text-amber-500" />
-            <h2 className="font-semibold text-gray-800 text-sm">Alertas de vencimento</h2>
+            <h2 className="font-semibold text-gray-800 text-sm">Vencimentos de caminhões e motoristas</h2>
+            <span className="ml-auto text-xs font-semibold text-gray-400">{alertasVenc.length}</span>
           </div>
           {alertasVenc.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">Nenhum vencimento próximo</p>
+            <p className="text-sm text-gray-400 text-center py-4">Nenhum vencimento cadastrado</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
               {alertasVenc.map((a, i) => (
                 <div key={i} className={`flex items-center justify-between p-3 rounded-xl text-sm ${
                   a.status === 'vencido' ? 'bg-red-50' :
-                  a.status === 'critico' ? 'bg-orange-50' : 'bg-yellow-50'
+                  a.status === 'critico' ? 'bg-orange-50' :
+                  a.status === 'alerta' ? 'bg-yellow-50' : 'bg-green-50'
                 }`}>
                   <div>
                     <p className={`font-medium text-xs flex items-center gap-1 ${
                       a.status === 'vencido' ? 'text-red-700' :
-                      a.status === 'critico' ? 'text-orange-700' : 'text-yellow-700'
+                      a.status === 'critico' ? 'text-orange-700' :
+                      a.status === 'alerta' ? 'text-yellow-700' : 'text-green-700'
                     }`}>
-                      {a.tipo === 'caminhao' && '🚛 '}{a.nome}
+                      {a.tipo === 'caminhao' ? '🚛 ' : '👤 '}{a.nome}
                     </p>
                     <p className={`text-xs ${
                       a.status === 'vencido' ? 'text-red-500' :
-                      a.status === 'critico' ? 'text-orange-500' : 'text-yellow-600'
+                      a.status === 'critico' ? 'text-orange-500' :
+                      a.status === 'alerta' ? 'text-yellow-600' : 'text-green-600'
                     }`}>{a.campo}</p>
                   </div>
-                  <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${
-                    a.status === 'vencido' ? 'bg-red-100 text-red-700' :
-                    a.status === 'critico' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'
-                  }`}>
-                    {a.status === 'vencido' ? `${Math.abs(a.dias)}d atrás` : `${a.dias}d`}
-                  </span>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${
+                      a.status === 'vencido' ? 'bg-red-100 text-red-700' :
+                      a.status === 'critico' ? 'bg-orange-100 text-orange-700' :
+                      a.status === 'alerta' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
+                    }`}>
+                      {a.status === 'vencido' ? `${Math.abs(a.dias)}d atrás` : `${a.dias}d`}
+                    </span>
+                    <span className="text-[10px] text-gray-500">{new Date(a.data + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                  </div>
                 </div>
               ))}
             </div>
