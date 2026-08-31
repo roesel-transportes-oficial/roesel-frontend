@@ -13,7 +13,6 @@ import MultasPage from './components/MultasPage'
 import AvariasPage from './components/AvariasPage'
 import PremiosPage from './components/PremiosPage'
 import ViagemPage from './components/ViagemPage'
-import FeriasPage from './components/FeriasPage'
 import FechamentoViagemPage from './components/FechamentoViagemPage'
 import ContasPagarPage from './components/ContasPagarPage'
 import CtePage from './components/CtePage'
@@ -78,7 +77,6 @@ function renderizarAba(aba: string, setAba: (novaAba: string) => void) {
     case 'motorista': return <MotoristaPage />
     case 'caminhao': return <CaminhaoPage />
     case 'viagens': return <ViagemPage />
-    case 'ferias': return <FeriasPage />
     case 'clientes': return <ClientePage />
     case 'abastecimento': return <AbastecimentoPage />
     case 'fornecedor': return <FornecedorPage />
