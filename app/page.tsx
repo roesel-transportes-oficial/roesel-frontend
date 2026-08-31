@@ -2,6 +2,7 @@
 
 import ContratosPage from './components/ContratosPage'
 import MotoristaPage from './components/MotoristaPage'
+import FeriasPage from './components/FeriasPage'
 import NovoContratoPage from './components/NovoContratoPage'
 import CaminhaoPage from './components/CaminhaoPage'
 import DashboardPage from './components/DashboardPage'
@@ -75,6 +76,7 @@ function renderizarAba(aba: string, setAba: (novaAba: string) => void) {
     case 'dashboard': return <DashboardPage />
     case 'contratos': return <ContratosPage />
     case 'motorista': return <MotoristaPage />
+    case 'ferias': return <FeriasPage />
     case 'caminhao': return <CaminhaoPage />
     case 'viagens': return <ViagemPage />
     case 'clientes': return <ClientePage />

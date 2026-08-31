@@ -18,8 +18,18 @@ interface Motorista { id: string; nome: string; cpf?: string; caminhao_id?: stri
 interface Cliente { id: string; nome: string; cnpj: string }
 interface Carreta { id: string; placa: string }
 
+function nomeEmpresaSemIdentificador(valor: string) {
+  return (valor || '')
+    // Remove CNPJ quando ele vier junto do texto da empresa.
+    .replace(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/g, '')
+    // Remove código numérico no início, como "819-".
+    .replace(/^\s*\d+\s*[-–—:]\s*/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 function empresaDoContrato(contrato: Contrato) {
-  return contrato.cliente_nome_completo || contrato.cliente || ''
+  return nomeEmpresaSemIdentificador(contrato.cliente_nome_completo || contrato.cliente || '')
 }
 
 const InputClass = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"

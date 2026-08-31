@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
-import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, User, AlertTriangle, Clock, History } from 'lucide-react'
+import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, User, AlertTriangle, Clock } from 'lucide-react'
 
 interface Motorista {
   id: string; nome: string; cpf: string; rg: string
@@ -18,10 +18,6 @@ interface Motorista {
 
 interface Caminhao { id: string; placa: string; modelo: string; motorista_atual: string }
 
-interface HistoricoFerias {
-  id: string; motorista_nome: string; substituto_nome: string
-  caminhao_placa: string; ferias_inicio: string; ferias_fim: string; created_at: string
-}
 
 const MOTIVOS_AFASTAMENTO = ['Atestado médico', 'Licença', 'Suspensão', 'Acidente de trabalho', 'Outro']
 
@@ -101,8 +97,6 @@ export default function MotoristaPage() {
   const [sel, setSel] = useState<Motorista | null>(null)
   const [selIdAberto, setSelIdAberto] = useDraftPersistente<string>('motorista_sel_id', '')
   const [mostraCad, setMostraCad] = useState(false)
-  const [mostraHistorico, setMostraHistorico] = useState(false)
-  const [historico, setHistorico] = useState<HistoricoFerias[]>([])
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
   const [confirmExcluir, setConfirmExcluir] = useState(false)
@@ -121,9 +115,6 @@ export default function MotoristaPage() {
   const [editToxico, setEditToxico] = useState('')
   const [editPeriodico, setEditPeriodico] = useState('')
   const [editCaminhaoId, setEditCaminhaoId] = useState('')
-  const [editDeFerias, setEditDeFerias] = useState(false)
-  const [editFeriasInicio, setEditFeriasInicio] = useState('')
-  const [editFeriasFim, setEditFeriasFim] = useState('')
   const [editSubstitutoId, setEditSubstitutoId] = useState('')
   const [editDeAfastamento, setEditDeAfastamento] = useState(false)
   const [editAfastamentoInicio, setEditAfastamentoInicio] = useState('')
@@ -155,14 +146,6 @@ export default function MotoristaPage() {
     if (data) setCaminhoes(data)
   }
 
-  async function fetchHistorico(motoristaId: string) {
-    const { data } = await supabase
-      .from('historico_ferias')
-      .select('*')
-      .eq('motorista_id', motoristaId)
-      .order('created_at', { ascending: false })
-    setHistorico(data || [])
-  }
 
   // ✅ NOVO: mesma lógica usada no CaminhaoPage.tsx — registra no
   // historico_motorista_caminhao a troca temporária de motorista num
@@ -187,18 +170,6 @@ export default function MotoristaPage() {
         motorista_nome: motoristaNovo, data_inicio: hoje, data_fim: null,
       })
     }
-  }
-
-  async function registrarHistorico(motorista: Motorista, substitutoNome: string, caminhaoPlaca: string) {
-    await supabase.from('historico_ferias').insert({
-      motorista_id: motorista.id,
-      motorista_nome: motorista.nome,
-      substituto_id: editSubstitutoId || null,
-      substituto_nome: substitutoNome,
-      caminhao_placa: caminhaoPlaca,
-      ferias_inicio: editFeriasInicio || null,
-      ferias_fim: editFeriasFim || null,
-    })
   }
 
   // ✅ NOVO: mesmo padrão da função de férias, só que grava em
@@ -248,17 +219,12 @@ export default function MotoristaPage() {
     setEditToxico(m.vencimento_toxicologico || '')
     setEditPeriodico(m.vencimento_periodico || '')
     setEditCaminhaoId(m.caminhao_id || '')
-    setEditDeFerias(m.de_ferias || false)
-    setEditFeriasInicio(m.ferias_inicio || '')
-    setEditFeriasFim(m.ferias_fim || '')
     setEditSubstitutoId(m.substituto_id || '')
     setEditDeAfastamento(m.de_afastamento || false)
     setEditAfastamentoInicio(m.afastamento_inicio || '')
     setEditAfastamentoFim(m.afastamento_fim || '')
     setEditAfastamentoMotivo(m.afastamento_motivo || '')
     setConfirmExcluir(false)
-    setMostraHistorico(false)
-    fetchHistorico(m.id)
   }
 
   // ✅ Se a aba recarregar sozinha (Chrome descartando aba em segundo
@@ -275,7 +241,7 @@ export default function MotoristaPage() {
   }, [motoristas])
 
   function voltar() {
-    setSel(null); setSelIdAberto(''); setBusca(''); setConfirmExcluir(false); setMostraHistorico(false)
+    setSel(null); setSelIdAberto(''); setBusca(''); setConfirmExcluir(false)
   }
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
@@ -284,12 +250,10 @@ export default function MotoristaPage() {
     setLoading(true)
 
     try {
-      const feriasFoiAtivado = editDeFerias && !sel.de_ferias
-      const feriasFoiEncerrado = !editDeFerias && sel.de_ferias
       const afastamentoFoiAtivado = editDeAfastamento && !sel.de_afastamento
       const afastamentoFoiEncerrado = !editDeAfastamento && sel.de_afastamento
 
-      if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeFerias && !editDeAfastamento) {
+      if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeAfastamento) {
         if (sel.caminhao_id) {
           const { error: e1 } = await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', sel.caminhao_id)
           if (e1) throw e1
@@ -297,36 +261,6 @@ export default function MotoristaPage() {
         const { error: e2 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
         if (e2) throw e2
         await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, caminhoes.find(c => c.id === editCaminhaoId)?.placa || '', editNome.toUpperCase(), '')
-      }
-
-      // ✅ Início de férias: vincula o substituto ao caminhão
-      // temporariamente e registra no histórico de férias + no
-      // histórico do caminhão (novo).
-      if (feriasFoiAtivado && editSubstitutoId && editCaminhaoId) {
-        const substituto = motoristas.find(m => m.id === editSubstitutoId)
-        if (substituto) {
-          const { error: e3 } = await supabase.from('motoristas').update({ caminhao_temp_id: editCaminhaoId }).eq('id', editSubstitutoId)
-          if (e3) throw e3
-          const { error: e4 } = await supabase.from('caminhoes').update({ motorista_atual: substituto.nome }).eq('id', editCaminhaoId)
-          if (e4) throw e4
-          const cam = caminhoes.find(c => c.id === editCaminhaoId)
-          await registrarHistorico(sel, substituto.nome, cam?.placa || '')
-          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, cam?.placa || '', substituto.nome, editNome.toUpperCase())
-        }
-      }
-
-      // ✅ Fim de férias: devolve o caminhão pro motorista original,
-      // registrando a troca de volta no histórico do caminhão também.
-      if (feriasFoiEncerrado && sel.substituto_id && editCaminhaoId) {
-        const substituto = motoristas.find(m => m.id === sel.substituto_id)
-        if (substituto) {
-          const { error: e5 } = await supabase.from('motoristas').update({ caminhao_temp_id: null }).eq('id', sel.substituto_id)
-          if (e5) throw e5
-          const { error: e6 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
-          if (e6) throw e6
-          const cam = caminhoes.find(c => c.id === editCaminhaoId)
-          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, cam?.placa || '', editNome.toUpperCase(), substituto.nome)
-        }
       }
 
       // ✅ NOVO — Início de afastamento: mesma lógica de férias, só
@@ -370,14 +304,11 @@ export default function MotoristaPage() {
           vencimento_toxicologico: editToxico || null,
           vencimento_periodico: editPeriodico || null,
           caminhao_id: editCaminhaoId || null,
-          de_ferias: editDeFerias,
-          ferias_inicio: editDeFerias ? editFeriasInicio || null : null,
-          ferias_fim: editDeFerias ? editFeriasFim || null : null,
           de_afastamento: editDeAfastamento,
           afastamento_inicio: editDeAfastamento ? editAfastamentoInicio || null : null,
           afastamento_fim: editDeAfastamento ? editAfastamentoFim || null : null,
           afastamento_motivo: editDeAfastamento ? editAfastamentoMotivo || null : null,
-          substituto_id: (editDeFerias || editDeAfastamento) ? editSubstitutoId || null : null,
+          ...(editDeAfastamento ? { substituto_id: editSubstitutoId || null } : {}),
         }).eq('id', sel.id)
         if (e7) throw e7
       }
@@ -499,6 +430,13 @@ export default function MotoristaPage() {
     return Math.ceil((f.getTime() - i.getTime()) / (1000 * 60 * 60 * 24))
   }
 
+  function diasEntreDatas(inicio: string, fim: string) {
+    if (!inicio || !fim) return null
+    const i = new Date(inicio + 'T00:00:00')
+    const f = new Date(fim + 'T00:00:00')
+    return Math.ceil((f.getTime() - i.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
       <button onClick={() => setMostraCad(false)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
@@ -588,7 +526,7 @@ export default function MotoristaPage() {
           }} />
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className={`px-6 py-5 bg-gradient-to-r ${editAtivo ? (editDeFerias ? 'from-blue-500 to-blue-600' : 'from-red-600 to-red-700') : 'from-gray-500 to-gray-600'}`}>
+            <div className={`px-6 py-5 bg-gradient-to-r ${editAtivo ? 'from-red-600 to-red-700' : 'from-gray-500 to-gray-600'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-xl">
@@ -600,11 +538,6 @@ export default function MotoristaPage() {
                       <span className={`text-xs px-2 py-0.5 rounded-full ${editAtivo ? 'bg-green-400/30 text-green-100' : 'bg-red-400/30 text-red-100'}`}>
                         {editAtivo ? 'Ativo' : 'Desligado'}
                       </span>
-                      {editDeFerias && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/30 text-blue-100">
-                          🏖️ De férias
-                        </span>
-                      )}
                       {editFreelancer && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400/30 text-purple-100">
                           🧾 Freelancer
@@ -613,55 +546,9 @@ export default function MotoristaPage() {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setMostraHistorico(!mostraHistorico)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${mostraHistorico ? 'bg-white/30 text-white' : 'bg-white/20 text-white/80 hover:bg-white/30'}`}>
-                  <History size={14} />
-                  Histórico
-                </button>
               </div>
             </div>
 
-            {mostraHistorico && (
-              <div className="border-b border-gray-100 p-5">
-                <h3 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
-                  <History size={16} className="text-gray-400" />
-                  Histórico de Férias
-                </h3>
-                {historico.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-4">Nenhum histórico de férias registrado</p>
-                ) : (
-                  <div className="space-y-2">
-                    {historico.map(h => (
-                      <div key={h.id} className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-xs font-bold text-blue-800">🏖️ Período de férias</p>
-                          <p className="text-xs text-blue-400">{fmtData(h.created_at?.split('T')[0])}</p>
-                        </div>
-                        <p className="text-xs text-blue-700">
-                          <span className="font-medium">Período:</span> {fmtData(h.ferias_inicio)} → {fmtData(h.ferias_fim)}
-                          {h.ferias_inicio && h.ferias_fim && (
-                            <span className="ml-1 text-blue-500">
-                              ({diasFerias(h.ferias_inicio, h.ferias_fim)} dias)
-                            </span>
-                          )}
-                        </p>
-                        {h.substituto_nome && (
-                          <p className="text-xs text-blue-700 mt-0.5">
-                            <span className="font-medium">Substituto:</span> {h.substituto_nome}
-                          </p>
-                        )}
-                        {h.caminhao_placa && (
-                          <p className="text-xs text-blue-700 mt-0.5">
-                            <span className="font-medium">Caminhão:</span> 🚛 {h.caminhao_placa}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -723,8 +610,8 @@ export default function MotoristaPage() {
                 {editCaminhaoId && (
                   <p className="text-xs text-gray-400 mt-1">
                     🚛 {caminhoes.find(c => c.id === editCaminhaoId)?.placa}
-                    {editDeFerias && editSubstitutoId && (
-                      <span className="text-blue-500"> · Temporariamente com {motoristas.find(m => m.id === editSubstitutoId)?.nome}</span>
+                    {editDeAfastamento && editSubstitutoId && (
+                      <span className="text-orange-500"> · Temporariamente com {motoristas.find(m => m.id === editSubstitutoId)?.nome}</span>
                     )}
                   </p>
                 )}
@@ -740,63 +627,12 @@ export default function MotoristaPage() {
                 </div>
               )}
 
-              <div className="border-t border-gray-100 pt-4 space-y-3">
-                <Toggle value={editDeFerias} onChange={() => {
-                  setEditDeFerias(!editDeFerias)
-                  if (!editDeFerias) {
-                    if (!editFeriasInicio) setEditFeriasInicio(new Date().toISOString().split('T')[0])
-                    setEditDeAfastamento(false) // não pode estar afastado e de férias ao mesmo tempo
-                  } else {
-                    setEditSubstitutoId('')
-                  }
-                }} label="De férias" />
-
-                {editDeFerias && (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={LabelClass}>Início das férias</label>
-                        <input type="date" value={editFeriasInicio} onChange={e => setEditFeriasInicio(e.target.value)} className={InputClass} />
-                      </div>
-                      <div>
-                        <label className={LabelClass}>Fim das férias</label>
-                        <input type="date" value={editFeriasFim} onChange={e => setEditFeriasFim(e.target.value)} className={InputClass} />
-                      </div>
-                    </div>
-                    {editFeriasInicio && editFeriasFim && (
-                      <div className="bg-blue-50 rounded-xl p-3">
-                        <p className="text-sm text-blue-700 font-medium">
-                          🏖️ {diasFerias(editFeriasInicio, editFeriasFim)} dia(s) de férias
-                        </p>
-                      </div>
-                    )}
-                    <div>
-                      <label className={LabelClass}>Motorista substituto</label>
-                      <select value={editSubstitutoId} onChange={e => setEditSubstitutoId(e.target.value)} className={InputClass}>
-                        <option value="">Selecione...</option>
-                        {motoristas.filter(m => m.id !== sel.id && m.ativo).map(m => (
-                          <option key={m.id} value={m.id}>{m.nome}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {editSubstitutoId && editCaminhaoId && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                        <p className="text-xs text-blue-700">
-                          🔄 O caminhão <strong>{caminhoes.find(c => c.id === editCaminhaoId)?.placa}</strong> será vinculado temporariamente a <strong>{motoristas.find(m => m.id === editSubstitutoId)?.nome}</strong>
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
               {/* ✅ NOVA SEÇÃO — Afastamento (mesmo padrão de Férias) */}
               <div className="border-t border-gray-100 pt-4">
                 <Toggle value={editDeAfastamento} onChange={() => {
                   setEditDeAfastamento(!editDeAfastamento)
                   if (!editDeAfastamento) {
                     if (!editAfastamentoInicio) setEditAfastamentoInicio(new Date().toISOString().split('T')[0])
-                    setEditDeFerias(false) // não pode estar de férias e afastado ao mesmo tempo
                   } else {
                     setEditSubstitutoId('')
                   }
@@ -824,7 +660,7 @@ export default function MotoristaPage() {
                     {editAfastamentoInicio && editAfastamentoFim && (
                       <div className="bg-orange-50 rounded-xl p-3">
                         <p className="text-sm text-orange-700 font-medium">
-                          🏥 {diasFerias(editAfastamentoInicio, editAfastamentoFim)} dia(s) de afastamento
+                          🏥 {diasEntreDatas(editAfastamentoInicio, editAfastamentoFim)} dia(s) de afastamento
                         </p>
                       </div>
                     )}
