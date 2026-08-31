@@ -28,8 +28,19 @@ function nomeEmpresaSemIdentificador(valor: string) {
     .trim()
 }
 
+function chaveEmpresa(valor: string) {
+  return nomeEmpresaSemIdentificador(valor)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+}
+
 function empresaDoContrato(contrato: Contrato) {
-  return nomeEmpresaSemIdentificador(contrato.cliente_nome_completo || contrato.cliente || '')
+  const nome = nomeEmpresaSemIdentificador(contrato.cliente_nome_completo || contrato.cliente || '')
+  // Todas as razões sociais e CNPJs do grupo AUTOPORT aparecem como uma só opção.
+  if (chaveEmpresa(nome).includes('AUTOPORT')) return 'AUTOPORT'
+  return nome
 }
 
 const InputClass = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
