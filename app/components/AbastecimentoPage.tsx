@@ -20,6 +20,42 @@ interface Caminhao   { id: string; placa: string; modelo: string; motorista_atua
 interface Fornecedor { id: string; nome: string; cnpj: string; cidade: string; estado: string }
 interface Viagem     { id: string; motorista: string; caminhao_placa: string; data_saida: string; status: string; empresa: string; origem: string; destino: string }
 
+function textoParaChave(valor: unknown) {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function chaveAbastecimento(a: Partial<Abastecimento>) {
+  return [
+    a.data,
+    a.caminhao_id || textoParaChave(a.caminhao_placa),
+    textoParaChave(a.motorista),
+    textoParaChave(a.posto),
+    textoParaChave(a.cnpj_posto).replace(/\D/g, ''),
+    a.km == null ? '' : Number(a.km).toFixed(3),
+    Number(a.litros_combustivel || 0).toFixed(3),
+    Number(a.valor_litro_combustivel || 0).toFixed(4),
+    Number(a.litros_arla || 0).toFixed(3),
+    Number(a.valor_litro_arla || 0).toFixed(4),
+    Number(a.total || 0).toFixed(2),
+    Number(a.desconto || 0).toFixed(2),
+  ].join('|')
+}
+
+function semDuplicados(lista: Abastecimento[]) {
+  const vistos = new Set<string>()
+  return lista.filter(item => {
+    const chave = chaveAbastecimento(item)
+    if (vistos.has(chave)) return false
+    vistos.add(chave)
+    return true
+  })
+}
+
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
@@ -118,7 +154,8 @@ export default function AbastecimentoPage() {
   async function fetch_() {
     try {
       const data = await supaFetch('abastecimentos?order=data.asc')
-      setAbastecimentos(Array.isArray(data) ? data : [])
+      const lista = Array.isArray(data) ? data as Abastecimento[] : []
+      setAbastecimentos(semDuplicados(lista))
     } catch {}
   }
 
@@ -375,22 +412,38 @@ export default function AbastecimentoPage() {
   async function salvar() {
     if (!sel) return
     setLoading(true)
-    const total = calcTotal(editLitrosComb, editValorLitroComb, editUsaArla ? editLitrosArla : '0', editUsaArla ? editValorLitroArla : '0', editDesconto)
-    if (perm !== 'demo') {
-      await supaFetch(`abastecimentos?id=eq.${sel.id}`, 'PATCH', {
+    try {
+      const total = calcTotal(editLitrosComb, editValorLitroComb, editUsaArla ? editLitrosArla : '0', editUsaArla ? editValorLitroArla : '0', editDesconto)
+      const atualizado: Partial<Abastecimento> = {
         data: editData, caminhao_id: editCaminhaoId, caminhao_placa: editCaminhaoPlaca,
         motorista: editMotorista, posto: editPosto, cnpj_posto: editCnpjPosto,
-        estado: editEstado, cidade: editCidade,
-        litros_combustivel: parseFloat(editLitrosComb)||0,
-        valor_litro_combustivel: parseFloat(editValorLitroComb)||0,
-        litros_arla: editUsaArla ? parseFloat(editLitrosArla)||0 : 0,
-        valor_litro_arla: editUsaArla ? parseFloat(editValorLitroArla)||0 : 0,
-        km: editKm !== '' ? Number(editKm) : null,
-        total, obs: editObs, viagem_id: editViagemId||null,
-        desconto: parseFloat(editDesconto)||0,
-      })
+        litros_combustivel: parseFloat(editLitrosComb) || 0,
+        valor_litro_combustivel: parseFloat(editValorLitroComb) || 0,
+        litros_arla: editUsaArla ? parseFloat(editLitrosArla) || 0 : 0,
+        valor_litro_arla: editUsaArla ? parseFloat(editValorLitroArla) || 0 : 0,
+        km: editKm !== '' ? Number(editKm) : undefined,
+        total, desconto: parseFloat(editDesconto) || 0,
+      }
+
+      if (abastecimentos.some(a => a.id !== sel.id && chaveAbastecimento(a) === chaveAbastecimento(atualizado))) {
+        showMsg('⚠️ Já existe outro abastecimento com os mesmos dados.')
+        return
+      }
+
+      if (perm !== 'demo') {
+        await supaFetch(`abastecimentos?id=eq.${sel.id}`, 'PATCH', {
+          ...atualizado, km: editKm !== '' ? Number(editKm) : null,
+          estado: editEstado, cidade: editCidade,
+          obs: editObs, viagem_id: editViagemId || null,
+        })
+      }
+      await fetch_()
+      voltar(); showMsg('✅ Atualizado!')
+    } catch (e: any) {
+      showMsg('❌ Não foi possível salvar: ' + (e?.message || 'verifique a conexão.'))
+    } finally {
+      setLoading(false)
     }
-    await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
   }
 
   async function excluir() {
@@ -412,22 +465,38 @@ export default function AbastecimentoPage() {
   async function cadastrar() {
     if (!cadCaminhaoId) return
     setLoading(true)
-    const total = calcTotal(cadLitrosComb, cadValorLitroComb, usaArla ? cadLitrosArla : '0', usaArla ? cadValorLitroArla : '0', cadDesconto)
-    if (perm !== 'demo') {
-      await supaFetch('abastecimentos', 'POST', {
+    try {
+      const total = calcTotal(cadLitrosComb, cadValorLitroComb, usaArla ? cadLitrosArla : '0', usaArla ? cadValorLitroArla : '0', cadDesconto)
+      const novoAbastecimento: Partial<Abastecimento> = {
         data: cadData, caminhao_id: cadCaminhaoId, caminhao_placa: cadCaminhaoPlaca,
         motorista: cadMotorista, posto: cadPosto, cnpj_posto: cadCnpjPosto,
-        estado: cadEstado, cidade: cadCidade,
-        litros_combustivel: parseFloat(cadLitrosComb)||0,
-        valor_litro_combustivel: parseFloat(cadValorLitroComb)||0,
-        litros_arla: usaArla ? parseFloat(cadLitrosArla)||0 : 0,
-        valor_litro_arla: usaArla ? parseFloat(cadValorLitroArla)||0 : 0,
-        km: cadKm !== '' ? Number(cadKm) : null,
-        total, obs: cadObs, viagem_id: cadViagemId||null,
-        desconto: parseFloat(cadDesconto)||0,
-      })
+        litros_combustivel: parseFloat(cadLitrosComb) || 0,
+        valor_litro_combustivel: parseFloat(cadValorLitroComb) || 0,
+        litros_arla: usaArla ? parseFloat(cadLitrosArla) || 0 : 0,
+        valor_litro_arla: usaArla ? parseFloat(cadValorLitroArla) || 0 : 0,
+        km: cadKm !== '' ? Number(cadKm) : undefined,
+        total, desconto: parseFloat(cadDesconto) || 0,
+      }
+
+      if (abastecimentos.some(a => chaveAbastecimento(a) === chaveAbastecimento(novoAbastecimento))) {
+        showMsg('⚠️ Este abastecimento já está cadastrado.')
+        return
+      }
+
+      if (perm !== 'demo') {
+        await supaFetch('abastecimentos', 'POST', {
+          ...novoAbastecimento, km: cadKm !== '' ? Number(cadKm) : null,
+          estado: cadEstado, cidade: cadCidade,
+          obs: cadObs, viagem_id: cadViagemId || null,
+        })
+      }
+      await fetch_()
+      resetCad(); setMostraCad(false); showMsg('✅ Abastecimento registrado!')
+    } catch (e: any) {
+      showMsg('❌ Não foi possível salvar: ' + (e?.message || 'verifique a conexão.'))
+    } finally {
+      setLoading(false)
     }
-    await fetch_(); setLoading(false); resetCad(); setMostraCad(false); showMsg('✅ Abastecimento registrado!')
   }
 
   const Toggle = ({ value, onChange }: { value: boolean; onChange: () => void }) => (
