@@ -144,7 +144,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     const [{ data: todos }, { data: jaUsados }] = await Promise.all([
       supabase.from('contratos')
         .select('id, contrato, fat_bruto, cliente, origem, destino')
-        .order('created_at', { ascending: false }).limit(200),
+        // Carrega todos os contratos para que a busca não esconda os antigos.
+        .order('data', { ascending: true }),
       supabase.from('fechamento_contratos').select('contrato_id')
     ])
     if (!todos) return
