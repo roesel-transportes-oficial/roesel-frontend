@@ -42,7 +42,6 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   const [caminhao, setCaminhao]                   = useState<Caminhao | null>(null)
   const [caminhaoBase, setCaminhaoBase]           = useState<Caminhao | null>(null)
   const [isSubstituto, setIsSubstituto]           = useState(false)
-  const [motoristaHistorico, setMotoristaHistorico] = useState<string | null>(null)
   const [dataInicio, setDataInicio]               = useDraftPersistente('fechamento_dataInicio', '')
   const [dataFim, setDataFim]                     = useDraftPersistente('fechamento_dataFim', '')
   const [kmInicial, setKmInicial]                 = useDraftPersistente('fechamento_kmInicial', '')
@@ -153,6 +152,43 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     setContratosDisponiveis(todos.filter(c => !idsUsados.has(c.id)))
   }
 
+  async function buscarCaminhaoDoMotorista(mot: Motorista, dataReferencia?: string): Promise<Caminhao | null> {
+    if (dataReferencia) {
+      const { data: historicoData, error: historicoError } = await supabase
+        .from('historico_motorista_caminhao')
+        .select('caminhao_id, caminhao_placa, data_inicio, data_fim')
+        .eq('motorista_nome', mot.nome)
+        .lte('data_inicio', dataReferencia)
+        .or(`data_fim.is.null,data_fim.gte.${dataReferencia}`)
+        .order('data_inicio', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!historicoError && historicoData?.caminhao_id) {
+        return {
+          id: historicoData.caminhao_id,
+          placa: historicoData.caminhao_placa || '',
+        }
+      }
+    }
+
+    const orFilter = mot.caminhao_id
+      ? `id.eq.${mot.caminhao_id},motorista_atual.eq.${mot.nome}`
+      : `motorista_atual.eq.${mot.nome}`
+
+    const { data: cam, error } = await supabase
+      .from('caminhoes')
+      .select('id, placa')
+      .or(orFilter)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Erro ao buscar caminhão do motorista:', error)
+      return null
+    }
+    return cam || null
+  }
+
   // ─── Effects ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -200,48 +236,49 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     if (abaAtiva === 'historico') fetchHistorico()
   }, [abaAtiva])
 
-  // Effect 1: quando motorista muda → busca caminhão, KM e contratos
+  // Effect 1: quando motorista ou data de saída muda → busca o caminhão
+  // válido no histórico para aquela data. Só usa o caminhão atual como fallback.
   useEffect(() => {
+    let ativo = true
+
     if (!motoristaId) {
       setCaminhao(null); setCaminhaoBase(null)
       setContratosDisponiveis([]); setMotoristaNome('')
       setKmInicial(''); setKmFinal(''); setIsSubstituto(false)
-      return
+      return () => { ativo = false }
     }
-    const mot = motoristas.find(m => m.id === motoristaId)
-    if (!mot) return
-    setMotoristaNome(mot.nome)
 
-    async function init() {
-  if (!mot) return  // ← guard extra para o TypeScript
+    const motoristaSelecionado = motoristas.find(m => m.id === motoristaId)
+    if (!motoristaSelecionado) return () => { ativo = false }
+    setMotoristaNome(motoristaSelecionado.nome)
 
-  const orFilter = mot.caminhao_id
-    ? `id.eq.${mot.caminhao_id},motorista_atual.eq.${mot.nome}`
-    : `motorista_atual.eq.${mot.nome}`
+    async function init(motorista: Motorista) {
+      const cam = await buscarCaminhaoDoMotorista(motorista, dataInicio || undefined)
+      if (!ativo || !cam) {
+        if (ativo) {
+          setCaminhao(null)
+          setCaminhaoBase(null)
+        }
+        return
+      }
 
-  const { data: cam } = await supabase
-    .from('caminhoes')
-    .select('id, placa')
-    .or(orFilter)
-    .maybeSingle()
+      setCaminhao(cam)
+      setCaminhaoBase(cam)
+      setIsSubstituto(false)
+      await Promise.all([buscarKmInicial(cam.id), fetchContratos()])
+    }
 
-  if (!cam) return
-
-  setCaminhao(cam)
-  setCaminhaoBase(cam)
-  setIsSubstituto(false)
-
-  await Promise.all([buscarKmInicial(cam.id), fetchContratos()])
-}
-
-    init()
-  }, [motoristaId, motoristas])
+    void init(motoristaSelecionado)
+    return () => { ativo = false }
+  }, [motoristaId, motoristas, dataInicio])
 
   // Effect 2: só checa manutenção quando data de início muda
   useEffect(() => {
-    if (!caminhaoBase) return
+    let ativo = true
+    if (!caminhaoBase) return () => { ativo = false }
     if (!dataInicio) {
-      setCaminhao(caminhaoBase); setIsSubstituto(false); return
+      setCaminhao(caminhaoBase); setIsSubstituto(false)
+      return () => { ativo = false }
     }
 
     async function checkManutencao() {
@@ -254,6 +291,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         .not('caminhao_substituto_id', 'is', null)
         .maybeSingle()
 
+      if (!ativo) return
       if (manut?.caminhao_substituto_id) {
         setCaminhao({ id: manut.caminhao_substituto_id, placa: manut.caminhao_substituto_placa || '' })
         setIsSubstituto(true)
@@ -263,50 +301,9 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       }
     }
 
-    checkManutencao()
+    void checkManutencao()
+    return () => { ativo = false }
   }, [dataInicio, caminhaoBase])
-
-  // ✅ Effect 2.5: fechamento retroativo — checa se, na data da SAÍDA
-  // da viagem, o caminhão estava com um motorista DIFERENTE do que
-  // está selecionado agora. Isso resolve o caso de fazer fechamento
-  // de meses atrás onde o motorista já trocou de caminhão desde então
-  // — sem isso, o sistema silenciosamente assumia que o motorista
-  // atual sempre foi quem dirigiu, o que é errado em fechamento
-  // retroativo. Só avisa e sugere — não troca sozinho, porque trocar
-  // o motorista automaticamente re-dispara toda a cadeia de busca de
-  // caminhão/contratos, o que poderia confundir mais do que ajudar.
-  useEffect(() => {
-    setMotoristaHistorico(null)
-    if (!caminhao?.id || !dataInicio || !motoristaNome) return
-
-    async function checkHistorico() {
-      const { data } = await supabase
-        .from('historico_motorista_caminhao')
-        .select('motorista_nome')
-        .eq('caminhao_id', caminhao!.id)
-        .lte('data_inicio', dataInicio)
-        .or(`data_fim.is.null,data_fim.gte.${dataInicio}`)
-        .order('data_inicio', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (data?.motorista_nome && data.motorista_nome !== motoristaNome) {
-        setMotoristaHistorico(data.motorista_nome)
-      }
-    }
-
-    checkHistorico()
-  }, [caminhao?.id, dataInicio, motoristaNome])
-
-  // Troca o motorista selecionado pelo motorista histórico sugerido
-  function usarMotoristaHistorico() {
-    if (!motoristaHistorico) return
-    const mot = motoristas.find(m => m.nome === motoristaHistorico)
-    if (mot) {
-      setMotoristaId(mot.id)
-      setMotoristaHistorico(null)
-    }
-  }
 
  // Effect 3: abastecimentos por período — filtra os já usados em fechamentos anteriores
 useEffect(() => {
@@ -637,18 +634,6 @@ useEffect(() => {
                     )}
                   </div>
                 </div>
-
-                {motoristaHistorico && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-                    <p className="text-xs text-orange-700 font-bold">
-                      🕐 Nessa data ({fmtData(dataInicio)}), esse caminhão estava com <strong>{motoristaHistorico}</strong>, não com {motoristaNome}.
-                    </p>
-                    <button onClick={usarMotoristaHistorico}
-                      className="shrink-0 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-all">
-                      Usar {motoristaHistorico}
-                    </button>
-                  </div>
-                )}
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-50">
                   <div className="space-y-2">
