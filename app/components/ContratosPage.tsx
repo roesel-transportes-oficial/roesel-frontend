@@ -19,7 +19,7 @@ interface Cliente { id: string; nome: string; cnpj: string }
 interface Carreta { id: string; placa: string }
 
 function nomeEmpresaSemIdentificador(valor: string) {
-  return (valor || '')
+  return String(valor || '')
     // Remove CNPJ quando ele vier junto do texto da empresa.
     .replace(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/g, '')
     // Remove código numérico no início, como "819-".
@@ -38,8 +38,15 @@ function chaveEmpresa(valor: string) {
 
 function empresaDoContrato(contrato: Contrato) {
   const nome = nomeEmpresaSemIdentificador(contrato.cliente_nome_completo || contrato.cliente || '')
-  // Todas as razões sociais e CNPJs do grupo AUTOPORT aparecem como uma só opção.
-  if (chaveEmpresa(nome).includes('AUTOPORT')) return 'AUTOPORT'
+  const chave = chaveEmpresa(nome)
+
+  // Empresas do mesmo grupo podem aparecer com CNPJs, códigos, acentos,
+  // pontuação ou pequenas variações de razão social diferentes. O filtro
+  // deve mostrar uma única opção e reunir todos esses contratos.
+  if (chave.includes('AUTOPORT')) return 'AUTOPORT'
+  if (/^(SADA|SABA)(TRANSPORTES|$)/.test(chave)) return 'SADA'
+  if (/^(BRAZUL|BRASUL|BRAZIL)(TRANSPORTE|TRANSPORTES|$)/.test(chave)) return 'BRAZUL'
+
   return nome
 }
 
@@ -214,11 +221,11 @@ export default function ContratosPage() {
         if (numeroBusca && !String(c.contrato || '').toLowerCase().includes(numeroBusca)) return false
         if (filtroMotorista && c.motorista !== filtroMotorista) return false
         if (filtroEmpresa && empresaDoContrato(c) !== filtroEmpresa) return false
-        if (filtroInicio && c.data < filtroInicio) return false
-      if (filtroFim && c.data > filtroFim) return false
+        if (filtroInicio && String(c.data || '') < filtroInicio) return false
+      if (filtroFim && String(c.data || '') > filtroFim) return false
       return true
     })
-    .sort((a, b) => a.data.localeCompare(b.data)),
+    .sort((a, b) => String(a.data || '').localeCompare(String(b.data || ''))),
     [contratos, filtroContrato, filtroMotorista, filtroEmpresa, filtroInicio, filtroFim]
   )
 
@@ -355,7 +362,7 @@ export default function ContratosPage() {
     }
   }
 
-  const totalFat = filtrados.reduce((s, c) => s + (c.fat_bruto || 0), 0)
+  const totalFat = filtrados.reduce((s, c) => s + Number(c.fat_bruto || 0), 0)
   const abertos = filtrados.filter(c => c.status === 'ABERTO').length
   const pagos = filtrados.filter(c => c.status === 'PAGO').length
 
@@ -745,7 +752,7 @@ export default function ContratosPage() {
                           <p className="text-[9px] font-bold text-gray-400 uppercase mt-1">Placa: {c.placa}</p>
                         </td>
                         <td className="px-8 py-5">
-                          <p className="text-sm font-black text-gray-900">{(c.fat_bruto || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                          <p className="text-sm font-black text-gray-900">{Number(c.fat_bruto || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
                         </td>
                         <td className="px-8 py-5 text-right">
                           <span className={`inline-block px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${

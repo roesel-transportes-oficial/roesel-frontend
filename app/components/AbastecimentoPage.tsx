@@ -30,19 +30,26 @@ function textoParaChave(valor: unknown) {
 }
 
 function chaveAbastecimento(a: Partial<Abastecimento>) {
+  const caminhao = a.caminhao_id || textoParaChave(a.caminhao_placa)
+  const motorista = textoParaChave(a.motorista)
+
+  // Com KM informado, a combinação data + caminhão + KM identifica o abastecimento.
+  // O motorista, posto e valores podem variar entre importações, mas não devem
+  // permitir que o mesmo lançamento apareça duas vezes.
+  if (a.data && a.km != null && Number.isFinite(Number(a.km))) {
+    return `principal|${a.data}|${caminhao}|${Number(a.km).toFixed(3)}`
+  }
+
+  // Sem KM, mantém uma chave mais completa para não juntar lançamentos
+  // diferentes que não podem ser identificados com segurança.
   return [
-    a.data,
-    a.caminhao_id || textoParaChave(a.caminhao_placa),
-    textoParaChave(a.motorista),
-    textoParaChave(a.posto),
+    'sem-km', a.data, caminhao, motorista, textoParaChave(a.posto),
     textoParaChave(a.cnpj_posto).replace(/\D/g, ''),
-    a.km == null ? '' : Number(a.km).toFixed(3),
     Number(a.litros_combustivel || 0).toFixed(3),
     Number(a.valor_litro_combustivel || 0).toFixed(4),
     Number(a.litros_arla || 0).toFixed(3),
     Number(a.valor_litro_arla || 0).toFixed(4),
-    Number(a.total || 0).toFixed(2),
-    Number(a.desconto || 0).toFixed(2),
+    Number(a.total || 0).toFixed(2), Number(a.desconto || 0).toFixed(2),
   ].join('|')
 }
 
