@@ -38,15 +38,17 @@ function chaveEmpresa(valor: string) {
 }
 
 function empresaDoContrato(contrato: Contrato) {
-  const nome = nomeEmpresaSemIdentificador(contrato.cliente_nome_completo || contrato.cliente || '')
+  // Contratos novos gravam a cooperativa no campo cliente. O campo
+  // cliente_nome_completo fica como fallback para importações antigas.
+  const nome = nomeEmpresaSemIdentificador(contrato.cliente || contrato.cliente_nome_completo || '')
   const chave = chaveEmpresa(nome)
 
   // Empresas do mesmo grupo podem aparecer com CNPJs, códigos, acentos,
   // pontuação ou pequenas variações de razão social diferentes. O filtro
   // deve mostrar uma única opção e reunir todos esses contratos.
   if (chave.includes('AUTOPORT')) return 'AUTOPORT'
-  if (/^(SADA|SABA)(TRANSPORTES|$)/.test(chave)) return 'SADA'
-  if (/^(BRAZUL|BRASUL|BRAZIL)(TRANSPORTE|TRANSPORTES|$)/.test(chave)) return 'BRAZUL'
+  if (/^(SADA|SABA)/.test(chave)) return 'SADA'
+  if (/^(BRAZUL|BRASUL|BRAZIL)/.test(chave)) return 'BRAZUL'
 
   return nome
 }
@@ -230,7 +232,7 @@ export default function ContratosPage() {
         const numeroBusca = filtroContrato.trim().toLowerCase()
         if (numeroBusca && !String(c.contrato || '').toLowerCase().includes(numeroBusca)) return false
         if (filtroMotorista && c.motorista !== filtroMotorista) return false
-        if (filtroEmpresa && empresaDoContrato(c) !== filtroEmpresa) return false
+        if (filtroEmpresa && chaveEmpresa(empresaDoContrato(c)) !== chaveEmpresa(filtroEmpresa)) return false
         if (filtroInicio && String(c.data || '') < filtroInicio) return false
       if (filtroFim && String(c.data || '') > filtroFim) return false
       return true
@@ -692,7 +694,7 @@ export default function ContratosPage() {
                 <select value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)}
                   className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
                   <option value="">Todas as empresas</option>
-                  {empresasUnicas.map(empresa => <option key={empresa} value={empresa}>{empresa}</option>)}
+                  {empresasUnicas.map(empresa => <option key={chaveEmpresa(empresa)} value={empresa}>{empresa}</option>)}
                 </select>
                 <input type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)}
                   aria-label="Data inicial"

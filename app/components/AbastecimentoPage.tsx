@@ -34,11 +34,10 @@ function chaveAbastecimento(a: Partial<Abastecimento>) {
   const caminhao = a.caminhao_id || textoParaChave(a.caminhao_placa)
   const motorista = textoParaChave(a.motorista)
 
-  // Com KM informado, a combinação data + caminhão + KM identifica o abastecimento.
-  // O motorista, posto e valores podem variar entre importações, mas não devem
-  // permitir que o mesmo lançamento apareça duas vezes.
-  if (a.data && a.km != null && Number.isFinite(Number(a.km))) {
-    return `principal|${a.data}|${caminhao}|${Number(a.km).toFixed(3)}`
+  // Com KM informado, o mesmo caminhão nunca pode voltar para um KM já usado.
+  // Data, motorista, posto e valores podem variar entre abastecimentos.
+  if (a.km != null && Number.isFinite(Number(a.km))) {
+    return `principal|${caminhao}|${Number(a.km)}`
   }
 
   // Sem KM, mantém uma chave mais completa para não juntar lançamentos
@@ -421,6 +420,33 @@ export default function AbastecimentoPage() {
   function voltar() { setSel(null); setConfirmExcluir(false) }
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
+  async function verificarKmJaUsado(caminhaoId: string, km: string, idIgnorar?: string) {
+    if (!caminhaoId || km === '' || !Number.isFinite(Number(km))) return null
+
+    let consulta = supabase
+      .from('abastecimentos')
+      .select('id, data, motorista, caminhao_placa, km')
+      .eq('caminhao_id', caminhaoId)
+      .eq('km', Number(km))
+      .limit(1)
+
+    if (idIgnorar) consulta = consulta.neq('id', idIgnorar)
+    const { data, error } = await consulta.maybeSingle()
+    if (error) {
+      console.error('Erro ao verificar KM já utilizado:', error)
+      return null
+    }
+    return data || null
+  }
+
+  function mensagemDeErroAbastecimento(error: any) {
+    const bruto = String(error?.message || error || '')
+    if (error?.code === '23505' || bruto.includes('duplicate key') || bruto.includes('ux_abastecimentos')) {
+      return '⚠️ Este KM já foi usado nesse caminhão. Informe o KM atual do veículo.'
+    }
+    return '❌ Não foi possível salvar: ' + (error?.message || 'verifique a conexão.')
+  }
+
   async function salvar() {
     if (!sel) return
     setLoading(true)
@@ -438,11 +464,16 @@ export default function AbastecimentoPage() {
       }
 
       if (abastecimentos.some(a => a.id !== sel.id && chaveAbastecimento(a) === chaveAbastecimento(atualizado))) {
-        showMsg('⚠️ Já existe outro abastecimento com os mesmos dados.')
+        showMsg('⚠️ Este KM já foi usado nesse caminhão. Informe o KM atual do veículo.')
         return
       }
 
       if (perm !== 'demo') {
+        const existente = await verificarKmJaUsado(editCaminhaoId, editKm, sel.id)
+        if (existente) {
+          showMsg(`⚠️ O KM ${Number(editKm).toLocaleString('pt-BR')} já está registrado para este caminhão${existente.data ? ` em ${fmtData(existente.data)}` : ''}.`)
+          return
+        }
         await supaFetch(`abastecimentos?id=eq.${sel.id}`, 'PATCH', {
           ...atualizado, km: editKm !== '' ? Number(editKm) : null,
           estado: editEstado, cidade: editCidade,
@@ -452,7 +483,7 @@ export default function AbastecimentoPage() {
       await fetch_()
       voltar(); showMsg('✅ Atualizado!')
     } catch (e: any) {
-      showMsg('❌ Não foi possível salvar: ' + (e?.message || 'verifique a conexão.'))
+      showMsg(mensagemDeErroAbastecimento(e))
     } finally {
       setLoading(false)
     }
@@ -491,11 +522,16 @@ export default function AbastecimentoPage() {
       }
 
       if (abastecimentos.some(a => chaveAbastecimento(a) === chaveAbastecimento(novoAbastecimento))) {
-        showMsg('⚠️ Este abastecimento já está cadastrado.')
+        showMsg('⚠️ Este KM já foi usado nesse caminhão. Informe o KM atual do veículo.')
         return
       }
 
       if (perm !== 'demo') {
+        const existente = await verificarKmJaUsado(cadCaminhaoId, cadKm)
+        if (existente) {
+          showMsg(`⚠️ O KM ${Number(cadKm).toLocaleString('pt-BR')} já está registrado para este caminhão${existente.data ? ` em ${fmtData(existente.data)}` : ''}.`)
+          return
+        }
         await supaFetch('abastecimentos', 'POST', {
           ...novoAbastecimento, km: cadKm !== '' ? Number(cadKm) : null,
           estado: cadEstado, cidade: cadCidade,
@@ -505,7 +541,7 @@ export default function AbastecimentoPage() {
       await fetch_()
       resetCad(); setMostraCad(false); showMsg('✅ Abastecimento registrado!')
     } catch (e: any) {
-      showMsg('❌ Não foi possível salvar: ' + (e?.message || 'verifique a conexão.'))
+      showMsg(mensagemDeErroAbastecimento(e))
     } finally {
       setLoading(false)
     }
