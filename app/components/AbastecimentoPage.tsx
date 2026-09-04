@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
+import { normalizarPlaca, chavePlaca } from '../services/placas'
 import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download, X } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
@@ -71,6 +72,25 @@ async function supaFetch(path: string, method = 'GET', body?: any) {
   if (!res.ok) throw new Error(await res.text())
   if (res.status === 204 || method === 'PATCH' || method === 'DELETE') return null
   return res.json()
+}
+
+async function supaFetchTodos(path: string) {
+  const registros: any[] = []
+  const tamanhoPagina = 1000
+  const separador = path.includes('?') ? '&' : '?'
+  let pagina = 0
+
+  while (true) {
+    const inicio = pagina * tamanhoPagina
+    const lote = await supaFetch(`${path}${separador}limit=${tamanhoPagina}&offset=${inicio}`)
+    if (!Array.isArray(lote)) break
+
+    registros.push(...lote)
+    if (lote.length < tamanhoPagina) break
+    pagina += 1
+  }
+
+  return registros
 }
 
 export default function AbastecimentoPage() {
@@ -144,7 +164,7 @@ export default function AbastecimentoPage() {
     Promise.all([
       fetch_(),
       supabase.from('caminhoes').select('id, placa, modelo, motorista_atual').order('placa')
-        .then(({ data }) => data && setCaminhoes(data)),
+        .then(({ data }) => data && setCaminhoes(data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })))),
       supabase.from('motoristas').select('id, nome, ativo, freelancer').eq('ativo', true).order('nome')
         .then(({ data }) => data && setMotoristas(data)),
       fetchFornecedores()
@@ -153,8 +173,11 @@ export default function AbastecimentoPage() {
 
   async function fetch_() {
     try {
-      const data = await supaFetch('abastecimentos?order=data.asc,id.asc')
-      const lista = Array.isArray(data) ? data as Abastecimento[] : []
+      const data = await supaFetchTodos('abastecimentos?order=data.asc,id.asc')
+      const lista = Array.isArray(data) ? (data as Abastecimento[]).map(a => ({
+        ...a,
+        caminhao_placa: normalizarPlaca(a.caminhao_placa),
+      })) : []
       // Não esconder registros existentes: duplicidades antigas precisam ficar
       // visíveis para conferência e correção no banco. O bloqueio de novos
       // lançamentos continua sendo feito por caminhao_id + KM.
@@ -314,8 +337,8 @@ export default function AbastecimentoPage() {
         else { setCadCnpjPosto(d.cnpj_posto); if (d.cidade) setCadCidade(d.cidade); if (d.estado) setCadEstado(d.estado); if (d.nome_posto) setCadPosto(d.nome_posto) }
       }
       if (d.placa) {
-        const cam = caminhoes.find(c => c.placa.replace(/[^A-Z0-9]/gi,'').toLowerCase() === d.placa.replace(/[^A-Z0-9]/gi,'').toLowerCase())
-        if (cam) { setCadCaminhaoId(cam.id); setCadCaminhaoPlaca(cam.placa); setCadMotorista(cam.motorista_atual||''); await fetchViagensCaminhao(cam.id) }
+        const cam = caminhoes.find(c => chavePlaca(c.placa) === chavePlaca(d.placa))
+        if (cam) { setCadCaminhaoId(cam.id); setCadCaminhaoPlaca(normalizarPlaca(cam.placa)); setCadMotorista(cam.motorista_atual||''); await fetchViagensCaminhao(cam.id) }
       }
       showMsg('✅ Dados extraídos com sucesso!')
     } catch { showMsg('⚠️ Erro ao processar o arquivo.') }
@@ -330,14 +353,20 @@ export default function AbastecimentoPage() {
     [...new Set(abastecimentos.map(a => a.motorista).filter(Boolean))].sort()
   , [abastecimentos])
 
-  const placasUnicas = useMemo(() =>
-    [...new Set(abastecimentos.map(a => a.caminhao_placa).filter(Boolean))].sort()
-  , [abastecimentos])
+  const placasUnicas = useMemo(() => {
+    const unicas = new Map<string, string>()
+    abastecimentos.forEach(a => {
+      const placa = normalizarPlaca(a.caminhao_placa)
+      const chave = chavePlaca(placa)
+      if (chave && !unicas.has(chave)) unicas.set(chave, placa)
+    })
+    return [...unicas.values()].sort()
+  }, [abastecimentos])
 
   const filtrados = useMemo(() => abastecimentos
     .filter(a => {
       if (filtroMotorista && a.motorista !== filtroMotorista) return false
-      if (filtroPlaca && a.caminhao_placa !== filtroPlaca) return false
+      if (filtroPlaca && chavePlaca(a.caminhao_placa) !== chavePlaca(filtroPlaca)) return false
       if (filtroInicio && a.data < filtroInicio) return false
       if (filtroFim   && a.data > filtroFim)   return false
       return true
@@ -356,7 +385,7 @@ export default function AbastecimentoPage() {
 
     const dados = filtrados.map(a => ({
       Data: a.data ? new Date(`${a.data}T00:00:00`) : null,
-      Placa: a.caminhao_placa || '',
+      Placa: normalizarPlaca(a.caminhao_placa),
       Motorista: a.motorista || '',
       Posto: a.posto || '',
       'CNPJ Posto': a.cnpj_posto || '',
@@ -400,7 +429,7 @@ export default function AbastecimentoPage() {
 
   async function selecionar(a: Abastecimento) {
     setSel(a)
-    setEditData(a.data||''); setEditCaminhaoId(a.caminhao_id||''); setEditCaminhaoPlaca(a.caminhao_placa||'')
+    setEditData(a.data||''); setEditCaminhaoId(a.caminhao_id||''); setEditCaminhaoPlaca(normalizarPlaca(a.caminhao_placa))
     setEditMotorista(a.motorista||''); setEditPosto(a.posto||''); setEditCnpjPosto(a.cnpj_posto||'')
     setEditEstado(a.estado||''); setEditCidade(a.cidade||'')
     setEditLitrosComb(String(a.litros_combustivel||'')); setEditValorLitroComb(String(a.valor_litro_combustivel||''))
@@ -447,7 +476,7 @@ export default function AbastecimentoPage() {
     try {
       const total = calcTotal(editLitrosComb, editValorLitroComb, editUsaArla ? editLitrosArla : '0', editUsaArla ? editValorLitroArla : '0', editDesconto)
       const atualizado: Partial<Abastecimento> = {
-        data: editData, caminhao_id: editCaminhaoId, caminhao_placa: editCaminhaoPlaca,
+        data: editData, caminhao_id: editCaminhaoId, caminhao_placa: normalizarPlaca(editCaminhaoPlaca),
         motorista: editMotorista, posto: editPosto, cnpj_posto: editCnpjPosto,
         litros_combustivel: parseFloat(editLitrosComb) || 0,
         valor_litro_combustivel: parseFloat(editValorLitroComb) || 0,
@@ -505,7 +534,7 @@ export default function AbastecimentoPage() {
     try {
       const total = calcTotal(cadLitrosComb, cadValorLitroComb, usaArla ? cadLitrosArla : '0', usaArla ? cadValorLitroArla : '0', cadDesconto)
       const novoAbastecimento: Partial<Abastecimento> = {
-        data: cadData, caminhao_id: cadCaminhaoId, caminhao_placa: cadCaminhaoPlaca,
+        data: cadData, caminhao_id: cadCaminhaoId, caminhao_placa: normalizarPlaca(cadCaminhaoPlaca),
         motorista: cadMotorista, posto: cadPosto, cnpj_posto: cadCnpjPosto,
         litros_combustivel: parseFloat(cadLitrosComb) || 0,
         valor_litro_combustivel: parseFloat(cadValorLitroComb) || 0,
@@ -615,8 +644,8 @@ export default function AbastecimentoPage() {
           <label className={LC}>Caminhão *</label>
           <select value={camId} onChange={async e => {
             const cam = caminhoes.find(c => c.id === e.target.value)
-            if (modo === 'cad') { setCadCaminhaoId(e.target.value); setCadCaminhaoPlaca(cam?.placa||''); setCadMotorista(cam?.motorista_atual||''); setCadViagemId('') }
-            else { setEditCaminhaoId(e.target.value); setEditCaminhaoPlaca(cam?.placa||''); setEditMotorista(cam?.motorista_atual||''); setEditViagemId('') }
+            if (modo === 'cad') { setCadCaminhaoId(e.target.value); setCadCaminhaoPlaca(normalizarPlaca(cam?.placa || '')); setCadMotorista(cam?.motorista_atual||''); setCadViagemId('') }
+            else { setEditCaminhaoId(e.target.value); setEditCaminhaoPlaca(normalizarPlaca(cam?.placa || '')); setEditMotorista(cam?.motorista_atual||''); setEditViagemId('') }
             await fetchViagensCaminhao(e.target.value)
           }} className={IC}>
             <option value="">Selecione o caminhão...</option>

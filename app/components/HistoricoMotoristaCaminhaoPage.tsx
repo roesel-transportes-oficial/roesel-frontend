@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../services/supabase'
+import { normalizarPlaca, chavePlaca } from '../services/placas'
 import { History, Search, Truck, User, Calendar } from 'lucide-react'
 
 interface Registro {
@@ -33,7 +34,7 @@ export default function HistoricoMotoristaCaminhaoPage() {
       .select('*')
       .order('caminhao_placa')
       .order('data_inicio', { ascending: false })
-    setRegistros(data || [])
+    setRegistros((data || []).map(r => ({ ...r, caminhao_placa: normalizarPlaca(r.caminhao_placa) })))
     setLoading(false)
   }
 
@@ -41,14 +42,14 @@ export default function HistoricoMotoristaCaminhaoPage() {
     if (!busca.trim()) return registros
     const b = busca.toLowerCase()
     return registros.filter(r =>
-      r.caminhao_placa?.toLowerCase().includes(b) ||
+      chavePlaca(r.caminhao_placa).toLowerCase().includes(b.replace(/[^a-z0-9]/g, '')) ||
       r.motorista_nome?.toLowerCase().includes(b)
     )
   }, [registros, busca])
 
   // Agrupa por placa (ou por motorista, dependendo do modo escolhido)
   const agrupados = useMemo(() => {
-    const chaveDe = (r: Registro) => modo === 'placa' ? r.caminhao_placa : r.motorista_nome
+    const chaveDe = (r: Registro) => modo === 'placa' ? normalizarPlaca(r.caminhao_placa) : r.motorista_nome
     const grupos: Record<string, Registro[]> = {}
     for (const r of filtrados) {
       const chave = chaveDe(r)
@@ -110,7 +111,7 @@ export default function HistoricoMotoristaCaminhaoPage() {
                     <div className="flex items-center gap-3">
                       {modo === 'placa'
                         ? <><User size={14} className="text-gray-400"/><span className="text-sm font-bold text-gray-900">{r.motorista_nome}</span></>
-                        : <><Truck size={14} className="text-gray-400"/><span className="text-sm font-bold text-gray-900">{r.caminhao_placa}</span></>
+                        : <><Truck size={14} className="text-gray-400"/><span className="text-sm font-bold text-gray-900">{normalizarPlaca(r.caminhao_placa)}</span></>
                       }
                     </div>
                     <div className="flex items-center gap-2 text-xs">

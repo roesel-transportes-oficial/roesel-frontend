@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
+import { normalizarPlaca } from '../services/placas'
 import { Save, Trash2, ArrowLeft, FileText, DollarSign, CheckCircle, Clock, User, Building2, MapPin, Truck, Calendar, AlertCircle, Loader2, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
@@ -121,7 +122,11 @@ export default function ContratosPage() {
         console.error('Erro ao buscar contratos:', error)
         return
       }
-      if (data) setContratos(data as Contrato[])
+      if (data) setContratos((data as Contrato[]).map(c => ({
+        ...c,
+        placa: normalizarPlaca(c.placa),
+        placa_carreta: normalizarPlaca(c.placa_carreta),
+      })))
     } catch (error) {
       if (meuId === fetchIdRef.current) console.error('Erro ao buscar contratos:', error)
     } finally {
@@ -143,7 +148,7 @@ export default function ContratosPage() {
         ])
 
         if (motoristasRes.data) setMotoristas(motoristasRes.data)
-        if (caminhoesRes.data) setCaminhoes(caminhoesRes.data)
+        if (caminhoesRes.data) setCaminhoes(caminhoesRes.data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })))
         if (clientesRes.data) setClientes(clientesRes.data)
         if (carretasRes.data) setCarretas(carretasRes.data)
       } catch (error) {
@@ -207,7 +212,7 @@ export default function ContratosPage() {
         .maybeSingle()
 
       if (hist?.caminhao_placa) {
-        setEditPlaca(hist.caminhao_placa)
+        setEditPlaca(normalizarPlaca(hist.caminhao_placa))
         return
       }
     }
@@ -221,7 +226,7 @@ export default function ContratosPage() {
     // Sem histórico pra essa data — usa o caminhão atual do motorista como último recurso
     if (motoristaSelecionado?.caminhao_id) {
       const { data } = await supabase.from('caminhoes').select('placa').eq('id', motoristaSelecionado.caminhao_id).maybeSingle()
-      if (data) setEditPlaca(data.placa)
+      if (data) setEditPlaca(normalizarPlaca(data.placa))
     } else {
       setEditPlaca('')
     }
@@ -251,8 +256,8 @@ export default function ContratosPage() {
     setEditCliente(c.cliente || '')
     setEditCnpj(fmtCNPJ(c.cnpj || ''))
     setEditMotorista(c.motorista || '')
-    setEditPlaca(c.placa || '')
-    setEditPlacaCarreta(c.placa_carreta || '')
+    setEditPlaca(normalizarPlaca(c.placa))
+    setEditPlacaCarreta(normalizarPlaca(c.placa_carreta))
     setEditFrota(c.frota || '')
     setEditOrigem(c.origem || '')
     setEditDestino(c.destino || '')
@@ -306,8 +311,8 @@ export default function ContratosPage() {
         cliente_nome_completo: editCliente,
         cnpj: editCnpj.replace(/\D/g, ''),
         motorista: editMotorista,
-        placa: editPlaca,
-        placa_carreta: editPlacaCarreta,
+        placa: normalizarPlaca(editPlaca),
+        placa_carreta: normalizarPlaca(editPlacaCarreta),
         frota: editFrota,
         origem: editOrigem,
         destino: editDestino,
@@ -411,8 +416,8 @@ export default function ContratosPage() {
       'CPF Motorista': c.cpf_motorista || '',
       Empresa: empresaDoContrato(c),
       CNPJ: c.cnpj || '',
-      'Placa Cavalo': c.placa || '',
-      'Placa Carreta': c.placa_carreta || '',
+      'Placa': normalizarPlaca(c.placa),
+      'Placa Carreta': normalizarPlaca(c.placa_carreta),
       Frota: c.frota || '',
       Origem: c.origem || '',
       Destino: c.destino || '',
@@ -543,7 +548,7 @@ export default function ContratosPage() {
                   <div className="space-y-1">
                     <label className={LabelClass}><Truck size={12}/> Placa Cavalo</label>
                     {motoristaFreelancer ? (
-                      <select value={editPlaca} onChange={e => setEditPlaca(e.target.value)} className={InputClass}>
+                      <select value={editPlaca} onChange={e => setEditPlaca(normalizarPlaca(e.target.value))} className={InputClass}>
                         <option value="">Selecione qualquer caminhão...</option>
                         {[...new Set([editPlaca, ...caminhoes.map(c => c.placa)].filter(Boolean))].map(placa => (
                           <option key={placa} value={placa}>{placa}</option>

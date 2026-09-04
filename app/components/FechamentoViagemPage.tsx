@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../services/supabase'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
+import { normalizarPlaca } from '../services/placas'
 import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, Filter, AlertCircle, ArrowRight, Download, Edit2, RefreshCw } from 'lucide-react'
 
 type Motorista     = { id: string; nome: string; caminhao_id?: string; freelancer?: boolean }
@@ -145,7 +146,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       .from('caminhoes')
       .select('id, placa')
       .order('placa')
-    if (!error) setCaminhoesDisponiveis(data || [])
+    if (!error) setCaminhoesDisponiveis((data || []).map(c => ({ ...c, placa: normalizarPlaca(c.placa) })))
   }
 
   async function fetchContratos() {
@@ -176,7 +177,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       if (!historicoError && historicoData?.caminhao_id) {
         return {
           id: historicoData.caminhao_id,
-          placa: historicoData.caminhao_placa || '',
+          placa: normalizarPlaca(historicoData.caminhao_placa),
         }
       }
     }
@@ -195,7 +196,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       console.error('Erro ao buscar caminhão do motorista:', error)
       return null
     }
-    return cam || null
+    return cam ? { ...cam, placa: normalizarPlaca(cam.placa) } : null
   }
 
   // ─── Effects ─────────────────────────────────────────────────────────────
@@ -312,7 +313,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
       if (!ativo) return
       if (manut?.caminhao_substituto_id) {
-        setCaminhao({ id: manut.caminhao_substituto_id, placa: manut.caminhao_substituto_placa || '' })
+        setCaminhao({ id: manut.caminhao_substituto_id, placa: normalizarPlaca(manut.caminhao_substituto_placa || '') })
         setIsSubstituto(true)
       } else {
         setCaminhao(caminhaoBase)
@@ -445,7 +446,7 @@ useEffect(() => {
           total_frete: totalFreteRecalculado,
           comissao_motorista: f.comissao_motorista || totalFreteRecalculado * 0.10,
           motorista: { nome: mot?.nome || '—' },
-          caminhao: { placa: cam?.placa || '—' },
+          caminhao: { placa: normalizarPlaca(cam?.placa || '—') },
           contratos: conts
         }
       })
@@ -540,7 +541,7 @@ useEffect(() => {
       const km = (h.km_final || 0) - (h.km_inicial || 0)
       const litros = h.total_litros || 0
       return [
-        new Date(h.created_at).toLocaleDateString('pt-BR'), h.motorista.nome, h.caminhao.placa,
+        new Date(h.created_at).toLocaleDateString('pt-BR'), h.motorista.nome, normalizarPlaca(h.caminhao.placa),
         fmtData(h.data_inicio), fmtData(h.data_fim), h.km_inicial, h.km_final, km, litros,
         km > 0 && litros > 0 ? (km / litros).toFixed(2) : '0',
         h.total_frete || 0, h.comissao_motorista || 0
@@ -908,7 +909,7 @@ useEffect(() => {
                     <td className="px-6 py-4 text-xs font-bold text-gray-500">{new Date(h.created_at).toLocaleDateString('pt-BR')}</td>
                     <td className="px-6 py-4">
                       <p className="text-sm font-black text-gray-900">{h.motorista?.nome || '—'}</p>
-                      <p className="text-[10px] font-bold text-red-600">{h.caminhao?.placa || '—'}</p>
+                      <p className="text-[10px] font-bold text-red-600">{normalizarPlaca(h.caminhao?.placa || '—')}</p>
                     </td>
                     <td className="px-6 py-4">
                       {editando?.id === h.id ? (
@@ -971,7 +972,7 @@ useEffect(() => {
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-gray-400 uppercase">Caminhão</p>
-                  <p className="text-lg font-black text-red-600">{visualizando.caminhao.placa}</p>
+                  <p className="text-lg font-black text-red-600">{normalizarPlaca(visualizando.caminhao.placa)}</p>
                 </div>
               </div>
               <div className="pt-4 border-t border-gray-100">

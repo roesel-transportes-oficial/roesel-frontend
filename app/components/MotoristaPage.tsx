@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
+import { normalizarPlaca } from '../services/placas'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, User, AlertTriangle, Clock } from 'lucide-react'
 
 interface Motorista {
@@ -143,7 +144,7 @@ export default function MotoristaPage() {
 
   async function fetchCaminhoes() {
     const { data } = await supabase.from('caminhoes').select('id, placa, modelo, motorista_atual').order('placa')
-    if (data) setCaminhoes(data)
+    if (data) setCaminhoes(data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })))
   }
 
 
@@ -166,7 +167,7 @@ export default function MotoristaPage() {
     }
     if (motoristaNovo) {
       await supabase.from('historico_motorista_caminhao').insert({
-        caminhao_id: caminhaoId, caminhao_placa: caminhaoPlaca,
+        caminhao_id: caminhaoId, caminhao_placa: normalizarPlaca(caminhaoPlaca),
         motorista_nome: motoristaNovo, data_inicio: hoje, data_fim: null,
       })
     }
@@ -181,7 +182,7 @@ export default function MotoristaPage() {
       motivo: editAfastamentoMotivo || null,
       substituto_id: editSubstitutoId || null,
       substituto_nome: substitutoNome,
-      caminhao_placa: caminhaoPlaca,
+      caminhao_placa: normalizarPlaca(caminhaoPlaca),
       afastamento_inicio: editAfastamentoInicio || null,
       afastamento_fim: editAfastamentoFim || null,
     })
@@ -268,7 +269,7 @@ export default function MotoristaPage() {
           if (e2) throw e2
           await registrarTrocaNoHistoricoCaminhao(
             caminhaoSelecionadoId,
-            caminhoes.find(c => c.id === caminhaoSelecionadoId)?.placa || '',
+            normalizarPlaca(caminhoes.find(c => c.id === caminhaoSelecionadoId)?.placa || ''),
             editNome.toUpperCase(),
             '',
           )
@@ -285,8 +286,8 @@ export default function MotoristaPage() {
           const { error: e4 } = await supabase.from('caminhoes').update({ motorista_atual: substituto.nome }).eq('id', editCaminhaoId)
           if (e4) throw e4
           const cam = caminhoes.find(c => c.id === editCaminhaoId)
-          await registrarHistoricoAfastamento(sel, substituto.nome, cam?.placa || '')
-          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, cam?.placa || '', substituto.nome, editNome.toUpperCase())
+          await registrarHistoricoAfastamento(sel, substituto.nome, normalizarPlaca(cam?.placa || ''))
+          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, normalizarPlaca(cam?.placa || ''), substituto.nome, editNome.toUpperCase())
         }
       }
 
@@ -300,7 +301,7 @@ export default function MotoristaPage() {
           const { error: e6 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
           if (e6) throw e6
           const cam = caminhoes.find(c => c.id === editCaminhaoId)
-          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, cam?.placa || '', editNome.toUpperCase(), substituto.nome)
+          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, normalizarPlaca(cam?.placa || ''), editNome.toUpperCase(), substituto.nome)
         }
       }
 

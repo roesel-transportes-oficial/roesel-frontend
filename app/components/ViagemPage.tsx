@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
+import { normalizarPlaca } from '../services/placas'
 import { Search, Plus, Save, Trash2, MapPin, X, Palmtree, ArrowLeft, AlertCircle, Loader2, Truck, DollarSign, Users, ChevronRight, Filter, MoreHorizontal } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -135,7 +136,8 @@ export default function ViagemPage() {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/viagens?order=created_at.desc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
-      setViagens(await res.json())
+      const data = await res.json()
+      setViagens(Array.isArray(data) ? data.map(v => ({ ...v, caminhao_placa: normalizarPlaca(v.caminhao_placa) })) : [])
     } catch {}
   }
 
@@ -153,7 +155,8 @@ export default function ViagemPage() {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/caminhoes?order=placa.asc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
-      setCaminhoes(await res.json())
+      const data = await res.json()
+      setCaminhoes(Array.isArray(data) ? data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })) : [])
     } catch {}
   }
 
@@ -214,7 +217,7 @@ export default function ViagemPage() {
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       )
       const camData = await resC.json()
-      if (Array.isArray(camData) && camData[0]) return { id: camData[0].id, placa: camData[0].placa }
+      if (Array.isArray(camData) && camData[0]) return { id: camData[0].id, placa: normalizarPlaca(camData[0].placa) }
 
       if (emFerias && motData[0].caminhao_temp_id) {
         const resCT = await fetch(
@@ -222,7 +225,7 @@ export default function ViagemPage() {
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
         )
         const camTData = await resCT.json()
-        if (Array.isArray(camTData) && camTData[0]) return { id: camTData[0].id, placa: camTData[0].placa }
+        if (Array.isArray(camTData) && camTData[0]) return { id: camTData[0].id, placa: normalizarPlaca(camTData[0].placa) }
       }
 
       return null
@@ -236,7 +239,7 @@ export default function ViagemPage() {
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       )
       const data = await res.json()
-      if (Array.isArray(data) && data[0]) return { id: data[0].id, placa: data[0].placa }
+      if (Array.isArray(data) && data[0]) return { id: data[0].id, placa: normalizarPlaca(data[0].placa) }
       return null
     } catch { return null }
   }
@@ -297,7 +300,7 @@ export default function ViagemPage() {
     }
 
     setEditCaminhaoId(caminhaoResolvido?.id || '')
-    setEditCaminhaoPlaca(caminhaoResolvido?.placa || v.caminhao_placa || '')
+    setEditCaminhaoPlaca(normalizarPlaca(caminhaoResolvido?.placa || v.caminhao_placa || ''))
 
     const valorContrato = v.valor_contrato || 0
     if (v.valor_adiantamento) {
@@ -344,7 +347,7 @@ export default function ViagemPage() {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({
-          motorista: editMotorista, caminhao_id: editCaminhaoId, caminhao_placa: editCaminhaoPlaca,
+          motorista: editMotorista, caminhao_id: editCaminhaoId, caminhao_placa: normalizarPlaca(editCaminhaoPlaca),
           status: editStatus, obs: editObs, qtd_veiculos: parseInt(editQtdVeiculos) || 0,
           empresa: editEmpresa, valor_contrato: parseFloat(editValorContrato) || 0,
           origem: editOrigem, destino: editDestino,
@@ -376,7 +379,7 @@ export default function ViagemPage() {
         method: 'POST',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
         body: JSON.stringify({
-          motorista: cadMotorista, caminhao_id: cadCaminhaoId, caminhao_placa: cadCaminhaoPlaca,
+          motorista: cadMotorista, caminhao_id: cadCaminhaoId, caminhao_placa: normalizarPlaca(cadCaminhaoPlaca),
           status: cadStatus, obs: cadObs, qtd_veiculos: parseInt(cadQtdVeiculos) || 0,
           empresa: cadEmpresa, valor_contrato: parseFloat(cadValorContrato) || 0,
           origem: cadOrigem, destino: cadDestino,
@@ -449,8 +452,8 @@ export default function ViagemPage() {
                       <label className="text-xs font-bold" style={{ color: COLORS.textSub }}>Caminhão</label>
                       <select value={isEdit ? editCaminhaoId : cadCaminhaoId} onChange={e => {
                         const cam = caminhoes.find(c => c.id === e.target.value)
-                        if(isEdit) { setEditCaminhaoId(e.target.value); setEditCaminhaoPlaca(cam?.placa || '') }
-                        else { setCadCaminhaoId(e.target.value); setCadCaminhaoPlaca(cam?.placa || '') }
+                        if(isEdit) { setEditCaminhaoId(e.target.value); setEditCaminhaoPlaca(normalizarPlaca(cam?.placa || '')) }
+                        else { setCadCaminhaoId(e.target.value); setCadCaminhaoPlaca(normalizarPlaca(cam?.placa || '')) }
                       }} className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-1 transition-all text-sm font-medium" style={{ borderColor: COLORS.border, '--tw-ring-color': COLORS.brand } as any}>
                         <option value="">Selecione...</option>
                         {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}

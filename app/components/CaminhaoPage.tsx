@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente } from '../services/useDraftPersistente'
+import { normalizarPlaca } from '../services/placas'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Truck, Wrench, X } from 'lucide-react'
 
 interface Caminhao {
@@ -136,7 +137,11 @@ export default function CaminhaoPage() {
 
   async function fetch_() {
     const { data } = await supabase.from('caminhoes').select('*').order('placa')
-    if (data) setCaminhoes(data)
+    if (data) setCaminhoes(data.map(c => ({
+      ...c,
+      placa: normalizarPlaca(c.placa),
+      placa_carreta: normalizarPlaca(c.placa_carreta),
+    })))
   }
 
   async function fetchMotoristas() {
@@ -151,12 +156,16 @@ export default function CaminhaoPage() {
 
   async function fetchCarretas() {
     const { data } = await supabase.from('carretas').select('*').order('placa')
-    if (data) setCarretas(data)
+    if (data) setCarretas(data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })))
   }
 
   async function fetchHistoricoMan() {
     const { data } = await supabase.from('manutencoes').select('*').order('data_entrada', { ascending: false })
-    if (data) setHistoricoMan(data)
+    if (data) setHistoricoMan(data.map(m => ({
+      ...m,
+      caminhao_placa: normalizarPlaca(m.caminhao_placa),
+      caminhao_substituto_placa: normalizarPlaca(m.caminhao_substituto_placa),
+    })))
   }
 
   async function fetchLicencas(caminhaoId: string) {
@@ -170,7 +179,7 @@ export default function CaminhaoPage() {
       .select('id, caminhao_id, caminhao_placa, motorista_nome, data_inicio, data_fim')
       .eq('caminhao_id', caminhaoId)
       .order('data_inicio', { ascending: false })
-    setHistoricoMotoristas(data || [])
+    setHistoricoMotoristas((data || []).map(h => ({ ...h, caminhao_placa: normalizarPlaca(h.caminhao_placa) })))
   }
 
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
@@ -188,7 +197,7 @@ export default function CaminhaoPage() {
   function selecionar(c: Caminhao) {
     setSel(c)
     setSelIdAberto(c.id)
-    setEditPlaca(c.placa || ''); setEditPlacaCarreta(c.placa_carreta || '')
+    setEditPlaca(normalizarPlaca(c.placa)); setEditPlacaCarreta(normalizarPlaca(c.placa_carreta))
     setEditModelo(c.modelo || ''); setEditAno(c.ano || '')
     setEditStatus(c.status || 'rodando'); setEditMotivo(c.motivo_parado || '')
     setEditDtParado(c.dt_parado || ''); setEditMotorista(c.motorista_atual || '')
@@ -246,8 +255,10 @@ export default function CaminhaoPage() {
     if (!sel) return
     setLoading(true)
     const motoristaAntigo = sel.motorista_atual || ''
+    const placaNormalizada = normalizarPlaca(editPlaca)
+    const placaCarretaNormalizada = normalizarPlaca(editPlacaCarreta)
     await supabase.from('caminhoes').update({
-      placa: editPlaca.toUpperCase(), placa_carreta: editPlacaCarreta.toUpperCase(),
+      placa: placaNormalizada, placa_carreta: placaCarretaNormalizada,
       modelo: editModelo, ano: editAno, status: editStatus, frota: editFrota,
       motivo_parado: editStatus !== 'rodando' ? editMotivo : '',
       dt_parado: editStatus !== 'rodando' ? editDtParado : null,
@@ -256,7 +267,7 @@ export default function CaminhaoPage() {
       vencimento_permisso: editVencPermisso || null,
     }).eq('id', sel.id)
 
-    await registrarTrocaMotoristaNoHistorico(sel.id, editPlaca.toUpperCase(), editMotorista, motoristaAntigo)
+    await registrarTrocaMotoristaNoHistorico(sel.id, placaNormalizada, editMotorista, motoristaAntigo)
 
     await fetch_()
     setLoading(false); setSel(null); setSelIdAberto(''); showMsg('✅ Atualizado!')
@@ -265,15 +276,17 @@ export default function CaminhaoPage() {
   async function cadastrar() {
     if (!cadPlaca.trim()) return
     setLoading(true)
+    const placaNormalizada = normalizarPlaca(cadPlaca)
+    const placaCarretaNormalizada = normalizarPlaca(cadPlacaCarreta)
     const { data: novoCaminhao } = await supabase.from('caminhoes').insert({
-      placa: cadPlaca.toUpperCase(), placa_carreta: cadPlacaCarreta.toUpperCase(),
+      placa: placaNormalizada, placa_carreta: placaCarretaNormalizada,
       modelo: cadModelo, ano: cadAno, status: cadStatus, frota: cadFrota,
       motivo_parado: '', dt_parado: null, motorista_atual: cadMotorista, obs_documentos: cadObs
     }).select().maybeSingle()
 
     // ✅ Já entra no histórico também, se veio com motorista definido
     if (novoCaminhao?.id && cadMotorista) {
-      await registrarTrocaMotoristaNoHistorico(novoCaminhao.id, cadPlaca.toUpperCase(), cadMotorista, '')
+      await registrarTrocaMotoristaNoHistorico(novoCaminhao.id, placaNormalizada, cadMotorista, '')
     }
 
     await fetch_()
@@ -302,7 +315,7 @@ export default function CaminhaoPage() {
     if (!selCarreta) return
     setLoading(true)
     await supabase.from('carretas').update({
-      placa: editCPlaca.toUpperCase(), modelo: editCModelo, ano: editCAno, status: editCStatus, obs: editCObs
+      placa: normalizarPlaca(editCPlaca), modelo: editCModelo, ano: editCAno, status: editCStatus, obs: editCObs
     }).eq('id', selCarreta.id)
     await fetchCarretas()
     setLoading(false); setSelCarreta(null); showMsg('✅ Carreta atualizada!')
@@ -312,7 +325,7 @@ export default function CaminhaoPage() {
     if (!cadCPlaca.trim()) return
     setLoading(true)
     await supabase.from('carretas').insert({
-      placa: cadCPlaca.toUpperCase(), modelo: cadCModelo, ano: cadCAno, status: cadCStatus, obs: cadCObs
+      placa: normalizarPlaca(cadCPlaca), modelo: cadCModelo, ano: cadCAno, status: cadCStatus, obs: cadCObs
     })
     await fetchCarretas()
     setLoading(false); setMostraCadCarreta(false); showMsg('✅ Carreta cadastrada!')

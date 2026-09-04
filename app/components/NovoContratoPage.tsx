@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../services/supabase'
+import { normalizarPlaca } from '../services/placas'
 
 const FORM_INICIAL = {
   motorista: '', cliente: '', cnpj: '', placa: '', placa_carreta: '',
@@ -61,12 +62,12 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
 
   async function fetchCaminhoes() {
     const { data } = await supabase.from('caminhoes').select('*').order('placa')
-    if (data) setCaminhoes(data)
+    if (data) setCaminhoes(data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })))
   }
 
   async function fetchCarretas() {
     const { data } = await supabase.from('carretas').select('*').order('placa')
-    if (data) setCarretas(data)
+    if (data) setCarretas(data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })))
   }
 
   // ✅ Recalcula o valor do adiantamento automaticamente sempre que o
@@ -498,6 +499,8 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
       }
 
       const payload: any = { ...form }
+      payload.placa = normalizarPlaca(payload.placa)
+      payload.placa_carreta = normalizarPlaca(payload.placa_carreta)
       payload.fat_bruto    = parseFloat(payload.fat_bruto) || 0
       payload.chapa        = parseFloat(payload.chapa) || 0
       payload.qtd_veiculos = parseInt(payload.qtd_veiculos) || 0
@@ -540,14 +543,14 @@ export default function NovoContratoPage({ setAba }: { setAba: (aba: string) => 
         let caminhaoId: string | null = null
         if (form.placa) {
           const { data: camData } = await supabase
-            .from('caminhoes').select('id').eq('placa', form.placa).limit(1).abortSignal(controller.signal).maybeSingle()
+            .from('caminhoes').select('id').eq('placa', payload.placa).limit(1).abortSignal(controller.signal).maybeSingle()
           if (camData) caminhaoId = camData.id
         }
 
         const { data: viagemData } = await supabase.from('viagens').insert({
           motorista:      form.motorista,
           caminhao_id:    caminhaoId,
-          caminhao_placa: form.placa || '',
+          caminhao_placa: payload.placa || '',
           empresa:        form.cliente,
           origem:         form.origem,
           destino:        form.destino,

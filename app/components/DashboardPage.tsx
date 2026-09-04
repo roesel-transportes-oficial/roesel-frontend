@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '../services/supabase'
+import { normalizarPlaca } from '../services/placas'
 import { AlertTriangle, FileText, DollarSign, Users, Truck, TrendingUp } from 'lucide-react'
 
 function diasParaVencer(data: string) {
@@ -46,7 +47,7 @@ export default function DashboardPage() {
 
       setContratos(c || [])
       setMotoristas(m || [])
-      setCaminhoes(cam || [])
+      setCaminhoes((cam || []).map((c: any) => ({ ...c, placa: normalizarPlaca(c.placa) })))
       setLoading(false)
     }
     carregar()

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
 import { supabase } from '../services/supabase'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
+import { normalizarPlaca, chavePlaca } from '../services/placas'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, AlertTriangle } from 'lucide-react'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -111,7 +112,7 @@ function CamposComuns(p: {
           <select value={p.motorista} onChange={e => {
             const cam = p.caminhoes.find(c => c.motorista_atual === e.target.value)
             p.setMotorista(e.target.value)
-            if (cam) p.setPlaca(cam.placa)
+            if (cam) p.setPlaca(normalizarPlaca(cam.placa))
           }} className={InputClass}>
             <option value="">Selecione...</option>
             {p.motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
@@ -121,7 +122,7 @@ function CamposComuns(p: {
           <label className={LabelClass}>Placa</label>
           <select value={p.placa} onChange={e => p.setPlaca(e.target.value)} className={InputClass}>
             <option value="">Selecione...</option>
-            {p.caminhoes.map(c => <option key={c.id} value={c.placa}>{c.placa}</option>)}
+            {p.caminhoes.map(c => <option key={c.id} value={normalizarPlaca(c.placa)}>{normalizarPlaca(c.placa)}</option>)}
           </select>
         </div>
       </div>
@@ -326,7 +327,7 @@ export default function MultasPage() {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
-      setMultas(Array.isArray(data) ? data : [])
+      setMultas(Array.isArray(data) ? data.map((m: Multa) => ({ ...m, placa: normalizarPlaca(m.placa) })) : [])
     } catch {}
   }
 
@@ -346,7 +347,7 @@ export default function MultasPage() {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
-      setCaminhoes(Array.isArray(data) ? data : [])
+      setCaminhoes(Array.isArray(data) ? data.map((c: Caminhao) => ({ ...c, placa: normalizarPlaca(c.placa) })) : [])
     } catch {}
   }
 
@@ -356,7 +357,7 @@ export default function MultasPage() {
   // achada pelo nome, já que aqui não guardamos caminhao_id direto).
   async function checarMotoristaHistorico(placa: string, data: string): Promise<string | null> {
     if (!placa || !data) return null
-    const cam = caminhoes.find(c => c.placa === placa)
+    const cam = caminhoes.find(c => chavePlaca(c.placa) === chavePlaca(placa))
     if (!cam) return null
     const { data: hist } = await supabase
       .from('historico_motorista_caminhao')
@@ -397,7 +398,7 @@ export default function MultasPage() {
   function selecionar(m: Multa) {
     setSel(m)
     setEditMotorista(m.motorista || '')
-    setEditPlaca(m.placa || '')
+    setEditPlaca(normalizarPlaca(m.placa))
     setEditData(m.data || '')
     setEditHora(m.hora || '')
     setEditInfracao(m.infracao || '')
@@ -432,7 +433,7 @@ export default function MultasPage() {
 
   function buildPayload(p: any) {
     return {
-      motorista: p.motorista, placa: p.placa, data: p.data, hora: p.hora,
+      motorista: p.motorista, placa: normalizarPlaca(p.placa), data: p.data, hora: p.hora,
       infracao: p.infracao,
       velocidade_permitida: isVelocidade(p.infracao) ? parseInt(p.velPerm) || null : null,
       velocidade_registrada: isVelocidade(p.infracao) ? parseInt(p.velReg) || null : null,
