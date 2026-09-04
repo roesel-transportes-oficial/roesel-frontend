@@ -53,15 +53,6 @@ function chaveAbastecimento(a: Partial<Abastecimento>) {
   ].join('|')
 }
 
-function semDuplicados(lista: Abastecimento[]) {
-  const vistos = new Set<string>()
-  return lista.filter(item => {
-    const chave = chaveAbastecimento(item)
-    if (vistos.has(chave)) return false
-    vistos.add(chave)
-    return true
-  })
-}
 
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
@@ -162,9 +153,12 @@ export default function AbastecimentoPage() {
 
   async function fetch_() {
     try {
-      const data = await supaFetch('abastecimentos?order=data.asc')
+      const data = await supaFetch('abastecimentos?order=data.asc,id.asc')
       const lista = Array.isArray(data) ? data as Abastecimento[] : []
-      setAbastecimentos(semDuplicados(lista))
+      // Não esconder registros existentes: duplicidades antigas precisam ficar
+      // visíveis para conferência e correção no banco. O bloqueio de novos
+      // lançamentos continua sendo feito por caminhao_id + KM.
+      setAbastecimentos(lista)
     } catch {}
   }
 
