@@ -253,14 +253,26 @@ export default function MotoristaPage() {
       const afastamentoFoiAtivado = editDeAfastamento && !sel.de_afastamento
       const afastamentoFoiEncerrado = !editDeAfastamento && sel.de_afastamento
 
-      if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeAfastamento) {
-        if (sel.caminhao_id) {
-          const { error: e1 } = await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', sel.caminhao_id)
+      // Freelancer não possui caminhão fixo. Ao marcar essa opção,
+      // libera o caminhão anterior, mas mantém o histórico já registrado.
+      const caminhaoSelecionadoId = editFreelancer ? '' : editCaminhaoId
+      const caminhaoAnteriorId = sel.caminhao_id || ''
+
+      if (!editDeAfastamento && caminhaoAnteriorId !== caminhaoSelecionadoId) {
+        if (caminhaoAnteriorId) {
+          const { error: e1 } = await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', caminhaoAnteriorId)
           if (e1) throw e1
         }
-        const { error: e2 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
-        if (e2) throw e2
-        await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, caminhoes.find(c => c.id === editCaminhaoId)?.placa || '', editNome.toUpperCase(), '')
+        if (caminhaoSelecionadoId) {
+          const { error: e2 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', caminhaoSelecionadoId)
+          if (e2) throw e2
+          await registrarTrocaNoHistoricoCaminhao(
+            caminhaoSelecionadoId,
+            caminhoes.find(c => c.id === caminhaoSelecionadoId)?.placa || '',
+            editNome.toUpperCase(),
+            '',
+          )
+        }
       }
 
       // ✅ NOVO — Início de afastamento: mesma lógica de férias, só
@@ -303,7 +315,7 @@ export default function MotoristaPage() {
           vencimento_permisso: editPermisso || null,
           vencimento_toxicologico: editToxico || null,
           vencimento_periodico: editPeriodico || null,
-          caminhao_id: editCaminhaoId || null,
+          caminhao_id: caminhaoSelecionadoId || null,
           de_afastamento: editDeAfastamento,
           afastamento_inicio: editDeAfastamento ? editAfastamentoInicio || null : null,
           afastamento_fim: editDeAfastamento ? editAfastamentoFim || null : null,
@@ -601,13 +613,20 @@ export default function MotoristaPage() {
 
               <div className="border-t border-gray-100 pt-4">
                 <label className={LabelClass}>Caminhão vinculado</label>
-                <select value={editCaminhaoId} onChange={e => setEditCaminhaoId(e.target.value)} className={InputClass}>
-                  <option value="">Nenhum</option>
-                  {caminhoes.map(c => (
+                <select
+                  value={editFreelancer ? '' : editCaminhaoId}
+                  disabled={editFreelancer}
+                  onChange={e => setEditCaminhaoId(e.target.value)}
+                  className={InputClass + (editFreelancer ? ' opacity-60 cursor-not-allowed' : '')}
+                >
+                  <option value="">{editFreelancer ? 'Freelancer — sem caminhão fixo' : 'Nenhum'}</option>
+                  {!editFreelancer && caminhoes.map(c => (
                     <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>
                   ))}
                 </select>
-                {editCaminhaoId && (
+                {editFreelancer ? (
+                  <p className="text-xs text-purple-600 mt-1">🧾 Freelancer: poderá usar qualquer caminhão nas operações.</p>
+                ) : editCaminhaoId && (
                   <p className="text-xs text-gray-400 mt-1">
                     🚛 {caminhoes.find(c => c.id === editCaminhaoId)?.placa}
                     {editDeAfastamento && editSubstitutoId && (
@@ -685,7 +704,11 @@ export default function MotoristaPage() {
               </div>
 
               <div className="border-t border-gray-100 pt-4 space-y-3">
-                <Toggle value={editFreelancer} onChange={() => setEditFreelancer(!editFreelancer)} label="Freelancer" />
+                <Toggle value={editFreelancer} onChange={() => {
+                  const novoValor = !editFreelancer
+                  setEditFreelancer(novoValor)
+                  if (novoValor) setEditCaminhaoId('')
+                }} label="Freelancer" />
                 <Toggle value={editAdiantamento} onChange={() => setEditAdiantamento(!editAdiantamento)} label="Adiantamento" />
                 <Toggle value={editAtivo} onChange={() => {
                   setEditAtivo(!editAtivo)

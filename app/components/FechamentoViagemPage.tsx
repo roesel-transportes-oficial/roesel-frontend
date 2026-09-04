@@ -5,7 +5,7 @@ import { supabase } from '../services/supabase'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { X, Search, Truck, User, Calendar, MapPin, Fuel, CheckCircle2, Filter, AlertCircle, ArrowRight, Download, Edit2, RefreshCw } from 'lucide-react'
 
-type Motorista     = { id: string; nome: string; caminhao_id?: string }
+type Motorista     = { id: string; nome: string; caminhao_id?: string; freelancer?: boolean }
 type Caminhao      = { id: string; placa: string }
 type Contrato      = { id: string; contrato: string; fat_bruto: number | null; cliente?: string | null; origem?: string | null; destino?: string | null }
 type Abastecimento = { id: string; data: string; posto?: string | null; litros_combustivel?: number | null; litros_arla?: number | null; total?: number | null; km?: number | null }
@@ -35,6 +35,7 @@ async function comTimeout<T>(promessa: PromiseLike<T>, ms = CONSULTA_TIMEOUT_MS)
 
 export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) => void }) {
   const [motoristas, setMotoristas]               = useState<Motorista[]>([])
+  const [caminhoesDisponiveis, setCaminhoesDisponiveis] = useState<Caminhao[]>([])
   const [carregandoMotoristas, setCarregandoMotoristas] = useState(true)
   const [erroMotoristas, setErroMotoristas]       = useState('')
   const [motoristaId, setMotoristaId]             = useDraftPersistente('fechamento_motoristaId', '')
@@ -87,7 +88,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       const resultado = await comTimeout(
         supabase
           .from('motoristas')
-          .select('id, nome, caminhao_id')
+          .select('id, nome, caminhao_id, freelancer')
           .order('nome')
           .abortSignal(controller.signal),
       )
@@ -137,6 +138,14 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
         else setKmFinal('')
       }
     }
+  }
+
+  async function fetchCaminhoes() {
+    const { data, error } = await supabase
+      .from('caminhoes')
+      .select('id, placa')
+      .order('placa')
+    if (!error) setCaminhoesDisponiveis(data || [])
   }
 
   async function fetchContratos() {
@@ -192,7 +201,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   // ─── Effects ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    fetchMotoristas()
+    void fetchMotoristas()
+    void fetchCaminhoes()
   }, [])
 
   // ✅ Refaz a busca de motoristas sempre que a aba volta a ficar
@@ -251,6 +261,15 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     const motoristaSelecionado = motoristas.find(m => m.id === motoristaId)
     if (!motoristaSelecionado) return () => { ativo = false }
     setMotoristaNome(motoristaSelecionado.nome)
+
+    if (motoristaSelecionado.freelancer) {
+      // Freelancer não tem caminhão fixo: a escolha será feita manualmente.
+      setCaminhao(null)
+      setCaminhaoBase(null)
+      setIsSubstituto(false)
+      void fetchContratos()
+      return () => { ativo = false }
+    }
 
     async function init(motorista: Motorista) {
       const cam = await buscarCaminhaoDoMotorista(motorista, dataInicio || undefined)
@@ -619,18 +638,42 @@ useEffect(() => {
                     <label className="flex items-center gap-2 text-xs font-bold text-gray-600 uppercase tracking-wider">
                       <Truck size={14} className="text-red-600"/> Placa do Caminhão
                     </label>
-                    <div className={`w-full border-2 rounded-xl px-4 py-3 text-sm font-black flex items-center justify-between
-                      ${isSubstituto ? 'bg-blue-50 border-blue-100 text-blue-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                      <div className="flex items-center gap-2">
-                        {caminhao ? caminhao.placa : 'Aguardando...'}
+                    {motoristas.find(m => m.id === motoristaId)?.freelancer ? (
+                      <>
+                        <select
+                          value={caminhao?.id || ''}
+                          onChange={async e => {
+                            const selecionado = caminhoesDisponiveis.find(c => c.id === e.target.value) || null
+                            setCaminhao(selecionado)
+                            setCaminhaoBase(selecionado)
+                            setIsSubstituto(false)
+                            if (selecionado) {
+                              await Promise.all([buscarKmInicial(selecionado.id), fetchContratos()])
+                            }
+                          }}
+                          className="w-full bg-purple-50 border-2 border-purple-200 rounded-xl px-4 py-3 text-sm font-black text-purple-700 outline-none focus:border-purple-500"
+                        >
+                          <option value="">Selecione qualquer caminhão...</option>
+                          {caminhoesDisponiveis.map(c => <option key={c.id} value={c.id}>{c.placa}</option>)}
+                        </select>
+                        <p className="text-[10px] text-purple-600 font-bold">Freelancer — sem caminhão fixo. Escolha o caminhão usado nesta viagem.</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className={`w-full border-2 rounded-xl px-4 py-3 text-sm font-black flex items-center justify-between
+                          ${isSubstituto ? 'bg-blue-50 border-blue-100 text-blue-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                          <div className="flex items-center gap-2">
+                            {caminhao ? caminhao.placa : 'Aguardando...'}
+                            {isSubstituto && (
+                              <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase">Substituto</span>
+                            )}
+                          </div>
+                          {caminhao && <CheckCircle2 size={16} className={isSubstituto ? 'text-blue-500' : 'text-red-500'}/>} 
+                        </div>
                         {isSubstituto && (
-                          <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase">Substituto</span>
+                          <p className="text-[10px] text-blue-500 font-bold">🔧 Caminhão em manutenção — usando substituto automaticamente</p>
                         )}
-                      </div>
-                      {caminhao && <CheckCircle2 size={16} className={isSubstituto ? 'text-blue-500' : 'text-red-500'}/>}
-                    </div>
-                    {isSubstituto && (
-                      <p className="text-[10px] text-blue-500 font-bold">🔧 Caminhão em manutenção — usando substituto automaticamente</p>
+                      </>
                     )}
                   </div>
                 </div>

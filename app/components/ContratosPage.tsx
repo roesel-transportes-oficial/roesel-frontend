@@ -14,7 +14,8 @@ interface Contrato {
   adiantamento_pago: boolean; dt_pagamento: string
 }
 
-interface Motorista { id: string; nome: string; cpf?: string; caminhao_id?: string }
+interface Motorista { id: string; nome: string; cpf?: string; caminhao_id?: string; freelancer?: boolean }
+interface Caminhao { id: string; placa: string }
 interface Cliente { id: string; nome: string; cnpj: string }
 interface Carreta { id: string; placa: string }
 
@@ -58,6 +59,7 @@ export default function ContratosPage() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [contratos, setContratos] = useState<Contrato[]>([])
   const [motoristas, setMotoristas] = useState<Motorista[]>([])
+  const [caminhoes, setCaminhoes] = useState<Caminhao[]>([])
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [carretas, setCarretas] = useState<Carreta[]>([])
   const [sel, setSel] = useState<Contrato | null>(null)
@@ -131,13 +133,15 @@ export default function ContratosPage() {
   useEffect(() => {
     const carregarDadosEstaticos = async () => {
       try {
-        const [motoristasRes, clientesRes, carretasRes] = await Promise.all([
-          supabase.from('motoristas').select('id, nome, cpf, caminhao_id').order('nome'),
+        const [motoristasRes, caminhoesRes, clientesRes, carretasRes] = await Promise.all([
+          supabase.from('motoristas').select('id, nome, cpf, caminhao_id, freelancer').order('nome'),
+          supabase.from('caminhoes').select('id, placa').order('placa'),
           supabase.from('clientes').select('id, nome, cnpj').order('nome'),
           supabase.from('carretas').select('id, placa').order('placa')
         ])
 
         if (motoristasRes.data) setMotoristas(motoristasRes.data)
+        if (caminhoesRes.data) setCaminhoes(caminhoesRes.data)
         if (clientesRes.data) setClientes(clientesRes.data)
         if (carretasRes.data) setCarretas(carretasRes.data)
       } catch (error) {
@@ -186,6 +190,7 @@ export default function ContratosPage() {
     setEditMotorista(nome)
     if (!nome) { setEditPlaca(''); return }
 
+    const motoristaSelecionado = motoristas.find(m => m.nome === nome)
     const dataParaBuscar = dataContrato !== undefined ? dataContrato : editData
 
     if (dataParaBuscar) {
@@ -205,10 +210,15 @@ export default function ContratosPage() {
       }
     }
 
+    // Freelancer não possui caminhão fixo. A placa será escolhida manualmente.
+    if (motoristaSelecionado?.freelancer) {
+      setEditPlaca('')
+      return
+    }
+
     // Sem histórico pra essa data — usa o caminhão atual do motorista como último recurso
-    const mot = motoristas.find(m => m.nome === nome)
-    if (mot?.caminhao_id) {
-      const { data } = await supabase.from('caminhoes').select('placa').eq('id', mot.caminhao_id).maybeSingle()
+    if (motoristaSelecionado?.caminhao_id) {
+      const { data } = await supabase.from('caminhoes').select('placa').eq('id', motoristaSelecionado.caminhao_id).maybeSingle()
       if (data) setEditPlaca(data.placa)
     } else {
       setEditPlaca('')
@@ -372,6 +382,9 @@ export default function ContratosPage() {
     return `${dia}/${m}/${y}`
   }
 
+  const motoristaSelecionado = motoristas.find(m => m.nome === editMotorista)
+  const motoristaFreelancer = motoristaSelecionado?.freelancer === true
+
   function fmtCNPJ(v: string) {
     if (!v) return ''
     const n = v.replace(/\D/g, '')
@@ -520,14 +533,24 @@ export default function ContratosPage() {
                   <label className={LabelClass}><User size={12}/> Motorista Responsável</label>
                   <select value={editMotorista} onChange={e => handleSelectMotorista(e.target.value)} className={InputClass}>
                     <option value="">Selecione o motorista...</option>
-                    {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                    {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}{m.freelancer ? ' · Freelancer' : ''}</option>)}
                   </select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className={LabelClass}><Truck size={12}/> Placa Cavalo</label>
-                    <input value={editPlaca} onChange={e => setEditPlaca(e.target.value.toUpperCase())} className={InputClass} />
+                    {motoristaFreelancer ? (
+                      <select value={editPlaca} onChange={e => setEditPlaca(e.target.value)} className={InputClass}>
+                        <option value="">Selecione qualquer caminhão...</option>
+                        {[...new Set([editPlaca, ...caminhoes.map(c => c.placa)].filter(Boolean))].map(placa => (
+                          <option key={placa} value={placa}>{placa}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input value={editPlaca} onChange={e => setEditPlaca(e.target.value.toUpperCase())} className={InputClass} />
+                    )}
+                    {motoristaFreelancer && <p className="text-[10px] text-purple-600 mt-1">Freelancer — pode usar qualquer caminhão.</p>}
                   </div>
                   <div className="space-y-1">
                     <label className={LabelClass}><Truck size={12}/> Placa Carreta</label>

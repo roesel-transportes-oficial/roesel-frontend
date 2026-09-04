@@ -22,7 +22,7 @@ interface Viagem {
   valor_contrato: number; origem: string; destino: string
   valor_adiantamento: number; valor_chapa: number
 }
-interface Motorista { id: string; nome: string; adiantamento: boolean; ferias?: boolean }
+interface Motorista { id: string; nome: string; adiantamento: boolean; ferias?: boolean; freelancer?: boolean }
 interface Caminhao  { id: string; placa: string; modelo: string }
 interface Contrato  {
   id: string; contrato: string; cliente: string; origem: string; destino: string
@@ -141,7 +141,7 @@ export default function ViagemPage() {
 
   async function fetchMotoristas() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc`, {
+      const res = await fetch(        `${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc&select=id,nome,adiantamento,ferias,freelancer`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       setMotoristas(await res.json())
@@ -206,6 +206,7 @@ export default function ViagemPage() {
       if (!Array.isArray(motData) || !motData[0]) return null
 
       const motId = motData[0].id
+      if (motData[0].freelancer === true) return null
       const emFerias = motData[0].ferias === true
 
       const resC = await fetch(
@@ -312,6 +313,10 @@ export default function ViagemPage() {
 
   async function onMotoristaChange(nome: string, setCaminhaoId: (id: string) => void, setCaminhaoPlaca: (p: string) => void) {
     if (!nome) { setCaminhaoId(''); setCaminhaoPlaca(''); return }
+    const motorista = motoristas.find(m => m.nome === nome)
+    // Freelancer não possui caminhão fixo: o caminhão será escolhido
+    // manualmente no formulário da viagem.
+    if (motorista?.freelancer) { setCaminhaoId(''); setCaminhaoPlaca(''); return }
     const cam = await buscarCaminhaoPorMotorista(nome)
     if (cam) { setCaminhaoId(cam.id); setCaminhaoPlaca(cam.placa) }
     else { setCaminhaoId(''); setCaminhaoPlaca('') }
@@ -434,8 +439,11 @@ export default function ViagemPage() {
                         else { setCadMotorista(nome); await onMotoristaChange(nome, setCadCaminhaoId, setCadCaminhaoPlaca) }
                       }} className="w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-1 transition-all text-sm font-medium" style={{ borderColor: COLORS.border, '--tw-ring-color': COLORS.brand } as any}>
                         <option value="">Selecione...</option>
-                        {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}</option>)}
+                        {motoristas.map(m => <option key={m.id} value={m.nome}>{m.nome}{m.freelancer ? ' · Freelancer' : ''}</option>)}
                       </select>
+                      {(isEdit ? editMotorista : cadMotorista) && motoristas.find(m => m.nome === (isEdit ? editMotorista : cadMotorista))?.freelancer && (
+                        <p className="text-[10px] text-purple-600 mt-1">Freelancer — escolha qualquer caminhão para esta viagem.</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold" style={{ color: COLORS.textSub }}>Caminhão</label>

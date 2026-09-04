@@ -17,7 +17,7 @@ interface Abastecimento {
   total: number; km: number; obs: string; viagem_id: string; desconto: number
 }
 interface Caminhao   { id: string; placa: string; modelo: string; motorista_atual: string }
-interface Motorista { id: string; nome: string; ativo?: boolean }
+interface Motorista { id: string; nome: string; ativo?: boolean; freelancer?: boolean }
 interface Fornecedor { id: string; nome: string; cnpj: string; cidade: string; estado: string }
 interface Viagem     { id: string; motorista: string; caminhao_placa: string; data_saida: string; status: string; empresa: string; origem: string; destino: string }
 
@@ -155,7 +155,7 @@ export default function AbastecimentoPage() {
       fetch_(),
       supabase.from('caminhoes').select('id, placa, modelo, motorista_atual').order('placa')
         .then(({ data }) => data && setCaminhoes(data)),
-      supabase.from('motoristas').select('id, nome, ativo').eq('ativo', true).order('nome')
+      supabase.from('motoristas').select('id, nome, ativo, freelancer').eq('ativo', true).order('nome')
         .then(({ data }) => data && setMotoristas(data)),
       fetchFornecedores()
     ])
@@ -597,8 +597,9 @@ export default function AbastecimentoPage() {
           <label className={LC}>Motorista</label>
           {(() => {
             const historicoNomes = modo === 'cad' ? cadMotoristasHistorico : editMotoristasHistorico
+            const freelancersAtivos = motoristas.filter(m => m.freelancer).map(m => m.nome).filter(Boolean)
             const nomesDisponiveis = historicoNomes.length > 0
-              ? historicoNomes
+              ? [...historicoNomes, ...freelancersAtivos]
               : motoristas.map(m => m.nome).filter(Boolean)
             const opcoes = [...new Set([ ...nomesDisponiveis, motorista ].filter(Boolean))]
             return (
@@ -609,10 +610,16 @@ export default function AbastecimentoPage() {
                   className={IC}
                 >
                   <option value="">Selecione o motorista...</option>
-                  {opcoes.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                  {opcoes.map(nome => {
+                    const motoristaCadastro = motoristas.find(m => m.nome === nome)
+                    return <option key={nome} value={nome}>{nome}{motoristaCadastro?.freelancer ? ' · Freelancer' : ''}</option>
+                  })}
                 </select>
                 {historicoNomes.length === 0 && camId && data && (
                   <p className="text-[10px] text-blue-500 mt-1">Sem histórico para esta data — mostrando todos os motoristas ativos.</p>
+                )}
+                {historicoNomes.length > 0 && freelancersAtivos.length > 0 && (
+                  <p className="text-[10px] text-purple-600 mt-1">Além do histórico, freelancers ativos podem ser selecionados para qualquer caminhão.</p>
                 )}
               </>
             )
