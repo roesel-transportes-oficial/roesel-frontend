@@ -17,6 +17,7 @@ interface Abastecimento {
   total: number; km: number; obs: string; viagem_id: string; desconto: number
 }
 interface Caminhao   { id: string; placa: string; modelo: string; motorista_atual: string }
+interface Motorista { id: string; nome: string; ativo?: boolean }
 interface Fornecedor { id: string; nome: string; cnpj: string; cidade: string; estado: string }
 interface Viagem     { id: string; motorista: string; caminhao_placa: string; data_saida: string; status: string; empresa: string; origem: string; destino: string }
 
@@ -86,6 +87,7 @@ export default function AbastecimentoPage() {
   const { perm } = useAuth()
   const [abastecimentos, setAbastecimentos] = useState<Abastecimento[]>([])
   const [caminhoes, setCaminhoes]           = useState<Caminhao[]>([])
+  const [motoristas, setMotoristas]         = useState<Motorista[]>([])
   const [fornecedores, setFornecedores]     = useState<Fornecedor[]>([])
   const [sel, setSel]                       = useState<Abastecimento | null>(null)
   const [mostraCad, setMostraCad]           = useState(false)
@@ -153,6 +155,8 @@ export default function AbastecimentoPage() {
       fetch_(),
       supabase.from('caminhoes').select('id, placa, modelo, motorista_atual').order('placa')
         .then(({ data }) => data && setCaminhoes(data)),
+      supabase.from('motoristas').select('id, nome, ativo').eq('ativo', true).order('nome')
+        .then(({ data }) => data && setMotoristas(data)),
       fetchFornecedores()
     ])
   }, [])
@@ -591,22 +595,28 @@ export default function AbastecimentoPage() {
         </div>
         <div>
           <label className={LC}>Motorista</label>
-          <select
-            value={motorista}
-            onChange={e => modo === 'cad' ? setCadMotorista(e.target.value) : setEditMotorista(e.target.value)}
-            className={IC}
-          >
-            <option value="">Selecione o motorista...</option>
-            {[
-              ...new Set([
-                ...(modo === 'cad' ? cadMotoristasHistorico : editMotoristasHistorico),
-                motorista,
-              ].filter(Boolean)),
-            ].map(nome => <option key={nome} value={nome}>{nome}</option>)}
-          </select>
-          {(modo === 'cad' ? cadMotoristasHistorico : editMotoristasHistorico).length === 0 && camId && data && (
-            <p className="text-[10px] text-gray-400 mt-1">Nenhum motorista encontrado no histórico para esta data.</p>
-          )}
+          {(() => {
+            const historicoNomes = modo === 'cad' ? cadMotoristasHistorico : editMotoristasHistorico
+            const nomesDisponiveis = historicoNomes.length > 0
+              ? historicoNomes
+              : motoristas.map(m => m.nome).filter(Boolean)
+            const opcoes = [...new Set([ ...nomesDisponiveis, motorista ].filter(Boolean))]
+            return (
+              <>
+                <select
+                  value={motorista}
+                  onChange={e => modo === 'cad' ? setCadMotorista(e.target.value) : setEditMotorista(e.target.value)}
+                  className={IC}
+                >
+                  <option value="">Selecione o motorista...</option>
+                  {opcoes.map(nome => <option key={nome} value={nome}>{nome}</option>)}
+                </select>
+                {historicoNomes.length === 0 && camId && data && (
+                  <p className="text-[10px] text-blue-500 mt-1">Sem histórico para esta data — mostrando todos os motoristas ativos.</p>
+                )}
+              </>
+            )
+          })()}
         </div>
         <div className="border-t border-gray-100 pt-3">
           <p className={LC + " mb-3"}>Combustível</p>
