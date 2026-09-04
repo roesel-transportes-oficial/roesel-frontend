@@ -144,10 +144,9 @@ export default function AbastecimentoPage() {
   const [cadViagemId, setCadViagemId]               = useDraftPersistente('abast_cadViagemId', '')
   const [cadDesconto, setCadDesconto]               = useDraftPersistente('abast_cadDesconto', '')
 
-  // ✅ NOVO: motorista histórico sugerido, quando a data + caminhão
-  // selecionados batem com um período diferente do motorista atual.
-  const [cadMotoristaHistorico, setCadMotoristaHistorico]   = useState<string | null>(null)
-  const [editMotoristaHistorico, setEditMotoristaHistorico] = useState<string | null>(null)
+  // Motoristas que estavam vinculados ao caminhão na data do abastecimento.
+  const [cadMotoristasHistorico, setCadMotoristasHistorico] = useState<string[]>([])
+  const [editMotoristasHistorico, setEditMotoristasHistorico] = useState<string[]>([])
 
   useEffect(() => {
     Promise.all([
@@ -181,40 +180,42 @@ export default function AbastecimentoPage() {
     } catch { setViagensCaminhao([]) }
   }
 
-  // ✅ NOVO: mesmo padrão do Fechamento de Viagem — checa se, na data
-  // do abastecimento, o caminhão estava com um motorista DIFERENTE do
-  // que está preenchido agora. Isso ajuda quando você registra um
-  // abastecimento retroativo (de meses atrás) e o motorista já trocou
-  // de caminhão desde então.
-  async function checarMotoristaHistorico(caminhaoId: string, data: string): Promise<string | null> {
-    if (!caminhaoId || !data) return null
-    const { data: hist } = await supabase
+  async function buscarMotoristasHistorico(caminhaoId: string, data: string): Promise<string[]> {
+    if (!caminhaoId || !data) return []
+    const { data: historico, error } = await supabase
       .from('historico_motorista_caminhao')
       .select('motorista_nome')
       .eq('caminhao_id', caminhaoId)
       .lte('data_inicio', data)
       .or(`data_fim.is.null,data_fim.gte.${data}`)
       .order('data_inicio', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    return hist?.motorista_nome || null
+
+    if (error) {
+      console.error('Erro ao buscar motoristas do histórico:', error)
+      return []
+    }
+
+    return [...new Set((historico || []).map(h => h.motorista_nome).filter(Boolean))]
   }
 
   useEffect(() => {
     let ativo = true
-    checarMotoristaHistorico(cadCaminhaoId, cadData).then(m => {
-      if (ativo) setCadMotoristaHistorico(m && m !== cadMotorista ? m : null)
+    buscarMotoristasHistorico(cadCaminhaoId, cadData).then(nomes => {
+      if (!ativo) return
+      setCadMotoristasHistorico(nomes)
+      if (nomes.length === 1 && !cadMotorista) setCadMotorista(nomes[0])
     })
     return () => { ativo = false }
-  }, [cadCaminhaoId, cadData, cadMotorista])
+  }, [cadCaminhaoId, cadData])
 
   useEffect(() => {
     let ativo = true
-    checarMotoristaHistorico(editCaminhaoId, editData).then(m => {
-      if (ativo) setEditMotoristaHistorico(m && m !== editMotorista ? m : null)
+    buscarMotoristasHistorico(editCaminhaoId, editData).then(nomes => {
+      if (!ativo) return
+      setEditMotoristasHistorico(nomes)
     })
     return () => { ativo = false }
-  }, [editCaminhaoId, editData, editMotorista])
+  }, [editCaminhaoId, editData])
 
   // ── Importar Profrotas ───────────────────────────────────────────────
   async function importarProfrotas() {
@@ -461,7 +462,7 @@ export default function AbastecimentoPage() {
   }
 
   function resetCad() {
-    setCadData(new Date().toISOString().split('T')[0]); setCadCaminhaoId(''); setCadCaminhaoPlaca(''); setCadMotorista('')
+    setCadData(new Date().toISOString().split('T')[0]); setCadCaminhaoId(''); setCadCaminhaoPlaca(''); setCadMotorista(''); setCadMotoristasHistorico([])
     setCadPosto(''); setCadCnpjPosto(''); setCadEstado(''); setCadCidade('')
     setCadLitrosComb(''); setCadValorLitroComb(''); setCadLitrosArla(''); setCadValorLitroArla('')
     setCadKm(''); setCadObs(''); setUsaArla(false); setCadViagemId(''); setCadDesconto('')
@@ -588,24 +589,25 @@ export default function AbastecimentoPage() {
             {caminhoes.map(c => <option key={c.id} value={c.id}>{c.placa}{c.modelo && ` · ${c.modelo}`}</option>)}
           </select>
         </div>
-        {motorista && <div className="bg-blue-50 rounded-xl p-3"><p className="text-xs text-blue-600 font-medium">Motorista: <span className="text-blue-800">{motorista}</span></p></div>}
-        {(() => {
-          const motoristaHist = modo === 'cad' ? cadMotoristaHistorico : editMotoristaHistorico
-          if (!motoristaHist) return null
-          return (
-            <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
-              <p className="text-xs text-orange-700 font-bold">
-                🕐 Nessa data, esse caminhão estava com <strong>{motoristaHist}</strong>, não com {motorista || 'o motorista atual'}.
-              </p>
-              <button type="button" onClick={() => {
-                if (modo === 'cad') { setCadMotorista(motoristaHist); setCadMotoristaHistorico(null) }
-                else { setEditMotorista(motoristaHist); setEditMotoristaHistorico(null) }
-              }} className="shrink-0 bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg transition-all">
-                Usar {motoristaHist}
-              </button>
-            </div>
-          )
-        })()}
+        <div>
+          <label className={LC}>Motorista</label>
+          <select
+            value={motorista}
+            onChange={e => modo === 'cad' ? setCadMotorista(e.target.value) : setEditMotorista(e.target.value)}
+            className={IC}
+          >
+            <option value="">Selecione o motorista...</option>
+            {[
+              ...new Set([
+                ...(modo === 'cad' ? cadMotoristasHistorico : editMotoristasHistorico),
+                motorista,
+              ].filter(Boolean)),
+            ].map(nome => <option key={nome} value={nome}>{nome}</option>)}
+          </select>
+          {(modo === 'cad' ? cadMotoristasHistorico : editMotoristasHistorico).length === 0 && camId && data && (
+            <p className="text-[10px] text-gray-400 mt-1">Nenhum motorista encontrado no histórico para esta data.</p>
+          )}
+        </div>
         <div className="border-t border-gray-100 pt-3">
           <p className={LC + " mb-3"}>Combustível</p>
           <div className="grid grid-cols-2 gap-3">
