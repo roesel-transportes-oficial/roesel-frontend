@@ -17,7 +17,22 @@ function vencStatus(data: string) {
   if (dias < 0) return 'vencido'
   if (dias <= 15) return 'critico'
   if (dias <= 30) return 'alerta'
-  return 'ok'
+  return null
+}
+
+function hojeIso() {
+  const hoje = new Date()
+  const ano = hoje.getFullYear()
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+  const dia = String(hoje.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
+function estaDeFeriasHoje(m: any, hoje: string) {
+  if (!m.de_ferias || !m.ferias_inicio) return false
+  const inicio = m.ferias_inicio
+  const fim = m.ferias_fim || '9999-12-31'
+  return inicio <= hoje && hoje <= fim
 }
 
 export default function DashboardPage() {
@@ -58,7 +73,8 @@ export default function DashboardPage() {
   const contratosAbertos = contratos.filter((c: any) => c.status === 'ABERTO').length
   const contratosPagos = contratos.filter((c: any) => c.status === 'PAGO').length
 
-  const deFerias = motoristas.filter((m: any) => m.de_ferias)
+  const dataHoje = hojeIso()
+  const deFerias = motoristas.filter((m: any) => estaDeFeriasHoje(m, dataHoje))
   const parados = caminhoes.filter((c: any) => c.status !== 'rodando')
 
   const alertasVenc: { nome: string; campo: string; data: string; dias: number; status: string; tipo: 'motorista' | 'caminhao' }[] = []
