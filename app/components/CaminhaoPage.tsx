@@ -254,43 +254,63 @@ export default function CaminhaoPage() {
   async function salvar() {
     if (!sel) return
     setLoading(true)
-    const motoristaAntigo = sel.motorista_atual || ''
-    const placaNormalizada = normalizarPlaca(editPlaca)
-    const placaCarretaNormalizada = normalizarPlaca(editPlacaCarreta)
-    await supabase.from('caminhoes').update({
-      placa: placaNormalizada, placa_carreta: placaCarretaNormalizada,
-      modelo: editModelo, ano: editAno, status: editStatus, frota: editFrota,
-      motivo_parado: editStatus !== 'rodando' ? editMotivo : '',
-      dt_parado: editStatus !== 'rodando' ? editDtParado : null,
-      motorista_atual: editMotorista, obs_documentos: editObs,
-      vencimento_cronotacografo: editVencCronotacografo || null,
-      vencimento_permisso: editVencPermisso || null,
-    }).eq('id', sel.id)
+    try {
+      const motoristaAntigo = sel.motorista_atual || ''
+      const placaNormalizada = normalizarPlaca(editPlaca)
+      const placaCarretaNormalizada = normalizarPlaca(editPlacaCarreta)
+      const { error: updateError } = await supabase.from('caminhoes').update({
+        placa: placaNormalizada, placa_carreta: placaCarretaNormalizada,
+        modelo: editModelo, ano: editAno, status: editStatus, frota: editFrota,
+        motivo_parado: editStatus !== 'rodando' ? editMotivo : '',
+        dt_parado: editStatus !== 'rodando' ? editDtParado : null,
+        motorista_atual: editMotorista, obs_documentos: editObs,
+        vencimento_cronotacografo: editVencCronotacografo || null,
+        vencimento_permisso: editVencPermisso || null,
+      }).eq('id', sel.id)
 
-    await registrarTrocaMotoristaNoHistorico(sel.id, placaNormalizada, editMotorista, motoristaAntigo)
+      if (updateError) {
+        showMsg('❌ Não foi possível salvar: ' + updateError.message)
+        return
+      }
 
-    await fetch_()
-    setLoading(false); setSel(null); setSelIdAberto(''); showMsg('✅ Atualizado!')
+      await registrarTrocaMotoristaNoHistorico(sel.id, placaNormalizada, editMotorista, motoristaAntigo)
+      await fetch_()
+      setSel(null); setSelIdAberto(''); showMsg('✅ Atualizado!')
+    } catch (e: any) {
+      showMsg('❌ Não foi possível salvar: ' + (e?.message || 'erro desconhecido'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function cadastrar() {
     if (!cadPlaca.trim()) return
     setLoading(true)
-    const placaNormalizada = normalizarPlaca(cadPlaca)
-    const placaCarretaNormalizada = normalizarPlaca(cadPlacaCarreta)
-    const { data: novoCaminhao } = await supabase.from('caminhoes').insert({
-      placa: placaNormalizada, placa_carreta: placaCarretaNormalizada,
-      modelo: cadModelo, ano: cadAno, status: cadStatus, frota: cadFrota,
-      motivo_parado: '', dt_parado: null, motorista_atual: cadMotorista, obs_documentos: cadObs
-    }).select().maybeSingle()
+    try {
+      const placaNormalizada = normalizarPlaca(cadPlaca)
+      const placaCarretaNormalizada = normalizarPlaca(cadPlacaCarreta)
+      const { data: novoCaminhao, error: insertError } = await supabase.from('caminhoes').insert({
+        placa: placaNormalizada, placa_carreta: placaCarretaNormalizada,
+        modelo: cadModelo, ano: cadAno, status: cadStatus, frota: cadFrota,
+        motivo_parado: '', dt_parado: null, motorista_atual: cadMotorista, obs_documentos: cadObs
+      }).select().maybeSingle()
 
-    // ✅ Já entra no histórico também, se veio com motorista definido
-    if (novoCaminhao?.id && cadMotorista) {
-      await registrarTrocaMotoristaNoHistorico(novoCaminhao.id, placaNormalizada, cadMotorista, '')
+      if (insertError) {
+        showMsg('❌ Não foi possível cadastrar: ' + insertError.message)
+        return
+      }
+
+      if (novoCaminhao?.id && cadMotorista) {
+        await registrarTrocaMotoristaNoHistorico(novoCaminhao.id, placaNormalizada, cadMotorista, '')
+      }
+
+      await fetch_()
+      setMostraCad(false); showMsg('✅ Cadastrado!')
+    } catch (e: any) {
+      showMsg('❌ Não foi possível cadastrar: ' + (e?.message || 'erro desconhecido'))
+    } finally {
+      setLoading(false)
     }
-
-    await fetch_()
-    setLoading(false); setMostraCad(false); showMsg('✅ Cadastrado!')
   }
 
   async function adicionarLicenca() {
@@ -520,8 +540,8 @@ export default function CaminhaoPage() {
                 <button onClick={() => setMostraCad(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                <div className="space-y-1"><label className={LC}>Placa *</label><input value={cadPlaca} onChange={e => setCadPlaca(e.target.value)} className={IC}/></div>
-                <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={cadPlacaCarreta} onChange={e => setCadPlacaCarreta(e.target.value)} className={IC}/></div>
+                <div className="space-y-1"><label className={LC}>Placa *</label><input value={cadPlaca} onChange={e => setCadPlaca(normalizarPlaca(e.target.value))} className={IC}/></div>
+                <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={cadPlacaCarreta} onChange={e => setCadPlacaCarreta(normalizarPlaca(e.target.value))} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={cadModelo} onChange={e => setCadModelo(e.target.value)} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Ano</label><input value={cadAno} onChange={e => setCadAno(e.target.value)} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Motorista</label>
@@ -571,8 +591,8 @@ export default function CaminhaoPage() {
 
               {aba === 'info' ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-1"><label className={LC}>Placa</label><input value={editPlaca} onChange={e => setEditPlaca(e.target.value)} className={IC}/></div>
-                  <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={editPlacaCarreta} onChange={e => setEditPlacaCarreta(e.target.value)} className={IC}/></div>
+                  <div className="space-y-1"><label className={LC}>Placa</label><input value={editPlaca} onChange={e => setEditPlaca(normalizarPlaca(e.target.value))} className={IC}/></div>
+                  <div className="space-y-1"><label className={LC}>Placa Carreta</label><input value={editPlacaCarreta} onChange={e => setEditPlacaCarreta(normalizarPlaca(e.target.value))} className={IC}/></div>
                   <div className="space-y-1"><label className={LC}>Modelo</label><input value={editModelo} onChange={e => setEditModelo(e.target.value)} className={IC}/></div>
                   <div className="space-y-1"><label className={LC}>Ano</label><input value={editAno} onChange={e => setEditAno(e.target.value)} className={IC}/></div>
                   <div className="space-y-1"><label className={LC}>Status</label>
@@ -754,7 +774,7 @@ export default function CaminhaoPage() {
                 <button onClick={() => setMostraCadCarreta(false)} className="text-gray-400 hover:text-red-600"><X size={24}/></button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="space-y-1"><label className={LC}>Placa *</label><input value={cadCPlaca} onChange={e => setCadCPlaca(e.target.value)} className={IC}/></div>
+                <div className="space-y-1"><label className={LC}>Placa *</label><input value={cadCPlaca} onChange={e => setCadCPlaca(normalizarPlaca(e.target.value))} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Modelo</label><input value={cadCModelo} onChange={e => setCadCModelo(e.target.value)} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Ano</label><input value={cadCAno} onChange={e => setCadCAno(e.target.value)} className={IC}/></div>
                 <div className="space-y-1"><label className={LC}>Status</label>
