@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente } from '../services/useDraftPersistente'
-import { normalizarPlaca } from '../services/placas'
+import { normalizarPlaca, placaValida } from '../services/placas'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Truck, Wrench, X } from 'lucide-react'
 
 interface Caminhao {
@@ -255,6 +255,14 @@ export default function CaminhaoPage() {
     if (!sel) return
     setLoading(true)
     try {
+      if (!placaValida(editPlaca)) {
+        showMsg('❌ Placa inválida. Use AAA-1234 ou o padrão Mercosul AAA-1A11.')
+        return
+      }
+      if (editPlacaCarreta.trim() && !placaValida(editPlacaCarreta)) {
+        showMsg('❌ Placa da carreta inválida. Use AAA-1234 ou o padrão Mercosul AAA-1A11.')
+        return
+      }
       const motoristaAntigo = sel.motorista_atual || ''
       const placaNormalizada = normalizarPlaca(editPlaca)
       const placaCarretaNormalizada = normalizarPlaca(editPlacaCarreta)
@@ -287,6 +295,14 @@ export default function CaminhaoPage() {
     if (!cadPlaca.trim()) return
     setLoading(true)
     try {
+      if (!placaValida(cadPlaca)) {
+        showMsg('❌ Placa inválida. Use AAA-1234 ou o padrão Mercosul AAA-1A11.')
+        return
+      }
+      if (cadPlacaCarreta.trim() && !placaValida(cadPlacaCarreta)) {
+        showMsg('❌ Placa da carreta inválida. Use AAA-1234 ou o padrão Mercosul AAA-1A11.')
+        return
+      }
       const placaNormalizada = normalizarPlaca(cadPlaca)
       const placaCarretaNormalizada = normalizarPlaca(cadPlacaCarreta)
       const { data: novoCaminhao, error: insertError } = await supabase.from('caminhoes').insert({
@@ -334,6 +350,11 @@ export default function CaminhaoPage() {
   async function salvarCarreta() {
     if (!selCarreta) return
     setLoading(true)
+    if (!placaValida(editCPlaca)) {
+      showMsg('❌ Placa da carreta inválida. Use AAA-1234 ou o padrão Mercosul AAA-1A11.')
+      setLoading(false)
+      return
+    }
     await supabase.from('carretas').update({
       placa: normalizarPlaca(editCPlaca), modelo: editCModelo, ano: editCAno, status: editCStatus, obs: editCObs
     }).eq('id', selCarreta.id)
@@ -344,6 +365,11 @@ export default function CaminhaoPage() {
   async function cadastrarCarreta() {
     if (!cadCPlaca.trim()) return
     setLoading(true)
+    if (!placaValida(cadCPlaca)) {
+      showMsg('❌ Placa da carreta inválida. Use AAA-1234 ou o padrão Mercosul AAA-1A11.')
+      setLoading(false)
+      return
+    }
     await supabase.from('carretas').insert({
       placa: normalizarPlaca(cadCPlaca), modelo: cadCModelo, ano: cadCAno, status: cadCStatus, obs: cadCObs
     })
