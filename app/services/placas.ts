@@ -20,7 +20,7 @@ export function normalizarPlaca(valor: unknown): string {
   // equivalente do padrao Mercosul (0=A, 1=B, ..., 9=J).
   if (/^[A-Z]{3}\d{4}$/.test(compacta)) {
     const letraMercosul = 'ABCDEFGHIJ'[Number(compacta[4])]
-    return `${compacta.slice(0, 4)}${letraMercosul}${compacta.slice(5)}`
+    return `${compacta.slice(0, 3)}-${compacta.slice(3, 4)}${letraMercosul}${compacta.slice(5)}`
   }
 
   // Valores incompletos ou fora do padrão não são inventados nem alterados
