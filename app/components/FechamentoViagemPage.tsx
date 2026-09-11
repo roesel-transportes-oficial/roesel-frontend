@@ -194,7 +194,7 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
             .maybeSingle()
           return {
             id: historicoData.caminhao_id,
-            placa: normalizarPlaca(camAtual?.placa || historicoData.caminhao_placa || ''),
+            placa: normalizarPlaca(historicoData.caminhao_placa || camAtual?.placa || ''),
           }
         }
       }
