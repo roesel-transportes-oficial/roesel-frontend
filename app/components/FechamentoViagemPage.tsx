@@ -164,20 +164,38 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
   async function buscarCaminhaoDoMotorista(mot: Motorista, dataReferencia?: string): Promise<Caminhao | null> {
     if (dataReferencia) {
-      const { data: historicoData, error: historicoError } = await supabase
+      const { data: historicosData, error: historicoError } = await supabase
         .from('historico_motorista_caminhao')
-        .select('caminhao_id, caminhao_placa, data_inicio, data_fim')
-        .eq('motorista_nome', mot.nome)
+        .select('caminhao_id, caminhao_placa, motorista_nome, data_inicio, data_fim')
         .lte('data_inicio', dataReferencia)
         .or(`data_fim.is.null,data_fim.gte.${dataReferencia}`)
         .order('data_inicio', { ascending: false })
-        .limit(1)
-        .maybeSingle()
 
-      if (!historicoError && historicoData?.caminhao_id) {
-        return {
-          id: historicoData.caminhao_id,
-          placa: normalizarPlaca(historicoData.caminhao_placa),
+      if (!historicoError && historicosData?.length) {
+        const normalizarNome = (nome: string) =>
+          nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+        const nomeSelecionado = normalizarNome(mot.nome)
+        const candidatos = historicosData.filter(h => {
+          const nomeHistorico = normalizarNome(h.motorista_nome || '')
+          return nomeHistorico && (
+            nomeHistorico === nomeSelecionado ||
+            (nomeHistorico.length >= 4 && nomeSelecionado.includes(nomeHistorico)) ||
+            (nomeSelecionado.length >= 4 && nomeHistorico.includes(nomeSelecionado))
+          )
+        })
+        const exato = candidatos.find(h => normalizarNome(h.motorista_nome || '') === nomeSelecionado)
+        const historicoData = exato || (candidatos.length === 1 ? candidatos[0] : null)
+
+        if (historicoData?.caminhao_id) {
+          const { data: camAtual } = await supabase
+            .from('caminhoes')
+            .select('placa')
+            .eq('id', historicoData.caminhao_id)
+            .maybeSingle()
+          return {
+            id: historicoData.caminhao_id,
+            placa: normalizarPlaca(camAtual?.placa || historicoData.caminhao_placa || ''),
+          }
         }
       }
     }
