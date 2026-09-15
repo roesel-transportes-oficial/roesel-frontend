@@ -290,8 +290,19 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       return () => { ativo = false }
     }
 
+    if (!dataInicio) {
+      // Sem a data de saída não é seguro usar o caminhão atual como se fosse histórico.
+      setCaminhao(null)
+      setCaminhaoBase(null)
+      setIsSubstituto(false)
+      setKmInicial('')
+      setKmFinal('')
+      setContratosDisponiveis([])
+      return () => { ativo = false }
+    }
+
     async function init(motorista: Motorista) {
-      const cam = await buscarCaminhaoDoMotorista(motorista, dataInicio || undefined)
+      const cam = await buscarCaminhaoDoMotorista(motorista, dataInicio)
       if (!ativo || !cam) {
         if (ativo) {
           setCaminhao(null)
@@ -682,7 +693,7 @@ useEffect(() => {
                         <div className={`w-full border-2 rounded-xl px-4 py-3 text-sm font-black flex items-center justify-between
                           ${isSubstituto ? 'bg-blue-50 border-blue-100 text-blue-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
                           <div className="flex items-center gap-2">
-                            {caminhao ? caminhao.placa : 'Aguardando...'}
+                            {caminhao ? caminhao.placa : dataInicio ? 'Histórico não encontrado' : 'Informe a saída da viagem'}
                             {isSubstituto && (
                               <span className="text-[9px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase">Substituto</span>
                             )}
