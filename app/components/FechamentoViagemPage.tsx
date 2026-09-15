@@ -162,6 +162,33 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     setContratosDisponiveis(todos.filter(c => !idsUsados.has(c.id)))
   }
 
+  // O Supabase pagina consultas grandes por padrão. Como a tabela pode ter
+  // mais de 1.000 vínculos, uma consulta única deixaria abastecimentos já
+  // fechados aparecerem novamente. Busca todos os vínculos em páginas.
+  async function buscarAbastecimentosUsados(): Promise<Set<string>> {
+    const usados = new Set<string>()
+    const tamanhoPagina = 1000
+    let inicio = 0
+
+    while (true) {
+      const { data, error } = await supabase
+        .from('fechamento_abastecimentos')
+        .select('abastecimento_id')
+        .range(inicio, inicio + tamanhoPagina - 1)
+
+      if (error) throw error
+      const linhas = data || []
+      linhas.forEach(linha => {
+        if (linha.abastecimento_id) usados.add(linha.abastecimento_id)
+      })
+
+      if (linhas.length < tamanhoPagina) break
+      inicio += tamanhoPagina
+    }
+
+    return usados
+  }
+
   async function buscarCaminhaoDoMotorista(mot: Motorista, dataReferencia?: string): Promise<Caminhao | null> {
     if (dataReferencia) {
       const { data: historicosData, error: historicoError } = await supabase
@@ -194,7 +221,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
             .maybeSingle()
           return {
             id: historicoData.caminhao_id,
-            placa: normalizarPlaca(historicoData.caminhao_placa || camAtual?.placa || ''),
+            // O caminhao_id é a referência confiável. Históricos antigos podem ter caminhao_placa desatualizada.
+            placa: normalizarPlaca(camAtual?.placa || historicoData.caminhao_placa || ''),
           }
         }
       }
@@ -342,7 +370,17 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
 
       if (!ativo) return
       if (manut?.caminhao_substituto_id) {
-        setCaminhao({ id: manut.caminhao_substituto_id, placa: normalizarPlaca(manut.caminhao_substituto_placa || '') })
+        // O ID do substituto é a referência confiável; a placa salva na manutenção pode estar antiga.
+        const { data: substitutoAtual } = await supabase
+          .from('caminhoes')
+          .select('id, placa')
+          .eq('id', manut.caminhao_substituto_id)
+          .maybeSingle()
+        if (!ativo) return
+        setCaminhao({
+          id: manut.caminhao_substituto_id,
+          placa: normalizarPlaca(substitutoAtual?.placa || manut.caminhao_substituto_placa || ''),
+        })
         setIsSubstituto(true)
       } else {
         setCaminhao(caminhaoBase)
@@ -368,11 +406,10 @@ useEffect(() => {
       .gte('data', abastDataInicio)
       .lte('data', abastDataFim)
       .order('data'),
-    supabase.from('fechamento_abastecimentos').select('abastecimento_id')
+    buscarAbastecimentosUsados()
   ])
-    .then(([{ data, error }, { data: jaUsados }]) => {
+    .then(([{ data, error }, idsUsados]) => {
       if (error) { setErro('Erro: ' + error.message); return }
-      const idsUsados = new Set(jaUsados?.map(u => u.abastecimento_id) || [])
       const lista = (data || []).filter(a => !idsUsados.has(a.id))
       setAbastecimentos(lista)
       setAbastSelecionados(new Set(lista.map(a => a.id)))
@@ -513,9 +550,18 @@ useEffect(() => {
       )
 
       if (abastAtivos.length > 0) {
-        await supabase.from('fechamento_abastecimentos').insert(
+        // Confere novamente no banco para evitar reutilização caso outro
+        // fechamento tenha sido salvo enquanto esta tela estava aberta.
+        const usadosAgora = await buscarAbastecimentosUsados()
+        const repetidos = abastAtivos.filter(a => usadosAgora.has(a.id))
+        if (repetidos.length > 0) {
+          throw new Error('Um ou mais abastecimentos selecionados já foram usados em outro fechamento. Atualize a lista e selecione apenas os disponíveis.')
+        }
+
+        const { error: errorAbast } = await supabase.from('fechamento_abastecimentos').insert(
           abastAtivos.map(a => ({ fechamento_id: fech.id, abastecimento_id: a.id }))
         )
+        if (errorAbast) throw errorAbast
       }
 
       setSucesso(true)
