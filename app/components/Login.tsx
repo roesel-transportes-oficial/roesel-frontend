@@ -66,6 +66,7 @@ export default function Login() {
         perm: 'view',
         status: 'pendente',
         primeiro_acesso: false,
+        senha_trocada_em: new Date().toISOString(),
       })
 
       if (error) { setErro('Erro ao criar conta. Tente novamente.'); setLoading(false); return }

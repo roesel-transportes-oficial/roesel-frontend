@@ -21,12 +21,13 @@ import NotasDiversasPage from './components/NotasDiversasPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
+import TrocaSenhaObrigatoria from './components/TrocaSenhaObrigatoria'
 import Sidebar from './components/Sidebar'
 
 const ABAS_INICIAIS = new Set(['dashboard'])
 
 export default function Home() {
-  const { user, loading } = useAuth()
+  const { user, loading, senhaExpirada } = useAuth()
   const [aba, setAba] = useState('dashboard')
   const [abasVisitadas, setAbasVisitadas] = useState<Set<string>>(ABAS_INICIAIS)
 
@@ -52,6 +53,7 @@ export default function Home() {
   }
 
   if (!user) return <Login />
+  if (senhaExpirada) return <TrocaSenhaObrigatoria />
 
   return (
     <div className="flex min-h-screen">

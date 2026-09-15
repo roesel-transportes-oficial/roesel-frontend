@@ -6,6 +6,8 @@ import { supabase } from './supabase'
 const SESSION_TIMEOUT_MS = 15_000
 const PROFILE_TIMEOUT_MS = 10_000
 const LOGIN_TIMEOUT_MS = 20_000
+const SENHA_MAX_AGE_DIAS = 60
+const SENHA_MAX_AGE_MS = SENHA_MAX_AGE_DIAS * 24 * 60 * 60 * 1000
 
 type PerfilUsuario = {
   nome: string | null
@@ -13,13 +15,17 @@ type PerfilUsuario = {
   perm: string | null
   email: string | null
   status: string | null
+  primeiro_acesso?: boolean | null
+  senha_trocada_em?: string | null
 }
 
 interface AuthContextType {
   user: string | null
   perm: string
   email: string | null
+  senhaExpirada: boolean
   login: (loginOrEmail: string, senha: string) => Promise<string | null>
+  atualizarSenha: (novaSenha: string) => Promise<string | null>
   logout: () => void
   loading: boolean
 }
@@ -28,7 +34,9 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   perm: '',
   email: null,
+  senhaExpirada: false,
   login: async () => null,
+  atualizarSenha: async () => 'Usuário não autenticado',
   logout: () => {},
   loading: true,
 })
@@ -46,10 +54,18 @@ async function comTimeout<T>(promessa: PromiseLike<T>, ms: number): Promise<T | 
   }
 }
 
+function senhaVencida(senhaTrocadaEm: string | null | undefined, primeiroAcesso: boolean | null | undefined) {
+  if (primeiroAcesso === true) return true
+  if (!senhaTrocadaEm) return false
+  const data = new Date(senhaTrocadaEm).getTime()
+  return !Number.isNaN(data) && Date.now() - data >= SENHA_MAX_AGE_MS
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<string | null>(null)
   const [perm, setPerm] = useState('')
   const [email, setEmail] = useState<string | null>(null)
+  const [senhaExpirada, setSenhaExpirada] = useState(false)
   const [loading, setLoading] = useState(true)
   const mountedRef = useRef(false)
   const perfilRequestRef = useRef(0)
@@ -59,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
     setPerm('')
     setEmail(null)
+    setSenhaExpirada(false)
   }, [])
 
   const carregarUsuario = useCallback(async (emailAuth: string): Promise<boolean> => {
@@ -68,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const resultado = await comTimeout(
         supabase
           .from('usuarios')
-          .select('nome, login, perm, email, status')
+          .select('nome, login, perm, email, status, primeiro_acesso, senha_trocada_em')
           .eq('email', emailAuth)
           .maybeSingle(),
         PROFILE_TIMEOUT_MS,
@@ -84,7 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: { message?: string } | null
       }
 
-      // Uma resposta antiga não pode sobrescrever um perfil mais recente.
       if (!mountedRef.current || requestId !== perfilRequestRef.current) return true
 
       if (error) {
@@ -100,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(data.nome || data.login)
       setPerm(data.perm || '')
       setEmail(data.email || emailAuth)
+      setSenhaExpirada(senhaVencida(data.senha_trocada_em, data.primeiro_acesso))
       return true
     } catch (error) {
       console.warn('Erro ao carregar perfil do usuário:', error)
@@ -158,10 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return
       }
 
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // O callback do Supabase precisa retornar imediatamente. Fazer uma
-        // consulta assíncrona diretamente aqui pode bloquear o lock interno
-        // de autenticação e deixar a aplicação presa em "Carregando...".
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'PASSWORD_RECOVERY') {
         window.setTimeout(() => {
           if (mountedRef.current) void processarSessao(session)
         }, 0)
@@ -221,11 +235,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const resultado = await comTimeout(processoDeLogin(), LOGIN_TIMEOUT_MS)
-    if (resultado === null) {
-      return 'A conexão está muito lenta. Tente novamente em alguns instantes.'
+    if (resultado === null) return 'A conexão está muito lenta. Tente novamente em alguns instantes.'
+    return resultado
+  }
+
+  async function atualizarSenha(novaSenha: string): Promise<string | null> {
+    if (!email) return 'Usuário não autenticado.'
+    if (novaSenha.length < 8) return 'A nova senha deve ter pelo menos 8 caracteres.'
+
+    const { error: authError } = await supabase.auth.updateUser({ password: novaSenha })
+    if (authError) return authError.message || 'Não foi possível atualizar a senha.'
+
+    const { error: perfilError } = await supabase
+      .from('usuarios')
+      .update({ senha_trocada_em: new Date().toISOString(), primeiro_acesso: false })
+      .eq('email', email)
+
+    if (perfilError) {
+      console.error('Senha alterada, mas não foi possível atualizar a data de validade:', perfilError)
+      return 'A senha foi alterada, mas não foi possível registrar a validade. Tente novamente.'
     }
 
-    return resultado
+    setSenhaExpirada(false)
+    return null
   }
 
   async function logout() {
@@ -240,7 +272,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, perm, email, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, perm, email, senhaExpirada, login, atualizarSenha, logout, loading }}>
       {children}
     </AuthContext.Provider>
   )
