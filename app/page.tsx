@@ -22,6 +22,7 @@ import { useState } from 'react'
 import { useAuth } from './services/auth'
 import Login from './components/Login'
 import TrocaSenhaObrigatoria from './components/TrocaSenhaObrigatoria'
+import AvisoAtualizacao from './components/AvisoAtualizacao'
 import Sidebar from './components/Sidebar'
 
 const ABAS_INICIAIS = new Set(['dashboard'])
@@ -56,7 +57,9 @@ export default function Home() {
   if (senhaExpirada) return <TrocaSenhaObrigatoria />
 
   return (
-    <div className="flex min-h-screen">
+    <>
+      <AvisoAtualizacao />
+      <div className="flex min-h-screen">
       <Sidebar aba={aba} setAba={navegarPara} />
       <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
         {Array.from(abasVisitadas).map((abaVisitada) => (
@@ -69,7 +72,8 @@ export default function Home() {
           </div>
         ))}
       </main>
-    </div>
+      </div>
+    </>
   )
 }
 
