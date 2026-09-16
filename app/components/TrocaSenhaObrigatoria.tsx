@@ -5,6 +5,7 @@ import { useAuth } from '../services/auth'
 
 export default function TrocaSenhaObrigatoria() {
   const { atualizarSenha, logout } = useAuth()
+  const [senhaAtual, setSenhaAtual] = useState('')
   const [senha, setSenha] = useState('')
   const [confirmacao, setConfirmacao] = useState('')
   const [erro, setErro] = useState('')
@@ -25,7 +26,7 @@ export default function TrocaSenhaObrigatoria() {
     }
 
     setSalvando(true)
-    const resultado = await atualizarSenha(senha)
+    const resultado = await atualizarSenha(senhaAtual, senha)
     setSalvando(false)
 
     if (resultado) {
@@ -34,6 +35,7 @@ export default function TrocaSenhaObrigatoria() {
     }
 
     setSucesso(true)
+    setSenhaAtual('')
     setSenha('')
     setConfirmacao('')
   }
@@ -54,6 +56,17 @@ export default function TrocaSenhaObrigatoria() {
 
         {!sucesso ? (
           <form onSubmit={salvar} className="mt-6 space-y-4">
+            <div>
+              <label className="text-xs font-black uppercase tracking-wider text-gray-500">Senha atual</label>
+              <input
+                type="password"
+                value={senhaAtual}
+                onChange={e => setSenhaAtual(e.target.value)}
+                className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 outline-none focus:ring-2 focus:ring-red-500"
+                autoComplete="current-password"
+                required
+              />
+            </div>
             <div>
               <label className="text-xs font-black uppercase tracking-wider text-gray-500">Nova senha</label>
               <input

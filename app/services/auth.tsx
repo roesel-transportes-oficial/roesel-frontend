@@ -25,7 +25,7 @@ interface AuthContextType {
   email: string | null
   senhaExpirada: boolean
   login: (loginOrEmail: string, senha: string) => Promise<string | null>
-  atualizarSenha: (novaSenha: string) => Promise<string | null>
+  atualizarSenha: (senhaAtual: string, novaSenha: string) => Promise<string | null>
   logout: () => void
   loading: boolean
 }
@@ -239,9 +239,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return resultado
   }
 
-  async function atualizarSenha(novaSenha: string): Promise<string | null> {
+  async function atualizarSenha(senhaAtual: string, novaSenha: string): Promise<string | null> {
     if (!email) return 'Usuário não autenticado.'
+    if (!senhaAtual) return 'Informe sua senha atual.'
     if (novaSenha.length < 8) return 'A nova senha deve ter pelo menos 8 caracteres.'
+
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email,
+      password: senhaAtual,
+    })
+    if (reauthError) return 'A senha atual está incorreta.'
 
     const { error: authError } = await supabase.auth.updateUser({ password: novaSenha })
     if (authError) return authError.message || 'Não foi possível atualizar a senha.'
