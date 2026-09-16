@@ -8,6 +8,7 @@ const PROFILE_TIMEOUT_MS = 10_000
 const LOGIN_TIMEOUT_MS = 20_000
 const SENHA_MAX_AGE_DIAS = 60
 const SENHA_MAX_AGE_MS = SENHA_MAX_AGE_DIAS * 24 * 60 * 60 * 1000
+export const CODIGO_REAUTENTICACAO_ENVIADO = '__CODIGO_REAUTENTICACAO_ENVIADO__'
 
 type PerfilUsuario = {
   nome: string | null
@@ -25,7 +26,7 @@ interface AuthContextType {
   email: string | null
   senhaExpirada: boolean
   login: (loginOrEmail: string, senha: string) => Promise<string | null>
-  atualizarSenha: (senhaAtual: string, novaSenha: string) => Promise<string | null>
+  atualizarSenha: (senhaAtual: string, novaSenha: string, codigoReautenticacao?: string) => Promise<string | null>
   logout: () => void
   loading: boolean
 }
@@ -239,18 +240,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return resultado
   }
 
-  async function atualizarSenha(senhaAtual: string, novaSenha: string): Promise<string | null> {
+  async function atualizarSenha(senhaAtual: string, novaSenha: string, codigoReautenticacao?: string): Promise<string | null> {
     if (!email) return 'Usuário não autenticado.'
     if (!senhaAtual) return 'Informe sua senha atual.'
     if (novaSenha.length < 8) return 'A nova senha deve ter pelo menos 8 caracteres.'
 
-    const { error: reauthError } = await supabase.auth.signInWithPassword({
-      email,
-      password: senhaAtual,
-    })
-    if (reauthError) return 'A senha atual está incorreta.'
+    if (!codigoReautenticacao) {
+      const { error: senhaAtualError } = await supabase.auth.signInWithPassword({
+        email,
+        password: senhaAtual,
+      })
+      if (senhaAtualError) return 'A senha atual está incorreta.'
 
-    const { error: authError } = await supabase.auth.updateUser({ password: novaSenha })
+      const { error: reauthError } = await supabase.auth.reauthenticate()
+      if (reauthError) return reauthError.message || 'Não foi possível enviar o código de segurança.'
+      return CODIGO_REAUTENTICACAO_ENVIADO
+    }
+
+    const { error: authError } = await supabase.auth.updateUser({
+      password: novaSenha,
+      nonce: codigoReautenticacao,
+    })
     if (authError) return authError.message || 'Não foi possível atualizar a senha.'
 
     const { error: perfilError } = await supabase

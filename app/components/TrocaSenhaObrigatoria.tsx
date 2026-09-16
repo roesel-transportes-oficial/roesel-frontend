@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { useAuth } from '../services/auth'
+import { CODIGO_REAUTENTICACAO_ENVIADO, useAuth } from '../services/auth'
 
 export default function TrocaSenhaObrigatoria() {
   const { atualizarSenha, logout } = useAuth()
   const [senhaAtual, setSenhaAtual] = useState('')
   const [senha, setSenha] = useState('')
   const [confirmacao, setConfirmacao] = useState('')
+  const [codigo, setCodigo] = useState('')
+  const [codigoEnviado, setCodigoEnviado] = useState(false)
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState(false)
   const [salvando, setSalvando] = useState(false)
@@ -26,8 +28,14 @@ export default function TrocaSenhaObrigatoria() {
     }
 
     setSalvando(true)
-    const resultado = await atualizarSenha(senhaAtual, senha)
+    const resultado = await atualizarSenha(senhaAtual, senha, codigoEnviado ? codigo : undefined)
     setSalvando(false)
+
+    if (resultado === CODIGO_REAUTENTICACAO_ENVIADO) {
+      setCodigoEnviado(true)
+      setErro('')
+      return
+    }
 
     if (resultado) {
       setErro(resultado)
@@ -38,6 +46,7 @@ export default function TrocaSenhaObrigatoria() {
     setSenhaAtual('')
     setSenha('')
     setConfirmacao('')
+    setCodigo('')
   }
 
   return (
@@ -65,8 +74,24 @@ export default function TrocaSenhaObrigatoria() {
                 className="mt-1 w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 outline-none focus:ring-2 focus:ring-red-500"
                 autoComplete="current-password"
                 required
+                disabled={codigoEnviado}
               />
             </div>
+            {codigoEnviado && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm font-semibold text-blue-800">
+                Enviamos um código de segurança para o seu e-mail. Informe o código abaixo para concluir a troca.
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={codigo}
+                  onChange={e => setCodigo(e.target.value.replace(/\\D/g, '').slice(0, 8))}
+                  className="mt-3 w-full border border-blue-200 rounded-xl px-4 py-3 bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                  autoComplete="one-time-code"
+                  placeholder="Código de segurança"
+                  required
+                />
+              </div>
+            )}
             <div>
               <label className="text-xs font-black uppercase tracking-wider text-gray-500">Nova senha</label>
               <input
@@ -90,7 +115,7 @@ export default function TrocaSenhaObrigatoria() {
               />
             </div>
             <button type="submit" disabled={salvando} className="w-full bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl py-3 font-black uppercase tracking-wider">
-              {salvando ? 'Atualizando...' : 'Atualizar senha'}
+              {salvando ? (codigoEnviado ? 'Confirmando...' : 'Enviando código...') : (codigoEnviado ? 'Confirmar e atualizar senha' : 'Enviar código de segurança')}
             </button>
           </form>
         ) : (
