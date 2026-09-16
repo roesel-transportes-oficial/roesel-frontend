@@ -83,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const requestId = ++perfilRequestRef.current
 
     try {
-      const resultado = await comTimeout(
+      let resultado = await comTimeout(
         supabase
           .from('usuarios')
           .select('nome, login, perm, email, status, primeiro_acesso, senha_trocada_em')
@@ -97,9 +97,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false
       }
 
-      const { data, error } = resultado as {
+      let { data, error } = resultado as {
         data: PerfilUsuario | null
         error: { message?: string } | null
+      }
+
+      // Compatibilidade: se a migração da expiração ainda não foi executada,
+      // o login não pode deixar todos os módulos indisponíveis.
+      if (error && /senha_trocada_em|primeiro_acesso|column/i.test(error.message || '')) {
+        const perfilBasico = await comTimeout(
+          supabase
+            .from('usuarios')
+            .select('nome, login, perm, email, status')
+            .eq('email', emailAuth)
+            .maybeSingle(),
+          PROFILE_TIMEOUT_MS,
+        )
+        if (!perfilBasico) return false
+        const fallback = perfilBasico as {
+          data: PerfilUsuario | null
+          error: { message?: string } | null
+        }
+        data = fallback.data
+        error = fallback.error
       }
 
       if (!mountedRef.current || requestId !== perfilRequestRef.current) return true
