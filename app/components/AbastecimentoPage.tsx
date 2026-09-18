@@ -60,10 +60,22 @@ const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 async function supaFetch(path: string, method = 'GET', body?: any) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const accessToken = session?.access_token
+
+  // O RLS permite operações de gravação somente para usuários autenticados.
+  // Mantemos a chave pública apenas como fallback para leituras da tela de login
+  // ou durante a restauração inicial da sessão; POST/PATCH/DELETE nunca devem
+  // chegar ao Supabase como anon.
+  if (method !== 'GET' && !accessToken) {
+    throw new Error('Sua sessão expirou. Saia e entre novamente para salvar.')
+  }
+
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
-      apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${accessToken || SUPABASE_KEY}`,
       'Content-Type': 'application/json',
       Prefer: method === 'POST' ? 'return=representation' : 'return=minimal',
     },
