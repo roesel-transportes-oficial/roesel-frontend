@@ -1,4 +1,5 @@
 'use client'
+import { supabaseRestFetch } from '../services/rest'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
 import { supabase } from '../services/supabase'
@@ -52,7 +53,7 @@ const MESES = [
 const isVelocidade = (inf: string) => inf.includes('VELOCIDADE SUPERIOR')
 
 async function lancarContaPagar(multa: any) {
-  await fetch(`${SUPABASE_URL}/rest/v1/contas_pagar`, {
+  await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/contas_pagar`, {
     method: 'POST',
     headers: {
       apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -323,7 +324,7 @@ export default function MultasPage() {
 
   async function fetch_() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/multas?order=data.desc`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/multas?order=data.desc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -333,7 +334,7 @@ export default function MultasPage() {
 
   async function fetchMotoristas() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/motoristas?order=nome.asc&ativo=eq.true`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/motoristas?order=nome.asc&ativo=eq.true`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -343,7 +344,7 @@ export default function MultasPage() {
 
   async function fetchCaminhoes() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/caminhoes?order=placa.asc`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/caminhoes?order=placa.asc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -459,7 +460,7 @@ export default function MultasPage() {
         folhaMes: cadFolhaMes, folhaAno: cadFolhaAno,
         vencimento: cadVencimento, pagamento: cadPagamento,
       })
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/multas`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/multas`, {
         method: 'POST',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
         body: JSON.stringify(payload)
@@ -485,7 +486,7 @@ export default function MultasPage() {
         folhaMes: editFolhaMes, folhaAno: editFolhaAno,
         vencimento: editVencimento, pagamento: editPagamento,
       })
-      await fetch(`${SUPABASE_URL}/rest/v1/multas?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/multas?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify(payload)
@@ -508,7 +509,7 @@ export default function MultasPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/multas?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/multas?id=eq.${sel.id}`, {
         method: 'DELETE',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })

@@ -1,4 +1,5 @@
 'use client'
+import { supabaseRestFetch } from '../services/rest'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, ShieldAlert } from 'lucide-react'
@@ -41,7 +42,7 @@ export default function AvariasPage() {
 
   async function fetch_() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/avarias?order=data.desc`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/avarias?order=data.desc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -51,7 +52,7 @@ export default function AvariasPage() {
 
   async function fetchMotoristas() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/motoristas?order=nome.asc&ativo=eq.true`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/motoristas?order=nome.asc&ativo=eq.true`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -88,7 +89,7 @@ export default function AvariasPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/avarias?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/avarias?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ motorista: editMotorista, data: editData, valor: parseFloat(editValor) || 0, descricao: editDescricao, status: editStatus })
@@ -101,7 +102,7 @@ export default function AvariasPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/avarias?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/avarias?id=eq.${sel.id}`, {
         method: 'DELETE',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
@@ -113,7 +114,7 @@ export default function AvariasPage() {
     if (!cadMotorista) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/avarias`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/avarias`, {
         method: 'POST',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({ motorista: cadMotorista, data: cadData, valor: parseFloat(cadValor) || 0, descricao: cadDescricao, status: cadStatus })

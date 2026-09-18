@@ -1,4 +1,5 @@
 'use client'
+import { supabaseRestFetch } from '../services/rest'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
 import { normalizarPlaca } from '../services/placas'
@@ -133,7 +134,7 @@ export default function ViagemPage() {
 
   async function fetch_() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/viagens?order=created_at.desc`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/viagens?order=created_at.desc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -143,7 +144,7 @@ export default function ViagemPage() {
 
   async function fetchMotoristas() {
     try {
-      const res = await fetch(        `${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc&select=id,nome,adiantamento,ferias,freelancer`, {
+      const res = await supabaseRestFetch(        `${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc&select=id,nome,adiantamento,ferias,freelancer`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       setMotoristas(await res.json())
@@ -152,7 +153,7 @@ export default function ViagemPage() {
 
   async function fetchCaminhoes() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/caminhoes?order=placa.asc`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/caminhoes?order=placa.asc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -162,7 +163,7 @@ export default function ViagemPage() {
 
   async function fetchContratos() {
     try {
-      const resVC = await fetch(
+      const resVC = await supabaseRestFetch(
         `${SUPABASE_URL}/rest/v1/viagem_contratos?select=contrato_id`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       )
@@ -170,7 +171,7 @@ export default function ViagemPage() {
       const jaVinculados = new Set(
         (Array.isArray(vcData) ? vcData : []).map((v: any) => v.contrato_id)
       )
-      const res = await fetch(
+      const res = await supabaseRestFetch(
         `${SUPABASE_URL}/rest/v1/contratos?order=contrato.desc`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       )
@@ -181,13 +182,13 @@ export default function ViagemPage() {
 
   async function fetchContratosViagem(viagemId: string) {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/viagem_contratos?viagem_id=eq.${viagemId}`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/viagem_contratos?viagem_id=eq.${viagemId}`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
       if (Array.isArray(data) && data.length > 0) {
         const ids = data.map((d: any) => d.contrato_id)
-        const resC = await fetch(
+        const resC = await supabaseRestFetch(
           `${SUPABASE_URL}/rest/v1/contratos?id=in.(${ids.join(',')})`,
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
         )
@@ -201,7 +202,7 @@ export default function ViagemPage() {
 
   async function buscarCaminhaoPorMotorista(nomeMotorista: string): Promise<{ id: string; placa: string } | null> {
     try {
-      const resM = await fetch(
+      const resM = await supabaseRestFetch(
         `${SUPABASE_URL}/rest/v1/motoristas?nome=eq.${encodeURIComponent(nomeMotorista)}&limit=1`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       )
@@ -212,7 +213,7 @@ export default function ViagemPage() {
       if (motData[0].freelancer === true) return null
       const emFerias = motData[0].ferias === true
 
-      const resC = await fetch(
+      const resC = await supabaseRestFetch(
         `${SUPABASE_URL}/rest/v1/caminhoes?motorista_atual=eq.${motId}&limit=1`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       )
@@ -220,7 +221,7 @@ export default function ViagemPage() {
       if (Array.isArray(camData) && camData[0]) return { id: camData[0].id, placa: normalizarPlaca(camData[0].placa) }
 
       if (emFerias && motData[0].caminhao_temp_id) {
-        const resCT = await fetch(
+        const resCT = await supabaseRestFetch(
           `${SUPABASE_URL}/rest/v1/caminhoes?id=eq.${motData[0].caminhao_temp_id}&limit=1`,
           { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
         )
@@ -234,7 +235,7 @@ export default function ViagemPage() {
 
   async function buscarCaminhaoPorPlaca(placa: string): Promise<{ id: string; placa: string } | null> {
     try {
-      const res = await fetch(
+      const res = await supabaseRestFetch(
         `${SUPABASE_URL}/rest/v1/caminhoes?placa=eq.${encodeURIComponent(placa)}&limit=1`,
         { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
       )
@@ -326,12 +327,12 @@ export default function ViagemPage() {
   }
 
   async function salvarContratosViagem(viagemId: string, lista: Contrato[]) {
-    await fetch(`${SUPABASE_URL}/rest/v1/viagem_contratos?viagem_id=eq.${viagemId}`, {
+    await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/viagem_contratos?viagem_id=eq.${viagemId}`, {
       method: 'DELETE',
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
     })
     if (lista.length > 0) {
-      await fetch(`${SUPABASE_URL}/rest/v1/viagem_contratos`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/viagem_contratos`, {
         method: 'POST',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify(lista.map(c => ({ viagem_id: viagemId, contrato_id: c.id })))
@@ -343,7 +344,7 @@ export default function ViagemPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/viagens?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/viagens?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
         body: JSON.stringify({
@@ -363,7 +364,7 @@ export default function ViagemPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/viagens?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/viagens?id=eq.${sel.id}`, {
         method: 'DELETE',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
@@ -375,7 +376,7 @@ export default function ViagemPage() {
     if (!cadMotorista || !cadCaminhaoId) return
     setLoading(true)
     if (perm !== 'demo') {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/viagens`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/viagens`, {
         method: 'POST',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
         body: JSON.stringify({

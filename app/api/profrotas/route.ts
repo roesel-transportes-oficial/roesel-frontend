@@ -4,18 +4,18 @@ const PROFROTAS_TOKEN = process.env.PROFROTAS_TOKEN!
 const SUPABASE_URL    = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY    = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 
-async function sbGet(path: string) {
+async function sbGet(path: string, authorization: string) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    headers: { apikey: SUPABASE_KEY, Authorization: authorization }
   })
   return res.json()
 }
 
-async function sbPost(table: string, data: any) {
+async function sbPost(table: string, data: any, authorization: string) {
   return fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
     headers: {
-      apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+      apikey: SUPABASE_KEY, Authorization: authorization,
       'Content-Type': 'application/json', Prefer: 'return=minimal',
     },
     body: JSON.stringify(data),
@@ -24,6 +24,11 @@ async function sbPost(table: string, data: any) {
 
 export async function POST(req: Request) {
   try {
+    const authorization = req.headers.get('authorization')
+    if (!authorization || !/^Bearer\s+\S+/i.test(authorization)) {
+      return NextResponse.json({ ok: false, error: 'Sessão não autenticada.' }, { status: 401 })
+    }
+
     const { dataInicio, dataFim } = await req.json()
 
     const dataInicialISO = `${dataInicio}T00:00:00.000-0300`
@@ -68,7 +73,7 @@ export async function POST(req: Request) {
     const autorizados = todos.filter(a => a.statusAutorizacao === 1)
 
     // ── Busca caminhões para vincular pela placa ─────────────────────────
-    const caminhoes: any[] = await sbGet('caminhoes?select=id,placa')
+    const caminhoes: any[] = await sbGet('caminhoes?select=id,placa', authorization)
 
     let importados = 0
     let ignorados  = 0
@@ -85,7 +90,8 @@ export async function POST(req: Request) {
 
       // Verifica duplicata pelo id da Profrotas no campo obs
       const existentes: any[] = await sbGet(
-        `abastecimentos?select=id&obs=ilike.*Profrotas+%23${profrotasId}*&limit=1`
+        `abastecimentos?select=id&obs=ilike.*Profrotas+%23${profrotasId}*&limit=1`,
+        authorization,
       )
       if (existentes.length > 0) { ignorados++; continue }
 
@@ -133,7 +139,7 @@ export async function POST(req: Request) {
         total,
         obs:                     `Profrotas #${profrotasId}`,
         desconto:                0,
-      })
+      }, authorization)
 
       importados++
     }

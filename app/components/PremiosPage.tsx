@@ -1,4 +1,5 @@
 'use client'
+import { supabaseRestFetch } from '../services/rest'
 import { useState, useEffect } from 'react'
 import { Trophy, CheckCircle, XCircle, Fuel, FileText, AlertTriangle, ShieldAlert } from 'lucide-react'
 
@@ -35,12 +36,12 @@ export default function PremiosPage() {
 
       // Busca dados em paralelo
       const [resM, resC, resMu, resAv, resFech] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc`, { headers: h }),
-        fetch(`${SUPABASE_URL}/rest/v1/contratos?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
-        fetch(`${SUPABASE_URL}/rest/v1/multas?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
-        fetch(`${SUPABASE_URL}/rest/v1/avarias?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc`, { headers: h }),
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/contratos?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/multas?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/avarias?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
         // ✅ Fechamentos do mês para calcular km e litros reais
-        fetch(`${SUPABASE_URL}/rest/v1/fechamento_viagens?data_inicio=gte.${inicioMes}&data_inicio=lte.${fimMes}&select=id,motorista_id,km_inicial,km_final`, { headers: h }),
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/fechamento_viagens?data_inicio=gte.${inicioMes}&data_inicio=lte.${fimMes}&select=id,motorista_id,km_inicial,km_final`, { headers: h }),
       ])
 
       const [motoristas, contratos, multas, avarias, fechamentos] = await Promise.all([
@@ -54,7 +55,7 @@ export default function PremiosPage() {
         const fechIds = fechamentos.map((f: any) => f.id)
 
         // Abastecimentos vinculados aos fechamentos
-        const resFechAbast = await fetch(
+        const resFechAbast = await supabaseRestFetch(
           `${SUPABASE_URL}/rest/v1/fechamento_abastecimentos?fechamento_id=in.(${fechIds.join(',')})&select=fechamento_id,abastecimento_id`,
           { headers: h }
         )
@@ -63,7 +64,7 @@ export default function PremiosPage() {
         if (Array.isArray(fechAbastList) && fechAbastList.length > 0) {
           const abastIds = [...new Set(fechAbastList.map((fa: any) => fa.abastecimento_id))]
 
-          const resAbastDet = await fetch(
+          const resAbastDet = await supabaseRestFetch(
             `${SUPABASE_URL}/rest/v1/abastecimentos?id=in.(${abastIds.join(',')})&select=id,litros_combustivel`,
             { headers: h }
           )

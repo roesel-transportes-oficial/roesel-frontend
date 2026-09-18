@@ -1,4 +1,5 @@
 'use client'
+import { supabaseRestFetch } from '../services/rest'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../services/auth'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, UserCircle, Upload, Loader2, AlertCircle, MapPin, Phone, FileText } from 'lucide-react'
@@ -47,7 +48,7 @@ export default function ClientePage() {
 
   async function fetch_() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/clientes?order=nome.asc`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/clientes?order=nome.asc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -179,7 +180,7 @@ export default function ClientePage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: {
           apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -199,7 +200,7 @@ export default function ClientePage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${sel.id}`, {
         method: 'DELETE',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
@@ -211,7 +212,7 @@ export default function ClientePage() {
     if (!cadNome) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/clientes`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/clientes`, {
         method: 'POST',
         headers: {
           apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,

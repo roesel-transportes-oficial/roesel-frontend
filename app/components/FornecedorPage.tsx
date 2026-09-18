@@ -1,4 +1,5 @@
 'use client'
+import { supabaseRestFetch } from '../services/rest'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, Building2 } from 'lucide-react'
@@ -38,7 +39,7 @@ export default function FornecedorPage() {
 
   async function fetch_() {
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/fornecedores?order=nome.asc`, {
+      const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/fornecedores?order=nome.asc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
       const data = await res.json()
@@ -79,7 +80,7 @@ export default function FornecedorPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/fornecedores?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/fornecedores?id=eq.${sel.id}`, {
         method: 'PATCH',
         headers: {
           apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -95,7 +96,7 @@ export default function FornecedorPage() {
     if (!sel) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/fornecedores?id=eq.${sel.id}`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/fornecedores?id=eq.${sel.id}`, {
         method: 'DELETE',
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
@@ -107,7 +108,7 @@ export default function FornecedorPage() {
     if (!cadNome) return
     setLoading(true)
     if (perm !== 'demo') {
-      await fetch(`${SUPABASE_URL}/rest/v1/fornecedores`, {
+      await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/fornecedores`, {
         method: 'POST',
         headers: {
           apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
