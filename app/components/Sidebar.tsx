@@ -5,7 +5,7 @@ import {
   LayoutDashboard, FileText, FilePlus, User, DollarSign,
   Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown,
   ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle,
-  AlertTriangle, ShieldAlert, MapPin, ClipboardCheck, Palmtree,
+  AlertTriangle, ShieldAlert, MapPin, ClipboardCheck, Palmtree, Clock3,
   FileSignature, Files
 } from 'lucide-react'
 
@@ -23,6 +23,7 @@ const menus = [
   { id: 'cte',       label: 'CT-e',          icon: FileSignature,   adminOnly: false },
   { id: 'notas',     label: 'Notas Fiscais', icon: Files,           adminOnly: false },
   { id: 'premios',   label: 'Prêmios',       icon: Trophy,          adminOnly: false },
+  { id: 'jornada',   label: 'Gestão de Jornada', icon: Clock3,       adminOnly: true  },
   { id: 'usuarios',  label: 'Usuários',      icon: Users,           adminOnly: true  },
 ]
 

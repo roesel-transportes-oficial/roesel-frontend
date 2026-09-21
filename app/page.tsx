@@ -15,6 +15,7 @@ import AvariasPage from './components/AvariasPage'
 import PremiosPage from './components/PremiosPage'
 import ViagemPage from './components/ViagemPage'
 import FechamentoViagemPage from './components/FechamentoViagemPage'
+import JornadaPage from './components/JornadaPage'
 import ContasPagarPage from './components/ContasPagarPage'
 import CtePage from './components/CtePage'
 import NotasDiversasPage from './components/NotasDiversasPage'
@@ -97,6 +98,7 @@ function renderizarAba(aba: string, setAba: (novaAba: string) => void) {
     case 'notas': return <NotasDiversasPage />
     case 'novo': return <NovoContratoPage setAba={setAba} />
     case 'fechamento': return <FechamentoViagemPage setAba={setAba} />
+    case 'jornada': return <JornadaPage />
     case 'usuarios': return <Placeholder title="Usuários" icon="👥" />
     case 'contas_receber': return <Placeholder title="Contas a Receber" icon="📈" />
     default: return <DashboardPage />
