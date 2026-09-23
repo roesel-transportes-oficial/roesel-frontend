@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../services/supabase'
+import { supabaseRestFetch } from '../services/rest'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { normalizarPlaca, chavePlaca } from '../services/placas'
@@ -8,7 +9,6 @@ import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download,
 import * as XLSX from 'xlsx'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
 
 interface Abastecimento {
   id: string; data: string; caminhao_id: string; caminhao_placa: string
@@ -60,25 +60,9 @@ const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
 
 async function supaFetch(path: string, method = 'GET', body?: any) {
-  const { data: { session } } = await supabase.auth.getSession()
-  const accessToken = session?.access_token
-
-  // O RLS permite operações de gravação somente para usuários autenticados.
-  // Mantemos a chave pública apenas como fallback para leituras da tela de login
-  // ou durante a restauração inicial da sessão; POST/PATCH/DELETE nunca devem
-  // chegar ao Supabase como anon.
-  if (method !== 'GET' && !accessToken) {
-    throw new Error('Sua sessão expirou. Saia e entre novamente para salvar.')
-  }
-
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+  const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${accessToken || SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-      Prefer: method === 'POST' ? 'return=representation' : 'return=minimal',
-    },
+    headers: { 'Content-Type': 'application/json', Prefer: method === 'POST' ? 'return=representation' : 'return=minimal' },
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) throw new Error(await res.text())
@@ -258,9 +242,25 @@ export default function AbastecimentoPage() {
     setImportando(true)
     setResultadoImport(null)
     try {
+      let { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        const renovacao = await supabase.auth.refreshSession()
+        session = renovacao.data.session
+      }
+      if (!session?.access_token) {
+        showMsg('❌ Sua sessão expirou. Saia e entre novamente.')
+        return
+      }
       const res = await fetch('/api/profrotas', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+          // Alguns proxies/deployments podem remover Authorization; o endpoint
+          // aceita este cabeçalho alternativo para preservar a sessão.
+          'x-supabase-access-token': session.access_token,
+        },
+        cache: 'no-store',
         body: JSON.stringify({ dataInicio: profrotasInicio, dataFim: profrotasFim }),
       })
       const json = await res.json()

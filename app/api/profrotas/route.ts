@@ -24,7 +24,9 @@ async function sbPost(table: string, data: any, authorization: string) {
 
 export async function POST(req: Request) {
   try {
-    const authorization = req.headers.get('authorization')
+    const authorizationDireta = req.headers.get('authorization')
+    const tokenAlternativo = req.headers.get('x-supabase-access-token')
+    const authorization = authorizationDireta || (tokenAlternativo ? `Bearer ${tokenAlternativo}` : null)
     if (!authorization || !/^Bearer\s+\S+/i.test(authorization)) {
       return NextResponse.json({ ok: false, error: 'Sessão não autenticada.' }, { status: 401 })
     }
