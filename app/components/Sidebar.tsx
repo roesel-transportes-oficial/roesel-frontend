@@ -5,12 +5,12 @@ import {
   LayoutDashboard, FileText, FilePlus, User, DollarSign,
   Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown,
   ChevronRight, Wallet, TrendingUp, TrendingDown, UserCircle,
-  AlertTriangle, ShieldAlert, MapPin, ClipboardCheck, Palmtree, Clock3,
+  AlertTriangle, ShieldAlert, MapPin, ClipboardCheck, Palmtree, Clock3, BarChart3,
   FileSignature, Files
 } from 'lucide-react'
 
 const isFinanceiro  = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
-const isAbastecimento = (aba: string) => ['abastecimento', 'fornecedor'].includes(aba)
+const isAbastecimento = (aba: string) => ['abastecimento', 'analise_abastecimento', 'fornecedor'].includes(aba)
 const isMotorista   = (aba: string) => ['motorista', 'multas', 'avarias', 'ferias'].includes(aba)
 const isViagem      = (aba: string) => ['viagens', 'fechamento'].includes(aba)
 
@@ -141,6 +141,11 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
                   ${aba === 'abastecimento' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
                 <Fuel size={14} /> Registros
+              </button>
+              <button onClick={() => setAba('analise_abastecimento')}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
+                  ${aba === 'analise_abastecimento' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
+                <BarChart3 size={14} /> Análise
               </button>
               <button onClick={() => setAba('fornecedor')}
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition

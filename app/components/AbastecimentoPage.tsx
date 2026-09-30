@@ -5,9 +5,9 @@ import { supabaseRestFetch } from '../services/rest'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { normalizarPlaca, chavePlaca } from '../services/placas'
-import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download, X, AlertTriangle, BarChart3, TrendingUp, MapPin } from 'lucide-react'
+import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download, X, AlertTriangle, MapPin } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { avisosParaLancamento, calcularAnalises, calcularResumo, compararPor, compararPrecoRegional, calcularTendenciaPostos, estimarEconomiaPorRegiao, type AnaliseAbastecimento } from '../services/abastecimentoAnalise'
+import { avisosParaLancamento, calcularAnalises, compararPrecoRegional, type AnaliseAbastecimento } from '../services/abastecimentoAnalise'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 
@@ -116,10 +116,6 @@ export default function AbastecimentoPage() {
 
   const [filtroMotorista, setFiltroMotorista] = useState('')
   const [filtroPlaca, setFiltroPlaca]         = useState('')
-  const [filtroEstado, setFiltroEstado]       = useState('')
-  const [filtroCidade, setFiltroCidade]       = useState('')
-  const [filtroPosto, setFiltroPosto]         = useState('')
-  const [filtroCombustivel, setFiltroCombustivel] = useState('')
   const [filtroInicio, setFiltroInicio]       = useState('')
   const [filtroFim, setFiltroFim]             = useState('')
 
@@ -389,44 +385,20 @@ export default function AbastecimentoPage() {
     return [...unicas.values()].sort()
   }, [abastecimentos])
 
-  const opcoesEstados = useMemo(() => [...new Set(abastecimentos.map(a => a.estado).filter(Boolean))].sort(), [abastecimentos])
-  const opcoesCidades = useMemo(() => [...new Set(abastecimentos.map(a => a.cidade).filter(Boolean))].sort(), [abastecimentos])
-  const opcoesPostos = useMemo(() => [...new Set(abastecimentos.map(a => a.posto).filter(Boolean))].sort(), [abastecimentos])
-  const opcoesCombustiveis = useMemo(() => [...new Set(abastecimentos.map(a => a.tipo_combustivel).filter(Boolean))].sort(), [abastecimentos])
-
   const filtrados = useMemo(() => abastecimentos
     .filter(a => {
       if (filtroMotorista && a.motorista !== filtroMotorista) return false
       if (filtroPlaca && chavePlaca(a.caminhao_placa) !== chavePlaca(filtroPlaca)) return false
-      if (filtroEstado && a.estado !== filtroEstado) return false
-      if (filtroCidade && a.cidade !== filtroCidade) return false
-      if (filtroPosto && a.posto !== filtroPosto) return false
-      if (filtroCombustivel && a.tipo_combustivel !== filtroCombustivel) return false
       if (filtroInicio && a.data < filtroInicio) return false
       if (filtroFim   && a.data > filtroFim)   return false
       return true
     })
     .sort((a, b) => a.data.localeCompare(b.data) || Number(a.km || 0) - Number(b.km || 0)),
-    [abastecimentos, filtroMotorista, filtroPlaca, filtroEstado, filtroCidade, filtroPosto, filtroCombustivel, filtroInicio, filtroFim]
+    [abastecimentos, filtroMotorista, filtroPlaca, filtroInicio, filtroFim]
   )
 
   const analises = useMemo(() => calcularAnalises(abastecimentos), [abastecimentos])
-  const resumo = useMemo(() => calcularResumo(filtrados, analises, abastecimentos), [filtrados, analises, abastecimentos])
-  const comparativoRegiao = useMemo(() => compararPor(filtrados, a => a.estado || ''), [filtrados])
-  const comparativoPosto = useMemo(() => compararPor(filtrados, a => a.posto || ''), [filtrados])
-  const comparativoPlaca = useMemo(() => compararPor(filtrados, a => normalizarPlaca(a.caminhao_placa || '')), [filtrados])
-  const comparativoMotorista = useMemo(() => compararPor(filtrados, a => a.motorista || ''), [filtrados])
-  const tendenciasPostos = useMemo(() => calcularTendenciaPostos(filtrados), [filtrados])
-  const economias = useMemo(() => estimarEconomiaPorRegiao(filtrados), [filtrados])
-  const filtrosAtivos = Boolean(filtroMotorista || filtroPlaca || filtroEstado || filtroCidade || filtroPosto || filtroCombustivel || filtroInicio || filtroFim)
-
-  function formatarMoeda(valor: number | null | undefined) {
-    return valor == null ? '—' : `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`
-  }
-
-  function formatarNumero(valor: number | null | undefined, casas = 2) {
-    return valor == null ? '—' : valor.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })
-  }
+  const filtrosAtivos = Boolean(filtroMotorista || filtroPlaca || filtroInicio || filtroFim)
 
   function alertaDaLinha(a: Abastecimento): AnaliseAbastecimento | undefined {
     return a.id ? analises.get(a.id) : undefined
@@ -436,9 +408,7 @@ export default function AbastecimentoPage() {
     return compararPrecoRegional(abastecimentos, a)
   }
 
-  const precosAcimaDaMedia = useMemo(() => filtrados.filter(a => precoRegionalDaLinha(a).acimaDaMedia).length, [filtrados, abastecimentos])
-
-  const totalGeral = resumo.total
+  const totalGeral = useMemo(() => filtrados.reduce((soma, item) => soma + (item.total || 0), 0), [filtrados])
 
   function exportarExcel() {
     if (filtrados.length === 0) {
@@ -935,34 +905,6 @@ export default function AbastecimentoPage() {
           </select>
         </div>
         <div>
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 mb-1"><MapPin size={11}/> UF</label>
-          <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
-            <option value="">Todos</option>
-            {opcoesEstados.map(item => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 mb-1"><MapPin size={11}/> Cidade</label>
-          <select value={filtroCidade} onChange={e => setFiltroCidade(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
-            <option value="">Todas</option>
-            {opcoesCidades.map(item => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Posto</label>
-          <select value={filtroPosto} onChange={e => setFiltroPosto(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
-            <option value="">Todos</option>
-            {opcoesPostos.map(item => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Combustível</label>
-          <select value={filtroCombustivel} onChange={e => setFiltroCombustivel(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
-            <option value="">Todos</option>
-            {opcoesCombustiveis.map(item => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </div>
-        <div>
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Data Início</label>
           <input type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"/>
@@ -974,55 +916,11 @@ export default function AbastecimentoPage() {
         </div>
         {filtrosAtivos && (
           <div className="md:col-span-4 flex justify-end">
-            <button onClick={() => { setFiltroMotorista(''); setFiltroPlaca(''); setFiltroEstado(''); setFiltroCidade(''); setFiltroPosto(''); setFiltroCombustivel(''); setFiltroInicio(''); setFiltroFim('') }}
+            <button onClick={() => { setFiltroMotorista(''); setFiltroPlaca(''); setFiltroInicio(''); setFiltroFim('') }}
               className="text-xs text-red-600 hover:underline font-semibold">Limpar filtros</button>
           </div>
         )}
       </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        {[
-          ['Gasto total', formatarMoeda(resumo.total), 'text-red-600'],
-          ['Litros', `${formatarNumero(resumo.litros)} L`, 'text-gray-900'],
-          ['Preço médio', formatarMoeda(resumo.precoMedio), 'text-gray-900'],
-          ['Menor / maior preço', `${formatarMoeda(resumo.menorPreco)} · ${formatarMoeda(resumo.maiorPreco)}`, 'text-gray-900'],
-          ['KM rodados', formatarNumero(resumo.kmRodados, 0), 'text-gray-900'],
-          ['Custo por KM', formatarMoeda(resumo.custoPorKm), 'text-red-600'],
-          ['Com alertas', String(resumo.comAlertas), resumo.comAlertas ? 'text-amber-600' : 'text-green-600'],
-          ['Acima da média local', String(precosAcimaDaMedia), precosAcimaDaMedia ? 'text-amber-600' : 'text-green-600'],
-          ['Registros', String(resumo.registros), 'text-gray-900'],
-        ].map(([titulo, valor, cor]) => (
-          <div key={titulo} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-            <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{titulo}</p>
-            <p className={`mt-2 text-lg font-black ${cor}`}>{valor}</p>
-          </div>
-        ))}
-      </div>
-
-      <details className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4" open>
-        <summary className="cursor-pointer list-none px-5 py-4 flex items-center gap-2 font-black text-gray-800"><BarChart3 size={18} className="text-red-600"/> Análise gerencial</summary>
-        <div className="px-5 pb-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {[['Por UF / região', comparativoRegiao], ['Por posto', comparativoPosto], ['Por placa', comparativoPlaca], ['Por motorista', comparativoMotorista]].map(([titulo, dados]) => (
-            <div key={titulo as string} className="border border-gray-100 rounded-xl overflow-hidden">
-              <div className="px-3 py-2 bg-gray-50 text-xs font-black uppercase text-gray-500">{titulo as string}</div>
-              <div className="max-h-52 overflow-auto">
-                {(dados as typeof comparativoRegiao).slice(0, 10).map(item => <div key={item.grupo} className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-100 text-xs"><span className="truncate font-semibold text-gray-700">{item.grupo}</span><span className="whitespace-nowrap text-right"><b>{formatarMoeda(item.precoMedio)}</b><br/><span className="text-gray-400">{formatarMoeda(item.total)}</span></span></div>)}
-                {!(dados as typeof comparativoRegiao).length && <p className="p-3 text-xs text-gray-400">Sem dados para o filtro.</p>}
-              </div>
-            </div>
-          ))}
-          <div className="border border-amber-100 rounded-xl overflow-hidden">
-            <div className="px-3 py-2 bg-amber-50 text-xs font-black uppercase text-amber-700"><TrendingUp size={14} className="inline mr-1"/>Postos com aumento de preço</div>
-            {tendenciasPostos.slice(0, 8).map(item => <div key={`${item.posto}-${item.cidade}-${item.tipoCombustivel}`} className="px-3 py-2 border-t border-amber-100 text-xs flex justify-between gap-3"><span className="truncate">{item.posto} · {item.cidade}/{item.estado}</span><b className="text-amber-700 whitespace-nowrap">+{formatarNumero(item.variacaoPercentual)}%</b></div>)}
-            {!tendenciasPostos.length && <p className="p-3 text-xs text-gray-400">Ainda não há duas leituras do mesmo posto para comparar.</p>}
-          </div>
-          <div className="border border-green-100 rounded-xl overflow-hidden">
-            <div className="px-3 py-2 bg-green-50 text-xs font-black uppercase text-green-700">Estimativa de economia nos postos mais competitivos</div>
-            {economias.slice(0, 8).map(item => <div key={`${item.regiao}-${item.tipoCombustivel}`} className="px-3 py-2 border-t border-green-100 text-xs flex justify-between gap-3"><span>{item.regiao} · {item.tipoCombustivel} <span className="text-gray-400">(referência {formatarMoeda(item.precoCompetitivo)})</span></span><b className="text-green-700 whitespace-nowrap">{formatarMoeda(item.economiaPotencial)}</b></div>)}
-            {!economias.length && <p className="p-3 text-xs text-gray-400">Informe UF, combustível e preço para estimar economia.</p>}
-          </div>
-        </div>
-      </details>
 
       {abastecimentos.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
