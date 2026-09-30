@@ -113,6 +113,17 @@ export async function POST(req: Request) {
         (i.nome || '').toLowerCase().includes('arla')
       )
 
+      const nomeCombustivel = String(itemComb?.nome || '').toLowerCase()
+      const tipoCombustivel = nomeCombustivel.includes('diesel')
+        ? 'DIESEL'
+        : nomeCombustivel.includes('gasolina')
+          ? 'GASOLINA'
+          : nomeCombustivel.includes('etanol')
+            ? 'ETANOL'
+            : nomeCombustivel.includes('gnv')
+              ? 'GNV'
+              : null
+
       const litrosComb     = itemComb?.quantidade    || 0
       const valorLitroComb = itemComb?.valorUnitario || 0
       const litrosArla     = itemArla?.quantidade    || 0
@@ -136,6 +147,8 @@ export async function POST(req: Request) {
         km:                      a.hodometro || null,
         litros_combustivel:      litrosComb,
         valor_litro_combustivel: valorLitroComb,
+        tipo_combustivel:        tipoCombustivel,
+        tanque_cheio:             null,
         litros_arla:             litrosArla,
         valor_litro_arla:        valorLitroArla,
         total,

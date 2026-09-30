@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../services/auth'
 
-const AVISO_ID = 'roesel-atualizacao-seguranca-v1'
+const AVISO_ID = 'roesel-atualizacao-abastecimentos-v2'
 
 export default function AvisoAtualizacao() {
   const { email } = useAuth()
@@ -37,8 +37,17 @@ export default function AvisoAtualizacao() {
 
         <div className="px-6 py-6 text-sm leading-7 text-gray-700">
           <p>
-            O sistema recebeu melhorias importantes para aumentar a segurança e a organização das informações. Agora existe confirmação de e-mail, troca obrigatória de senha a cada 60 dias e correções nos históricos, abastecimentos, fechamentos e placas dos caminhões.
+            O sistema recebeu novas melhorias no módulo de Abastecimentos para aumentar o controle, a conferência e a economia da frota.
           </p>
+
+          <p className="mt-4">
+            Agora é possível informar cidade/UF do posto, tipo de combustível e se o abastecimento foi com tanque cheio. O sistema também apresenta alertas para hodômetro inconsistente, consumo fora da faixa esperada, tanque cheio com poucos litros e preços acima da média local.
+          </p>
+
+          <p className="mt-4">
+            Foram adicionados indicadores de gasto total, litros, preço médio, menor e maior preço, KM rodados e custo por KM, além de comparativos por região, posto, placa e motorista, estimativa de economia, novos filtros e relatório Excel com os alertas.
+          </p>
+
           <p className="mt-4 font-semibold text-gray-900">
             Se encontrar qualquer comportamento diferente, avise o desenvolvedor.
           </p>

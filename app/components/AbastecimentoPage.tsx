@@ -5,8 +5,9 @@ import { supabaseRestFetch } from '../services/rest'
 import { useAuth } from '../services/auth'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import { normalizarPlaca, chavePlaca } from '../services/placas'
-import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download, X } from 'lucide-react'
+import { Plus, ArrowLeft, Save, Trash2, Fuel, Upload, Loader2, Filter, Download, X, AlertTriangle, BarChart3, TrendingUp, MapPin } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { avisosParaLancamento, calcularAnalises, calcularResumo, compararPor, compararPrecoRegional, calcularTendenciaPostos, estimarEconomiaPorRegiao, type AnaliseAbastecimento } from '../services/abastecimentoAnalise'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 
@@ -15,6 +16,7 @@ interface Abastecimento {
   motorista: string; posto: string; cnpj_posto: string; estado: string; cidade: string
   litros_combustivel: number; valor_litro_combustivel: number
   litros_arla: number; valor_litro_arla: number
+  tipo_combustivel: string; tanque_cheio: boolean
   total: number; km: number; obs: string; viagem_id: string; desconto: number
 }
 interface Caminhao   { id: string; placa: string; modelo: string; motorista_atual: string }
@@ -58,6 +60,7 @@ function chaveAbastecimento(a: Partial<Abastecimento>) {
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
+const TIPOS_COMBUSTIVEL = ['DIESEL', 'GASOLINA', 'ETANOL', 'GNV', 'OUTRO']
 
 async function supaFetch(path: string, method = 'GET', body?: any) {
   const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -113,6 +116,10 @@ export default function AbastecimentoPage() {
 
   const [filtroMotorista, setFiltroMotorista] = useState('')
   const [filtroPlaca, setFiltroPlaca]         = useState('')
+  const [filtroEstado, setFiltroEstado]       = useState('')
+  const [filtroCidade, setFiltroCidade]       = useState('')
+  const [filtroPosto, setFiltroPosto]         = useState('')
+  const [filtroCombustivel, setFiltroCombustivel] = useState('')
   const [filtroInicio, setFiltroInicio]       = useState('')
   const [filtroFim, setFiltroFim]             = useState('')
 
@@ -128,6 +135,8 @@ export default function AbastecimentoPage() {
   const [editValorLitroComb, setEditValorLitroComb] = useState('')
   const [editLitrosArla, setEditLitrosArla]         = useState('')
   const [editValorLitroArla, setEditValorLitroArla] = useState('')
+  const [editTipoCombustivel, setEditTipoCombustivel] = useState('')
+  const [editTanqueCheio, setEditTanqueCheio]       = useState(false)
   const [editKm, setEditKm]                         = useState('')
   const [editObs, setEditObs]                       = useState('')
   const [editUsaArla, setEditUsaArla]               = useState(false)
@@ -146,6 +155,8 @@ export default function AbastecimentoPage() {
   const [cadValorLitroComb, setCadValorLitroComb]   = useDraftPersistente('abast_cadValorLitroComb', '')
   const [cadLitrosArla, setCadLitrosArla]           = useDraftPersistente('abast_cadLitrosArla', '')
   const [cadValorLitroArla, setCadValorLitroArla]   = useDraftPersistente('abast_cadValorLitroArla', '')
+  const [cadTipoCombustivel, setCadTipoCombustivel] = useDraftPersistente('abast_cadTipoCombustivel', 'DIESEL')
+  const [cadTanqueCheio, setCadTanqueCheio]         = useDraftPersistente('abast_cadTanqueCheio', false)
   const [cadKm, setCadKm]                           = useDraftPersistente('abast_cadKm', '')
   const [cadObs, setCadObs]                         = useDraftPersistente('abast_cadObs', '')
   const [usaArla, setUsaArla]                       = useDraftPersistente('abast_usaArla', false)
@@ -173,6 +184,8 @@ export default function AbastecimentoPage() {
       const lista = Array.isArray(data) ? (data as Abastecimento[]).map(a => ({
         ...a,
         caminhao_placa: normalizarPlaca(a.caminhao_placa),
+        tipo_combustivel: String(a.tipo_combustivel || '').toUpperCase(),
+        tanque_cheio: a.tanque_cheio === true,
       })) : []
       // Não esconder registros existentes: duplicidades antigas precisam ficar
       // visíveis para conferência e correção no banco. O bloqueio de novos
@@ -341,6 +354,7 @@ export default function AbastecimentoPage() {
       if (d.km) setCadKm(String(d.km))
       if (d.litros_combustivel) setCadLitrosComb(String(d.litros_combustivel))
       if (d.valor_litro_combustivel) setCadValorLitroComb(String(d.valor_litro_combustivel))
+      if (d.tipo_combustivel) setCadTipoCombustivel(String(d.tipo_combustivel).toUpperCase())
       if (d.litros_arla && d.litros_arla > 0) { setUsaArla(true); setCadLitrosArla(String(d.litros_arla)); if (d.valor_litro_arla) setCadValorLitroArla(String(d.valor_litro_arla)) }
       if (d.cnpj_posto) {
         const cnpjLimpo = d.cnpj_posto.replace(/\D/g,'')
@@ -375,19 +389,56 @@ export default function AbastecimentoPage() {
     return [...unicas.values()].sort()
   }, [abastecimentos])
 
+  const opcoesEstados = useMemo(() => [...new Set(abastecimentos.map(a => a.estado).filter(Boolean))].sort(), [abastecimentos])
+  const opcoesCidades = useMemo(() => [...new Set(abastecimentos.map(a => a.cidade).filter(Boolean))].sort(), [abastecimentos])
+  const opcoesPostos = useMemo(() => [...new Set(abastecimentos.map(a => a.posto).filter(Boolean))].sort(), [abastecimentos])
+  const opcoesCombustiveis = useMemo(() => [...new Set(abastecimentos.map(a => a.tipo_combustivel).filter(Boolean))].sort(), [abastecimentos])
+
   const filtrados = useMemo(() => abastecimentos
     .filter(a => {
       if (filtroMotorista && a.motorista !== filtroMotorista) return false
       if (filtroPlaca && chavePlaca(a.caminhao_placa) !== chavePlaca(filtroPlaca)) return false
+      if (filtroEstado && a.estado !== filtroEstado) return false
+      if (filtroCidade && a.cidade !== filtroCidade) return false
+      if (filtroPosto && a.posto !== filtroPosto) return false
+      if (filtroCombustivel && a.tipo_combustivel !== filtroCombustivel) return false
       if (filtroInicio && a.data < filtroInicio) return false
       if (filtroFim   && a.data > filtroFim)   return false
       return true
     })
-    .sort((a, b) => a.data.localeCompare(b.data)),
-    [abastecimentos, filtroMotorista, filtroPlaca, filtroInicio, filtroFim]
+    .sort((a, b) => a.data.localeCompare(b.data) || Number(a.km || 0) - Number(b.km || 0)),
+    [abastecimentos, filtroMotorista, filtroPlaca, filtroEstado, filtroCidade, filtroPosto, filtroCombustivel, filtroInicio, filtroFim]
   )
 
-  const totalGeral = useMemo(() => filtrados.reduce((s, a) => s + (a.total||0), 0), [filtrados])
+  const analises = useMemo(() => calcularAnalises(abastecimentos), [abastecimentos])
+  const resumo = useMemo(() => calcularResumo(filtrados, analises, abastecimentos), [filtrados, analises, abastecimentos])
+  const comparativoRegiao = useMemo(() => compararPor(filtrados, a => a.estado || ''), [filtrados])
+  const comparativoPosto = useMemo(() => compararPor(filtrados, a => a.posto || ''), [filtrados])
+  const comparativoPlaca = useMemo(() => compararPor(filtrados, a => normalizarPlaca(a.caminhao_placa || '')), [filtrados])
+  const comparativoMotorista = useMemo(() => compararPor(filtrados, a => a.motorista || ''), [filtrados])
+  const tendenciasPostos = useMemo(() => calcularTendenciaPostos(filtrados), [filtrados])
+  const economias = useMemo(() => estimarEconomiaPorRegiao(filtrados), [filtrados])
+  const filtrosAtivos = Boolean(filtroMotorista || filtroPlaca || filtroEstado || filtroCidade || filtroPosto || filtroCombustivel || filtroInicio || filtroFim)
+
+  function formatarMoeda(valor: number | null | undefined) {
+    return valor == null ? '—' : `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`
+  }
+
+  function formatarNumero(valor: number | null | undefined, casas = 2) {
+    return valor == null ? '—' : valor.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })
+  }
+
+  function alertaDaLinha(a: Abastecimento): AnaliseAbastecimento | undefined {
+    return a.id ? analises.get(a.id) : undefined
+  }
+
+  function precoRegionalDaLinha(a: Abastecimento) {
+    return compararPrecoRegional(abastecimentos, a)
+  }
+
+  const precosAcimaDaMedia = useMemo(() => filtrados.filter(a => precoRegionalDaLinha(a).acimaDaMedia).length, [filtrados, abastecimentos])
+
+  const totalGeral = resumo.total
 
   function exportarExcel() {
     if (filtrados.length === 0) {
@@ -395,42 +446,50 @@ export default function AbastecimentoPage() {
       return
     }
 
-    const dados = filtrados.map(a => ({
-      Data: a.data ? new Date(`${a.data}T00:00:00`) : null,
-      Placa: normalizarPlaca(a.caminhao_placa),
-      Motorista: a.motorista || '',
-      Posto: a.posto || '',
-      'CNPJ Posto': a.cnpj_posto || '',
-      Estado: a.estado || '',
-      Cidade: a.cidade || '',
-      'Litros Combustível': Number(a.litros_combustivel || 0),
-      'Valor Litro Combustível': Number(a.valor_litro_combustivel || 0),
-      'Litros ARLA': Number(a.litros_arla || 0),
-      'Valor Litro ARLA': Number(a.valor_litro_arla || 0),
-      KM: Number(a.km || 0),
-      Desconto: Number(a.desconto || 0),
-      Total: Number(a.total || 0),
-      Observações: a.obs || '',
-    }))
+    const dados = filtrados.map(a => {
+      const analise = alertaDaLinha(a)
+      const regional = precoRegionalDaLinha(a)
+      return {
+        Data: a.data ? new Date(`${a.data}T00:00:00`) : null,
+        Placa: normalizarPlaca(a.caminhao_placa),
+        Motorista: a.motorista || '',
+        Combustível: a.tipo_combustivel || '',
+        'Tanque cheio': a.tanque_cheio ? 'SIM' : 'NÃO',
+        'Litros Combustível': Number(a.litros_combustivel || 0),
+        'Litros ARLA': Number(a.litros_arla || 0),
+        KM: Number(a.km || 0),
+        'KM rodados': Number(analise?.kmRodado || 0),
+        'Média km/L': Number(analise?.consumoKmPorLitro || 0),
+        Desconto: Number(a.desconto || 0),
+        Total: Number(a.total || 0),
+        Alertas: [
+          ...(analise?.alertas.map(alerta => alerta.mensagem) || []),
+          ...(regional.acimaDaMedia ? [`Preço ${regional.percentualAcima.toFixed(1)}% acima da média da UF`] : []),
+        ].join(' | '),
+        Observações: a.obs || '',
+      }
+    })
 
     const planilha = XLSX.utils.json_to_sheet(dados)
     const ultimaLinha = dados.length + 1
     planilha['!cols'] = [
-      { wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 30 }, { wch: 18 },
-      { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 14 },
-      { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 42 },
+      { wch: 12 }, { wch: 12 }, { wch: 28 }, { wch: 16 }, { wch: 14 },
+      { wch: 20 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      { wch: 14 }, { wch: 16 }, { wch: 52 }, { wch: 42 },
     ]
-    planilha['!autofilter'] = { ref: `A1:O${ultimaLinha}` }
+    planilha['!autofilter'] = { ref: `A1:N${ultimaLinha}` }
 
     for (let linha = 2; linha <= ultimaLinha; linha++) {
       const celulaData = planilha[`A${linha}`]
       if (celulaData?.v instanceof Date) celulaData.z = 'dd/mm/yyyy'
-      for (const coluna of ['H', 'I', 'J', 'K', 'M', 'N']) {
+      for (const coluna of ['F', 'G', 'J', 'K', 'L']) {
         const celula = planilha[`${coluna}${linha}`]
         if (celula) celula.z = '#,##0.00'
       }
-      const celulaKm = planilha[`L${linha}`]
-      if (celulaKm) celulaKm.z = '#,##0'
+      for (const coluna of ['H', 'I']) {
+        const celulaKm = planilha[`${coluna}${linha}`]
+        if (celulaKm) celulaKm.z = '#,##0'
+      }
     }
 
     const livro = XLSX.utils.book_new()
@@ -446,6 +505,7 @@ export default function AbastecimentoPage() {
     setEditEstado(a.estado||''); setEditCidade(a.cidade||'')
     setEditLitrosComb(String(a.litros_combustivel||'')); setEditValorLitroComb(String(a.valor_litro_combustivel||''))
     setEditLitrosArla(String(a.litros_arla||'')); setEditValorLitroArla(String(a.valor_litro_arla||''))
+    setEditTipoCombustivel(a.tipo_combustivel || ''); setEditTanqueCheio(a.tanque_cheio === true)
     setEditKm(a.km ? String(a.km) : ''); setEditObs(a.obs||''); setEditUsaArla((a.litros_arla||0) > 0)
     setEditViagemId(a.viagem_id||''); setEditDesconto(String(a.desconto||''))
     setConfirmExcluir(false)
@@ -482,14 +542,35 @@ export default function AbastecimentoPage() {
     return '❌ Não foi possível salvar: ' + (error?.message || 'verifique a conexão.')
   }
 
+  function validarCamposObrigatorios(cidade: string, estado: string, tipoCombustivel: string, litros: string, preco: string) {
+    if (!cidade.trim() || !estado) { showMsg('⚠️ Cidade e UF do posto são obrigatórias.'); return false }
+    if (!tipoCombustivel) { showMsg('⚠️ Informe o tipo de combustível.'); return false }
+    if (!(Number(litros) > 0) || !(Number(preco) > 0)) { showMsg('⚠️ Informe litros e preço por litro válidos.'); return false }
+    return true
+  }
+
+  function confirmarAlertas(registro: Partial<Abastecimento>, ignorarId?: string) {
+    const alertas = avisosParaLancamento(registro, abastecimentos, ignorarId)
+    const erros = alertas.filter(alerta => alerta.tipo === 'erro')
+    if (erros.length) {
+      showMsg(`❌ ${erros[0].mensagem}`)
+      return false
+    }
+    const atencoes = alertas.filter(alerta => alerta.tipo === 'atencao')
+    if (!atencoes.length) return true
+    return window.confirm(`Atenção antes de salvar:\n\n${atencoes.map(alerta => `• ${alerta.mensagem}`).join('\n')}\n\nDeseja salvar mesmo assim?`)
+  }
+
   async function salvar() {
     if (!sel) return
     setLoading(true)
     try {
+      if (!validarCamposObrigatorios(editCidade, editEstado, editTipoCombustivel, editLitrosComb, editValorLitroComb)) return
       const total = calcTotal(editLitrosComb, editValorLitroComb, editUsaArla ? editLitrosArla : '0', editUsaArla ? editValorLitroArla : '0', editDesconto)
       const atualizado: Partial<Abastecimento> = {
         data: editData, caminhao_id: editCaminhaoId, caminhao_placa: normalizarPlaca(editCaminhaoPlaca),
         motorista: editMotorista, posto: editPosto, cnpj_posto: editCnpjPosto,
+        cidade: editCidade, estado: editEstado, tipo_combustivel: editTipoCombustivel, tanque_cheio: editTanqueCheio,
         litros_combustivel: parseFloat(editLitrosComb) || 0,
         valor_litro_combustivel: parseFloat(editValorLitroComb) || 0,
         litros_arla: editUsaArla ? parseFloat(editLitrosArla) || 0 : 0,
@@ -503,6 +584,8 @@ export default function AbastecimentoPage() {
         return
       }
 
+      if (!confirmarAlertas(atualizado, sel.id)) return
+
       if (perm !== 'demo') {
         const existente = await verificarKmJaUsado(editCaminhaoId, editKm, sel.id)
         if (existente) {
@@ -511,7 +594,6 @@ export default function AbastecimentoPage() {
         }
         await supaFetch(`abastecimentos?id=eq.${sel.id}`, 'PATCH', {
           ...atualizado, km: editKm !== '' ? Number(editKm) : null,
-          estado: editEstado, cidade: editCidade,
           obs: editObs, viagem_id: editViagemId || null,
         })
       }
@@ -534,7 +616,7 @@ export default function AbastecimentoPage() {
   function resetCad() {
     setCadData(new Date().toISOString().split('T')[0]); setCadCaminhaoId(''); setCadCaminhaoPlaca(''); setCadMotorista(''); setCadMotoristasHistorico([])
     setCadPosto(''); setCadCnpjPosto(''); setCadEstado(''); setCadCidade('')
-    setCadLitrosComb(''); setCadValorLitroComb(''); setCadLitrosArla(''); setCadValorLitroArla('')
+    setCadLitrosComb(''); setCadValorLitroComb(''); setCadLitrosArla(''); setCadValorLitroArla(''); setCadTipoCombustivel('DIESEL'); setCadTanqueCheio(false)
     setCadKm(''); setCadObs(''); setUsaArla(false); setCadViagemId(''); setCadDesconto('')
     setViagensCaminhao([])
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -544,10 +626,12 @@ export default function AbastecimentoPage() {
     if (!cadCaminhaoId) return
     setLoading(true)
     try {
+      if (!validarCamposObrigatorios(cadCidade, cadEstado, cadTipoCombustivel, cadLitrosComb, cadValorLitroComb)) return
       const total = calcTotal(cadLitrosComb, cadValorLitroComb, usaArla ? cadLitrosArla : '0', usaArla ? cadValorLitroArla : '0', cadDesconto)
       const novoAbastecimento: Partial<Abastecimento> = {
         data: cadData, caminhao_id: cadCaminhaoId, caminhao_placa: normalizarPlaca(cadCaminhaoPlaca),
-        motorista: cadMotorista, posto: cadPosto, cnpj_posto: cadCnpjPosto,
+        motorista: cadMotorista, posto: cadPosto, cnpj_posto: cadCnpjPosto, cidade: cadCidade, estado: cadEstado,
+        tipo_combustivel: cadTipoCombustivel, tanque_cheio: cadTanqueCheio,
         litros_combustivel: parseFloat(cadLitrosComb) || 0,
         valor_litro_combustivel: parseFloat(cadValorLitroComb) || 0,
         litros_arla: usaArla ? parseFloat(cadLitrosArla) || 0 : 0,
@@ -561,6 +645,8 @@ export default function AbastecimentoPage() {
         return
       }
 
+      if (!confirmarAlertas(novoAbastecimento)) return
+
       if (perm !== 'demo') {
         const existente = await verificarKmJaUsado(cadCaminhaoId, cadKm)
         if (existente) {
@@ -569,7 +655,6 @@ export default function AbastecimentoPage() {
         }
         await supaFetch('abastecimentos', 'POST', {
           ...novoAbastecimento, km: cadKm !== '' ? Number(cadKm) : null,
-          estado: cadEstado, cidade: cadCidade,
           obs: cadObs, viagem_id: cadViagemId || null,
         })
       }
@@ -609,6 +694,8 @@ export default function AbastecimentoPage() {
     const vlc       = modo === 'cad' ? cadValorLitroComb : editValorLitroComb
     const la        = modo === 'cad' ? cadLitrosArla : editLitrosArla
     const vla       = modo === 'cad' ? cadValorLitroArla : editValorLitroArla
+    const tipoCombustivel = modo === 'cad' ? cadTipoCombustivel : editTipoCombustivel
+    const tanqueCheio = modo === 'cad' ? cadTanqueCheio : editTanqueCheio
     const arla      = modo === 'cad' ? usaArla : editUsaArla
     const desc      = modo === 'cad' ? cadDesconto : editDesconto
     const obs       = modo === 'cad' ? cadObs : editObs
@@ -622,6 +709,8 @@ export default function AbastecimentoPage() {
     const setVlc       = modo === 'cad' ? setCadValorLitroComb : setEditValorLitroComb
     const setLa        = modo === 'cad' ? setCadLitrosArla : setEditLitrosArla
     const setVla       = modo === 'cad' ? setCadValorLitroArla : setEditValorLitroArla
+    const setTipoCombustivel = modo === 'cad' ? setCadTipoCombustivel : setEditTipoCombustivel
+    const setTanqueCheio = modo === 'cad' ? setCadTanqueCheio : setEditTanqueCheio
     const setArla      = modo === 'cad' ? setUsaArla : setEditUsaArla
     const setDesc      = modo === 'cad' ? setCadDesconto : setEditDesconto
     const setObs       = modo === 'cad' ? setCadObs : setEditObs
@@ -643,9 +732,9 @@ export default function AbastecimentoPage() {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className={LC}>Cidade</label><input value={cidade} onChange={e => setCidade(e.target.value.toUpperCase())} className={IC}/></div>
+          <div><label className={LC}>Cidade *</label><input value={cidade} onChange={e => setCidade(e.target.value.toUpperCase())} className={IC} placeholder="Cidade do posto"/></div>
           <div>
-            <label className={LC}>Estado (UF)</label>
+            <label className={LC}>Estado (UF) *</label>
             <select value={estado} onChange={e => setEstado(e.target.value)} className={IC}>
               <option value="">Selecione...</option>
               {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
@@ -699,6 +788,19 @@ export default function AbastecimentoPage() {
         <div className="border-t border-gray-100 pt-3">
           <p className={LC + " mb-3"}>Combustível</p>
           <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={LC}>Tipo *</label>
+              <select value={tipoCombustivel} onChange={e => setTipoCombustivel(e.target.value)} className={IC}>
+                <option value="">Selecione...</option>
+                {TIPOS_COMBUSTIVEL.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+              </select>
+            </div>
+            <div className="flex items-end pb-2 justify-end gap-2">
+              <span className={LC}>Tanque cheio</span>
+              <Toggle value={tanqueCheio} onChange={() => setTanqueCheio(!tanqueCheio)}/>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
             <div><label className={LC}>Litros</label><input type="number" step="0.01" value={lc} onChange={e => setLc(e.target.value)} className={IC} placeholder="0,00"/></div>
             <div><label className={LC}>Valor por litro (R$)</label><input type="number" step="0.001" value={vlc} onChange={e => setVlc(e.target.value)} className={IC} placeholder="0,000"/></div>
           </div>
@@ -794,7 +896,10 @@ export default function AbastecimentoPage() {
       {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
 
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Abastecimentos</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Abastecimentos</h1>
+          <p className="text-xs text-gray-500 mt-1">Relação operacional e análise de preços, consumo e qualidade dos lançamentos</p>
+        </div>
         <div className="flex gap-2">
           {/* ── Botão Profrotas ── */}
           <button onClick={() => { setMostraProfrotas(true); setResultadoImport(null) }}
@@ -830,6 +935,34 @@ export default function AbastecimentoPage() {
           </select>
         </div>
         <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 mb-1"><MapPin size={11}/> UF</label>
+          <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
+            <option value="">Todos</option>
+            {opcoesEstados.map(item => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1 mb-1"><MapPin size={11}/> Cidade</label>
+          <select value={filtroCidade} onChange={e => setFiltroCidade(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
+            <option value="">Todas</option>
+            {opcoesCidades.map(item => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Posto</label>
+          <select value={filtroPosto} onChange={e => setFiltroPosto(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
+            <option value="">Todos</option>
+            {opcoesPostos.map(item => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Combustível</label>
+          <select value={filtroCombustivel} onChange={e => setFiltroCombustivel(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50">
+            <option value="">Todos</option>
+            {opcoesCombustiveis.map(item => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
+        <div>
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Data Início</label>
           <input type="date" value={filtroInicio} onChange={e => setFiltroInicio(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"/>
@@ -839,13 +972,57 @@ export default function AbastecimentoPage() {
           <input type="date" value={filtroFim} onChange={e => setFiltroFim(e.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"/>
         </div>
-        {(filtroMotorista || filtroPlaca || filtroInicio || filtroFim) && (
+        {filtrosAtivos && (
           <div className="md:col-span-4 flex justify-end">
-            <button onClick={() => { setFiltroMotorista(''); setFiltroPlaca(''); setFiltroInicio(''); setFiltroFim('') }}
+            <button onClick={() => { setFiltroMotorista(''); setFiltroPlaca(''); setFiltroEstado(''); setFiltroCidade(''); setFiltroPosto(''); setFiltroCombustivel(''); setFiltroInicio(''); setFiltroFim('') }}
               className="text-xs text-red-600 hover:underline font-semibold">Limpar filtros</button>
           </div>
         )}
       </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        {[
+          ['Gasto total', formatarMoeda(resumo.total), 'text-red-600'],
+          ['Litros', `${formatarNumero(resumo.litros)} L`, 'text-gray-900'],
+          ['Preço médio', formatarMoeda(resumo.precoMedio), 'text-gray-900'],
+          ['Menor / maior preço', `${formatarMoeda(resumo.menorPreco)} · ${formatarMoeda(resumo.maiorPreco)}`, 'text-gray-900'],
+          ['KM rodados', formatarNumero(resumo.kmRodados, 0), 'text-gray-900'],
+          ['Custo por KM', formatarMoeda(resumo.custoPorKm), 'text-red-600'],
+          ['Com alertas', String(resumo.comAlertas), resumo.comAlertas ? 'text-amber-600' : 'text-green-600'],
+          ['Acima da média local', String(precosAcimaDaMedia), precosAcimaDaMedia ? 'text-amber-600' : 'text-green-600'],
+          ['Registros', String(resumo.registros), 'text-gray-900'],
+        ].map(([titulo, valor, cor]) => (
+          <div key={titulo} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <p className="text-[10px] font-black uppercase tracking-wide text-gray-400">{titulo}</p>
+            <p className={`mt-2 text-lg font-black ${cor}`}>{valor}</p>
+          </div>
+        ))}
+      </div>
+
+      <details className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4" open>
+        <summary className="cursor-pointer list-none px-5 py-4 flex items-center gap-2 font-black text-gray-800"><BarChart3 size={18} className="text-red-600"/> Análise gerencial</summary>
+        <div className="px-5 pb-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {[['Por UF / região', comparativoRegiao], ['Por posto', comparativoPosto], ['Por placa', comparativoPlaca], ['Por motorista', comparativoMotorista]].map(([titulo, dados]) => (
+            <div key={titulo as string} className="border border-gray-100 rounded-xl overflow-hidden">
+              <div className="px-3 py-2 bg-gray-50 text-xs font-black uppercase text-gray-500">{titulo as string}</div>
+              <div className="max-h-52 overflow-auto">
+                {(dados as typeof comparativoRegiao).slice(0, 10).map(item => <div key={item.grupo} className="flex items-center justify-between gap-3 px-3 py-2 border-t border-gray-100 text-xs"><span className="truncate font-semibold text-gray-700">{item.grupo}</span><span className="whitespace-nowrap text-right"><b>{formatarMoeda(item.precoMedio)}</b><br/><span className="text-gray-400">{formatarMoeda(item.total)}</span></span></div>)}
+                {!(dados as typeof comparativoRegiao).length && <p className="p-3 text-xs text-gray-400">Sem dados para o filtro.</p>}
+              </div>
+            </div>
+          ))}
+          <div className="border border-amber-100 rounded-xl overflow-hidden">
+            <div className="px-3 py-2 bg-amber-50 text-xs font-black uppercase text-amber-700"><TrendingUp size={14} className="inline mr-1"/>Postos com aumento de preço</div>
+            {tendenciasPostos.slice(0, 8).map(item => <div key={`${item.posto}-${item.cidade}-${item.tipoCombustivel}`} className="px-3 py-2 border-t border-amber-100 text-xs flex justify-between gap-3"><span className="truncate">{item.posto} · {item.cidade}/{item.estado}</span><b className="text-amber-700 whitespace-nowrap">+{formatarNumero(item.variacaoPercentual)}%</b></div>)}
+            {!tendenciasPostos.length && <p className="p-3 text-xs text-gray-400">Ainda não há duas leituras do mesmo posto para comparar.</p>}
+          </div>
+          <div className="border border-green-100 rounded-xl overflow-hidden">
+            <div className="px-3 py-2 bg-green-50 text-xs font-black uppercase text-green-700">Estimativa de economia nos postos mais competitivos</div>
+            {economias.slice(0, 8).map(item => <div key={`${item.regiao}-${item.tipoCombustivel}`} className="px-3 py-2 border-t border-green-100 text-xs flex justify-between gap-3"><span>{item.regiao} · {item.tipoCombustivel} <span className="text-gray-400">(referência {formatarMoeda(item.precoCompetitivo)})</span></span><b className="text-green-700 whitespace-nowrap">{formatarMoeda(item.economiaPotencial)}</b></div>)}
+            {!economias.length && <p className="p-3 text-xs text-gray-400">Informe UF, combustível e preço para estimar economia.</p>}
+          </div>
+        </div>
+      </details>
 
       {abastecimentos.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
@@ -860,19 +1037,21 @@ export default function AbastecimentoPage() {
                 <th className="w-24 px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Data</th>
                 <th className="w-24 px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Caminhão</th>
                 <th className="w-40 px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Motorista</th>
-                <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Posto</th>
+                <th className="w-24 px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Comb.</th>
+                <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Posto / local</th>
                 <th className="w-24 px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">KM</th>
                 <th className="w-28 px-4 py-3 text-right text-xs font-black text-gray-500 uppercase">Total</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {filtrados.map(a => (
-                <tr key={a.id} onClick={() => selecionar(a)} className="hover:bg-gray-50 transition-colors cursor-pointer">
+                <tr key={a.id} onClick={() => selecionar(a)} className={`${precoRegionalDaLinha(a).acimaDaMedia ? 'bg-amber-50/50' : ''} hover:bg-gray-50 transition-colors cursor-pointer`}>
                   <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{fmtData(a.data)}</td>
                   <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">{a.caminhao_placa}</td>
                   <td className="px-4 py-3 text-sm text-gray-900 truncate max-w-0">{a.motorista}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-0">{a.posto}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{a.km ? a.km.toLocaleString('pt-BR') : '—'}</td>
+                  <td className="px-4 py-3 text-xs font-bold text-gray-700">{a.tipo_combustivel || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600 truncate max-w-0">{a.posto || '—'}<span className="block text-[10px] text-gray-400">{a.cidade || 'Sem cidade'}{a.estado ? `/${a.estado}` : ''}</span></td>
+                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{a.km ? a.km.toLocaleString('pt-BR') : '—'} {alertaDaLinha(a)?.alertas.length ? <span title="Revisar lançamento"><AlertTriangle size={14} className="inline text-amber-500"/></span> : null}</td>
                   <td className="px-4 py-3 text-sm font-bold text-red-600 text-right whitespace-nowrap">
                     R$ {(a.total||0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
@@ -884,6 +1063,7 @@ export default function AbastecimentoPage() {
             <p className="text-xs text-gray-400">{filtrados.length} registro(s)</p>
             <p className="text-sm font-bold text-gray-700">
               Total: <span className="text-red-600">R$ {totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+              <span className="ml-3 text-xs font-normal text-gray-400">Custo/KM = total ÷ KM rodados entre leituras válidas</span>
             </p>
           </div>
         </div>
