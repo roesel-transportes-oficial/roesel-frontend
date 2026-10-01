@@ -12,7 +12,7 @@ import {
 const isFinanceiro  = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
 const isAbastecimento = (aba: string) => ['abastecimento', 'analise_abastecimento', 'fornecedor'].includes(aba)
 const isMotorista   = (aba: string) => ['motorista', 'multas', 'avarias', 'ferias'].includes(aba)
-const isViagem      = (aba: string) => ['viagens', 'fechamento'].includes(aba)
+const isViagem      = (aba: string) => ['viagens', 'fechamento', 'relatorio_mensal'].includes(aba)
 
 const menus = [
   { id: 'dashboard', label: 'Visão Geral',   icon: LayoutDashboard, adminOnly: false },
@@ -78,6 +78,11 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
                   ${aba === 'fechamento' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
                 <ClipboardCheck size={14} /> Fechamento
+              </button>
+              <button onClick={() => setAba('relatorio_mensal')}
+                className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
+                  ${aba === 'relatorio_mensal' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
+                <FileText size={14} /> Relatório Mensal
               </button>
             </div>
           )}
