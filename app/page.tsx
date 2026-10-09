@@ -39,6 +39,7 @@ export default function Home() {
     setAba(novaAba)
     setAbasVisitadas((atuais) => {
       if (atuais.has(novaAba)) return atuais
+
       const atualizadas = new Set(atuais)
       atualizadas.add(novaAba)
       return atualizadas
@@ -62,13 +63,17 @@ export default function Home() {
   return (
     <>
       <AvisoAtualizacao />
+
       <div className="flex min-h-screen">
         <Sidebar aba={aba} setAba={navegarPara} />
+
         <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
           {Array.from(abasVisitadas).map((abaVisitada) => (
             <div
               key={abaVisitada}
-              style={{ display: aba === abaVisitada ? 'block' : 'none' }}
+              style={{
+                display: aba === abaVisitada ? 'block' : 'none',
+              }}
               aria-hidden={aba !== abaVisitada}
             >
               {renderizarAba(abaVisitada, navegarPara)}
@@ -80,40 +85,101 @@ export default function Home() {
   )
 }
 
-function renderizarAba(aba: string, setAba: (novaAba: string) => void) {
+function renderizarAba(
+  aba: string,
+  setAba: (novaAba: string) => void
+) {
   switch (aba) {
-    case 'dashboard': return <DashboardPage />
-    case 'contratos': return <ContratosPage />
-    case 'motorista': return <MotoristaPage />
-    case 'ferias': return <FeriasPage />
-    case 'caminhao': return <CaminhaoPage />
-    case 'viagens': return <ViagemPage />
-    case 'relatorio_mensal': return <RelatorioMensalPage />
-    case 'clientes': return <ClientePage />
-    case 'abastecimento': return <AbastecimentoPage />
-    case 'analise_abastecimento': return <AnaliseAbastecimentosPage />
-    case 'fornecedor': return <FornecedorPage />
-    case 'comissoes': return <ComissoesPage />
-    case 'multas': return <MultasPage />
-    case 'avarias': return <AvariasPage />
-    case 'premios': return <PremiosPage />
-    case 'contas_pagar': return <ContasPagarPage />
-    case 'cte': return <CtePage />
-    case 'notas': return <NotasDiversasPage />
-    case 'novo': return <NovoContratoPage setAba={setAba} />
-    case 'fechamento': return <FechamentoViagemPage setAba={setAba} />
-    case 'jornada': return <JornadaPage />
-    case 'usuarios': return <Placeholder title="Usuários" icon="👥" />
-    case 'contas_receber': return <Placeholder title="Contas a Receber" icon="📈" />
-    default: return <DashboardPage />
+    case 'dashboard':
+      return <DashboardPage />
+
+    case 'contratos':
+      return <ContratosPage />
+
+    case 'motorista':
+      return <MotoristaPage />
+
+    case 'ferias':
+      return <FeriasPage />
+
+    case 'caminhao':
+      return <CaminhaoPage />
+
+    case 'viagens':
+      return <ViagemPage />
+
+    case 'relatorio_mensal':
+      return <RelatorioMensalPage />
+
+    case 'clientes':
+      return <ClientePage />
+
+    case 'abastecimento':
+      return <AbastecimentoPage />
+
+    case 'analise_abastecimento':
+      return <AnaliseAbastecimentosPage />
+
+    case 'fornecedor':
+      return <FornecedorPage />
+
+    case 'comissoes':
+      return <ComissoesPage />
+
+    case 'multas':
+      return <MultasPage />
+
+    case 'avarias':
+      return <AvariasPage />
+
+    case 'premios':
+      return <PremiosPage />
+
+    case 'contas_pagar':
+      return <ContasPagarPage />
+
+    case 'cte':
+      return <CtePage />
+
+    case 'notas':
+      return <NotasDiversasPage />
+
+    case 'novo':
+      return <NovoContratoPage setAba={setAba} />
+
+    case 'fechamento':
+      return <FechamentoViagemPage setAba={setAba} />
+
+    case 'jornada':
+      return <JornadaPage />
+
+    case 'usuarios':
+      return <Placeholder title="Usuários" icon="👥" />
+
+    case 'contas_receber':
+      return <Placeholder title="Contas a Receber" icon="📈" />
+
+    default:
+      return <DashboardPage />
   }
 }
 
-function Placeholder({ title, icon }: { title: string; icon: string }) {
+function Placeholder({
+  title,
+  icon,
+}: {
+  title: string
+  icon: string
+}) {
   return (
     <div className="p-6">
-      <h1 className="text-xl font-bold text-gray-900 mb-2">{icon} {title}</h1>
-      <p className="text-gray-500 text-sm">Em construção...</p>
+      <h1 className="text-xl font-bold text-gray-900 mb-2">
+        {icon} {title}
+      </h1>
+
+      <p className="text-gray-500 text-sm">
+        Em construção...
+      </p>
     </div>
   )
 }
