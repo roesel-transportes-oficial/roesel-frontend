@@ -1,20 +1,26 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { motoristasAPI, caminhoesAPI } from '../services/api'
+import { supabase } from '../services/supabase'
 import { useAuth } from '../services/auth'
+import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
+import { normalizarPlaca } from '../services/placas'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, User, AlertTriangle, Clock } from 'lucide-react'
 
 interface Motorista {
   id: string; nome: string; cpf: string; rg: string
   tipo: string; ativo: boolean; adiantamento: boolean
-  dt_desligamento: string
+  dt_desligamento: string; dt_admissao: string; freelancer: boolean
   vencimento_cnh: string; vencimento_permisso: string; vencimento_toxicologico: string
   vencimento_periodico: string
   caminhao_id: string; caminhao_temp_id: string; de_ferias: boolean
   ferias_inicio: string; ferias_fim: string; substituto_id: string
+  de_afastamento: boolean; afastamento_inicio: string; afastamento_fim: string; afastamento_motivo: string
 }
 
 interface Caminhao { id: string; placa: string; modelo: string; motorista_atual: string }
+
+
+const MOTIVOS_AFASTAMENTO = ['Atestado médico', 'Licença', 'Suspensão', 'Acidente de trabalho', 'Outro']
 
 function fmtCpf(v: string) {
   const d = v.replace(/\D/g,'').slice(0,11)
@@ -38,6 +44,12 @@ function vencStatus(data: string) {
   if (dias <= 15) return 'critico'
   if (dias <= 30) return 'alerta'
   return 'ok'
+}
+
+function fmtData(d: string) {
+  if (!d) return '—'
+  const [y, m, dia] = d.split('-')
+  return `${dia}/${m}/${y}`
 }
 
 function AlertasVencimento({ motorista }: { motorista: Motorista }) {
@@ -82,7 +94,9 @@ export default function MotoristaPage() {
   const [motoristas, setMotoristas] = useState<Motorista[]>([])
   const [caminhoes, setCaminhoes] = useState<Caminhao[]>([])
   const [busca, setBusca] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'ativos' | 'inativos'>('ativos')
   const [sel, setSel] = useState<Motorista | null>(null)
+  const [selIdAberto, setSelIdAberto] = useDraftPersistente<string>('motorista_sel_id', '')
   const [mostraCad, setMostraCad] = useState(false)
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
@@ -95,33 +109,83 @@ export default function MotoristaPage() {
   const [editAtivo, setEditAtivo] = useState(true)
   const [editAdiantamento, setEditAdiantamento] = useState(true)
   const [editDtDesligamento, setEditDtDesligamento] = useState('')
+  const [editDtAdmissao, setEditDtAdmissao] = useState('')
+  const [editFreelancer, setEditFreelancer] = useState(false)
   const [editCnh, setEditCnh] = useState('')
   const [editPermisso, setEditPermisso] = useState('')
   const [editToxico, setEditToxico] = useState('')
   const [editPeriodico, setEditPeriodico] = useState('')
   const [editCaminhaoId, setEditCaminhaoId] = useState('')
-  const [editDeFerias, setEditDeFerias] = useState(false)
-  const [editFeriasInicio, setEditFeriasInicio] = useState('')
-  const [editFeriasFim, setEditFeriasFim] = useState('')
   const [editSubstitutoId, setEditSubstitutoId] = useState('')
+  const [editDeAfastamento, setEditDeAfastamento] = useState(false)
+  const [editAfastamentoInicio, setEditAfastamentoInicio] = useState('')
+  const [editAfastamentoFim, setEditAfastamentoFim] = useState('')
+  const [editAfastamentoMotivo, setEditAfastamentoMotivo] = useState('')
 
   const [cadNome, setCadNome] = useState('')
   const [cadCpf, setCadCpf] = useState('')
   const [cadRg, setCadRg] = useState('')
   const [cadTipo, setCadTipo] = useState('Com adiantamento')
+  const [cadDtAdmissao, setCadDtAdmissao] = useState('')
+  const [cadFreelancer, setCadFreelancer] = useState(false)
   const [cadCnh, setCadCnh] = useState('')
   const [cadPermisso, setCadPermisso] = useState('')
   const [cadToxico, setCadToxico] = useState('')
   const [cadPeriodico, setCadPeriodico] = useState('')
 
   useEffect(() => {
-    fetch_()
-    caminhoesAPI.listar().then(setCaminhoes).catch(() => {})
+    Promise.all([fetch_(), fetchCaminhoes()])
   }, [])
 
   async function fetch_() {
-    const data = await motoristasAPI.listar()
-    setMotoristas(data)
+    const { data } = await supabase.from('motoristas').select('*').order('nome')
+    if (data) setMotoristas(data)
+  }
+
+  async function fetchCaminhoes() {
+    const { data } = await supabase.from('caminhoes').select('id, placa, modelo, motorista_atual').order('placa')
+    if (data) setCaminhoes(data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })))
+  }
+
+
+  // ✅ NOVO: mesma lógica usada no CaminhaoPage.tsx — registra no
+  // historico_motorista_caminhao a troca temporária de motorista num
+  // caminhão (usado tanto por Férias quanto por Afastamento agora).
+  // Fecha o período do motorista original (data_fim = ontem) e abre
+  // um novo período pro substituto (data_inicio = hoje).
+  async function registrarTrocaNoHistoricoCaminhao(caminhaoId: string, caminhaoPlaca: string, motoristaNovo: string, motoristaAntigo: string) {
+    if (!caminhaoId || motoristaNovo === motoristaAntigo) return
+    const hoje = new Date().toISOString().split('T')[0]
+    const ontem = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+
+    if (motoristaAntigo) {
+      await supabase.from('historico_motorista_caminhao')
+        .update({ data_fim: ontem })
+        .eq('caminhao_id', caminhaoId)
+        .eq('motorista_nome', motoristaAntigo)
+        .is('data_fim', null)
+    }
+    if (motoristaNovo) {
+      await supabase.from('historico_motorista_caminhao').insert({
+        caminhao_id: caminhaoId, caminhao_placa: normalizarPlaca(caminhaoPlaca),
+        motorista_nome: motoristaNovo, data_inicio: hoje, data_fim: null,
+      })
+    }
+  }
+
+  // ✅ NOVO: mesmo padrão da função de férias, só que grava em
+  // historico_afastamentos em vez de historico_ferias.
+  async function registrarHistoricoAfastamento(motorista: Motorista, substitutoNome: string, caminhaoPlaca: string) {
+    await supabase.from('historico_afastamentos').insert({
+      motorista_id: motorista.id,
+      motorista_nome: motorista.nome,
+      motivo: editAfastamentoMotivo || null,
+      substituto_id: editSubstitutoId || null,
+      substituto_nome: substitutoNome,
+      caminhao_placa: normalizarPlaca(caminhaoPlaca),
+      afastamento_inicio: editAfastamentoInicio || null,
+      afastamento_fim: editAfastamentoFim || null,
+    })
   }
 
   const alertasGerais = motoristas.filter(m => m.ativo !== false).filter(m =>
@@ -131,12 +195,17 @@ export default function MotoristaPage() {
     ['vencido','critico','alerta'].includes(vencStatus(m.vencimento_periodico) || '')
   )
 
-  const filtrados = busca.trim()
-    ? motoristas.filter(m => m.nome.toLowerCase().includes(busca.toLowerCase()))
-    : motoristas
+  const filtrados = motoristas
+    .filter(m => {
+      if (filtroStatus === 'ativos') return m.ativo !== false
+      if (filtroStatus === 'inativos') return m.ativo === false
+      return true
+    })
+    .filter(m => busca.trim() ? m.nome.toLowerCase().includes(busca.toLowerCase()) : true)
 
   function selecionar(m: Motorista) {
     setSel(m)
+    setSelIdAberto(m.id)
     setEditNome(m.nome)
     setEditCpf(m.cpf || '')
     setEditRg(m.rg || '')
@@ -144,100 +213,178 @@ export default function MotoristaPage() {
     setEditAtivo(m.ativo !== false)
     setEditAdiantamento(m.adiantamento !== false)
     setEditDtDesligamento(m.dt_desligamento || '')
+    setEditDtAdmissao(m.dt_admissao || '')
+    setEditFreelancer(m.freelancer || false)
     setEditCnh(m.vencimento_cnh || '')
     setEditPermisso(m.vencimento_permisso || '')
     setEditToxico(m.vencimento_toxicologico || '')
     setEditPeriodico(m.vencimento_periodico || '')
     setEditCaminhaoId(m.caminhao_id || '')
-    setEditDeFerias(m.de_ferias || false)
-    setEditFeriasInicio(m.ferias_inicio || '')
-    setEditFeriasFim(m.ferias_fim || '')
     setEditSubstitutoId(m.substituto_id || '')
+    setEditDeAfastamento(m.de_afastamento || false)
+    setEditAfastamentoInicio(m.afastamento_inicio || '')
+    setEditAfastamentoFim(m.afastamento_fim || '')
+    setEditAfastamentoMotivo(m.afastamento_motivo || '')
     setConfirmExcluir(false)
   }
 
-  function voltar() { setSel(null); setBusca(''); setConfirmExcluir(false) }
-  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 3000) }
+  // ✅ Se a aba recarregar sozinha (Chrome descartando aba em segundo
+  // plano) enquanto você estava editando um motorista, essa tela
+  // reabre automaticamente o mesmo cadastro assim que a lista
+  // carregar — em vez de te devolver pra lista, tendo que procurar de
+  // novo qual motorista você estava mexendo.
+  useEffect(() => {
+    if (selIdAberto && !sel && motoristas.length > 0) {
+      const m = motoristas.find(mm => mm.id === selIdAberto)
+      if (m) selecionar(m)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motoristas])
+
+  function voltar() {
+    setSel(null); setSelIdAberto(''); setBusca(''); setConfirmExcluir(false)
+  }
+  function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 4000) }
 
   async function salvar() {
     if (!sel) return
     setLoading(true)
 
-    // Vínculo normal de caminhão (sem férias)
-    if (editCaminhaoId && editCaminhaoId !== sel.caminhao_id && !editDeFerias) {
-      if (sel.caminhao_id) {
-        const camAntigo = caminhoes.find(c => c.id === sel.caminhao_id)
-        if (camAntigo) await caminhoesAPI.atualizar(sel.caminhao_id, { ...camAntigo, motorista_atual: '' } as any)
-      }
-      const cam = caminhoes.find(c => c.id === editCaminhaoId)
-      if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: editNome.toUpperCase() } as any)
-    }
+    try {
+      const afastamentoFoiAtivado = editDeAfastamento && !sel.de_afastamento
+      const afastamentoFoiEncerrado = !editDeAfastamento && sel.de_afastamento
 
-    // Motorista foi para férias — vincula caminhão TEMPORÁRIO ao substituto
-    if (editDeFerias && editSubstitutoId && editCaminhaoId) {
-      const substituto = motoristas.find(m => m.id === editSubstitutoId)
-      if (substituto) {
-        await motoristasAPI.atualizar(editSubstitutoId, {
-          nome: substituto.nome,
-          caminhao_temp_id: editCaminhaoId,
-        } as any)
-        const cam = caminhoes.find(c => c.id === editCaminhaoId)
-        if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: substituto.nome } as any)
-      }
-    }
+      // Freelancer não possui caminhão fixo. Ao marcar essa opção,
+      // libera o caminhão anterior, mas mantém o histórico já registrado.
+      const caminhaoSelecionadoId = editFreelancer ? '' : editCaminhaoId
+      const caminhaoAnteriorId = sel.caminhao_id || ''
 
-    // Motorista voltou de férias — remove caminhão temporário do substituto
-    if (!editDeFerias && sel.de_ferias && sel.substituto_id && editCaminhaoId) {
-      const substituto = motoristas.find(m => m.id === sel.substituto_id)
-      if (substituto) {
-        await motoristasAPI.atualizar(sel.substituto_id, {
-          nome: substituto.nome,
-          caminhao_temp_id: null,
-        } as any)
-        const cam = caminhoes.find(c => c.id === editCaminhaoId)
-        if (cam) await caminhoesAPI.atualizar(editCaminhaoId, { ...cam, motorista_atual: editNome.toUpperCase() } as any)
+      if (!editDeAfastamento && caminhaoAnteriorId !== caminhaoSelecionadoId) {
+        if (caminhaoAnteriorId) {
+          const { error: e1 } = await supabase.from('caminhoes').update({ motorista_atual: '' }).eq('id', caminhaoAnteriorId)
+          if (e1) throw e1
+        }
+        if (caminhaoSelecionadoId) {
+          const { error: e2 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', caminhaoSelecionadoId)
+          if (e2) throw e2
+          await registrarTrocaNoHistoricoCaminhao(
+            caminhaoSelecionadoId,
+            normalizarPlaca(caminhoes.find(c => c.id === caminhaoSelecionadoId)?.placa || ''),
+            editNome.toUpperCase(),
+            '',
+          )
+        }
       }
-    }
 
-    if (perm !== 'demo') await motoristasAPI.atualizar(sel.id, {
-      nome: editNome.toUpperCase(), cpf: editCpf, rg: editRg,
-      tipo: editTipo, ativo: editAtivo, adiantamento: editAdiantamento,
-      dt_desligamento: editDtDesligamento || null,
-      vencimento_cnh: editCnh || null,
-      vencimento_permisso: editPermisso || null,
-      vencimento_toxicologico: editToxico || null,
-      vencimento_periodico: editPeriodico || null,
-      caminhao_id: editCaminhaoId || null,
-      de_ferias: editDeFerias,
-      ferias_inicio: editDeFerias ? editFeriasInicio || null : null,
-      ferias_fim: editDeFerias ? editFeriasFim || null : null,
-      substituto_id: editDeFerias ? editSubstitutoId || null : null,
-    })
-    await fetch_(); setLoading(false); voltar(); showMsg('✅ Atualizado!')
+      // ✅ NOVO — Início de afastamento: mesma lógica de férias, só
+      // que grava em historico_afastamentos em vez de historico_ferias.
+      if (afastamentoFoiAtivado && editSubstitutoId && editCaminhaoId) {
+        const substituto = motoristas.find(m => m.id === editSubstitutoId)
+        if (substituto) {
+          const { error: e3 } = await supabase.from('motoristas').update({ caminhao_temp_id: editCaminhaoId }).eq('id', editSubstitutoId)
+          if (e3) throw e3
+          const { error: e4 } = await supabase.from('caminhoes').update({ motorista_atual: substituto.nome }).eq('id', editCaminhaoId)
+          if (e4) throw e4
+          const cam = caminhoes.find(c => c.id === editCaminhaoId)
+          await registrarHistoricoAfastamento(sel, substituto.nome, normalizarPlaca(cam?.placa || ''))
+          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, normalizarPlaca(cam?.placa || ''), substituto.nome, editNome.toUpperCase())
+        }
+      }
+
+      // ✅ NOVO — Fim de afastamento: devolve o caminhão pro
+      // motorista original.
+      if (afastamentoFoiEncerrado && sel.substituto_id && editCaminhaoId) {
+        const substituto = motoristas.find(m => m.id === sel.substituto_id)
+        if (substituto) {
+          const { error: e5 } = await supabase.from('motoristas').update({ caminhao_temp_id: null }).eq('id', sel.substituto_id)
+          if (e5) throw e5
+          const { error: e6 } = await supabase.from('caminhoes').update({ motorista_atual: editNome.toUpperCase() }).eq('id', editCaminhaoId)
+          if (e6) throw e6
+          const cam = caminhoes.find(c => c.id === editCaminhaoId)
+          await registrarTrocaNoHistoricoCaminhao(editCaminhaoId, normalizarPlaca(cam?.placa || ''), editNome.toUpperCase(), substituto.nome)
+        }
+      }
+
+      if (perm !== 'demo') {
+        const { error: e7 } = await supabase.from('motoristas').update({
+          nome: editNome.toUpperCase(), cpf: editCpf, rg: editRg,
+          tipo: editTipo, ativo: editAtivo, adiantamento: editAdiantamento,
+          dt_desligamento: editDtDesligamento || null,
+          dt_admissao: editDtAdmissao || null,
+          freelancer: editFreelancer,
+          vencimento_cnh: editCnh || null,
+          vencimento_permisso: editPermisso || null,
+          vencimento_toxicologico: editToxico || null,
+          vencimento_periodico: editPeriodico || null,
+          caminhao_id: caminhaoSelecionadoId || null,
+          de_afastamento: editDeAfastamento,
+          afastamento_inicio: editDeAfastamento ? editAfastamentoInicio || null : null,
+          afastamento_fim: editDeAfastamento ? editAfastamentoFim || null : null,
+          afastamento_motivo: editDeAfastamento ? editAfastamentoMotivo || null : null,
+          ...(editDeAfastamento ? { substituto_id: editSubstitutoId || null } : {}),
+        }).eq('id', sel.id)
+        if (e7) throw e7
+      }
+
+      await fetch_()
+      voltar()
+      showMsg('✅ Atualizado!')
+    } catch (err: any) {
+      console.error('Erro ao salvar motorista:', err)
+      showMsg('❌ Erro ao salvar: ' + (err?.message || 'erro desconhecido'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function excluir() {
     if (!sel) return
     setLoading(true)
-    if (perm !== 'demo') await motoristasAPI.excluir(sel.id)
-    await fetch_(); setLoading(false); voltar(); showMsg('Motorista excluído.')
+    try {
+      if (perm !== 'demo') {
+        const { error } = await supabase.from('motoristas').delete().eq('id', sel.id)
+        if (error) throw error
+      }
+      await fetch_()
+      voltar()
+      showMsg('Motorista excluído.')
+    } catch (err: any) {
+      console.error('Erro ao excluir motorista:', err)
+      showMsg('❌ Erro ao excluir: ' + (err?.message || 'erro desconhecido'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function cadastrar() {
     if (!cadNome.trim()) return
     setLoading(true)
-    if (perm !== 'demo') await motoristasAPI.criar({
-      nome: cadNome.toUpperCase(), cpf: cadCpf, rg: cadRg,
-      tipo: cadTipo, ativo: true, adiantamento: true,
-      vencimento_cnh: cadCnh || null,
-      vencimento_permisso: cadPermisso || null,
-      vencimento_toxicologico: cadToxico || null,
-      vencimento_periodico: cadPeriodico || null,
-    })
-    await fetch_(); setLoading(false)
-    setCadNome(''); setCadCpf(''); setCadRg(''); setCadTipo('Com adiantamento')
-    setCadCnh(''); setCadPermisso(''); setCadToxico(''); setCadPeriodico('')
-    setMostraCad(false); showMsg('✅ Motorista cadastrado!')
+    try {
+      if (perm !== 'demo') {
+        const { error } = await supabase.from('motoristas').insert({
+          nome: cadNome.toUpperCase(), cpf: cadCpf, rg: cadRg,
+          tipo: cadTipo, ativo: true, adiantamento: true,
+          dt_admissao: cadDtAdmissao || null,
+          freelancer: cadFreelancer,
+          vencimento_cnh: cadCnh || null,
+          vencimento_permisso: cadPermisso || null,
+          vencimento_toxicologico: cadToxico || null,
+          vencimento_periodico: cadPeriodico || null,
+        })
+        if (error) throw error
+      }
+      await fetch_()
+      setCadNome(''); setCadCpf(''); setCadRg(''); setCadTipo('Com adiantamento')
+      setCadDtAdmissao(''); setCadFreelancer(false)
+      setCadCnh(''); setCadPermisso(''); setCadToxico(''); setCadPeriodico('')
+      setMostraCad(false)
+      showMsg('✅ Motorista cadastrado!')
+    } catch (err: any) {
+      console.error('Erro ao cadastrar motorista:', err)
+      showMsg('❌ Erro ao cadastrar: ' + (err?.message || 'erro desconhecido'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   const InputClass = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
@@ -296,6 +443,13 @@ export default function MotoristaPage() {
     return Math.ceil((f.getTime() - i.getTime()) / (1000 * 60 * 60 * 24))
   }
 
+  function diasEntreDatas(inicio: string, fim: string) {
+    if (!inicio || !fim) return null
+    const i = new Date(inicio + 'T00:00:00')
+    const f = new Date(fim + 'T00:00:00')
+    return Math.ceil((f.getTime() - i.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
   if (mostraCad) return (
     <div className="p-6 max-w-2xl mx-auto">
       <button onClick={() => setMostraCad(false)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 mb-4 text-sm transition">
@@ -326,6 +480,10 @@ export default function MotoristaPage() {
             <input value={fmtCpf(cadCpf)} onChange={e => setCadCpf(e.target.value.replace(/\D/g,''))}
               placeholder="000.000.000-00" maxLength={14} className={InputClass} />
           </div>
+          <div>
+            <label className={LabelClass}>Data de Admissão</label>
+            <input type="date" value={cadDtAdmissao} onChange={e => setCadDtAdmissao(e.target.value)} className={InputClass} />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={LabelClass}>Venc. CNH</label>
@@ -344,6 +502,9 @@ export default function MotoristaPage() {
               <input type="date" value={cadPeriodico} onChange={e => setCadPeriodico(e.target.value)} className={InputClass} />
             </div>
           </div>
+          <div className="border-t border-gray-100 pt-3">
+            <Toggle value={cadFreelancer} onChange={() => setCadFreelancer(!cadFreelancer)} label="Freelancer" />
+          </div>
           <div className="flex gap-2 pt-1">
             <button onClick={cadastrar} disabled={loading}
               className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
@@ -361,7 +522,7 @@ export default function MotoristaPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
-      {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
+      {msg && <div className={`mb-4 p-3 rounded-xl text-sm border ${msg.startsWith('❌') ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>{msg}</div>}
 
       {sel ? (
         <div>
@@ -378,26 +539,29 @@ export default function MotoristaPage() {
           }} />
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className={`px-6 py-5 bg-gradient-to-r ${editAtivo ? (editDeFerias ? 'from-blue-500 to-blue-600' : 'from-red-600 to-red-700') : 'from-gray-500 to-gray-600'}`}>
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-xl">
-                  {sel.nome.charAt(0)}
-                </div>
-                <div>
-                  <h2 className="text-white font-bold text-lg">{sel.nome}</h2>
-                  <div className="flex gap-2 mt-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${editAtivo ? 'bg-green-400/30 text-green-100' : 'bg-red-400/30 text-red-100'}`}>
-                      {editAtivo ? 'Ativo' : 'Desligado'}
-                    </span>
-                    {editDeFerias && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-blue-400/30 text-blue-100">
-                        🏖️ De férias
+            <div className={`px-6 py-5 bg-gradient-to-r ${editAtivo ? 'from-red-600 to-red-700' : 'from-gray-500 to-gray-600'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white font-bold text-xl">
+                    {sel.nome.charAt(0)}
+                  </div>
+                  <div>
+                    <h2 className="text-white font-bold text-lg">{sel.nome}</h2>
+                    <div className="flex gap-2 mt-1">
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${editAtivo ? 'bg-green-400/30 text-green-100' : 'bg-red-400/30 text-red-100'}`}>
+                        {editAtivo ? 'Ativo' : 'Desligado'}
                       </span>
-                    )}
+                      {editFreelancer && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-purple-400/30 text-purple-100">
+                          🧾 Freelancer
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+
 
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -424,6 +588,11 @@ export default function MotoristaPage() {
                 </div>
               </div>
 
+              <div>
+                <label className={LabelClass}>Data de Admissão</label>
+                <input type="date" value={editDtAdmissao} onChange={e => setEditDtAdmissao(e.target.value)} className={InputClass} />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LabelClass}>Venc. CNH</label>
@@ -445,23 +614,29 @@ export default function MotoristaPage() {
 
               <div className="border-t border-gray-100 pt-4">
                 <label className={LabelClass}>Caminhão vinculado</label>
-                <select value={editCaminhaoId} onChange={e => setEditCaminhaoId(e.target.value)} className={InputClass}>
-                  <option value="">Nenhum</option>
-                  {caminhoes.map(c => (
+                <select
+                  value={editFreelancer ? '' : editCaminhaoId}
+                  disabled={editFreelancer}
+                  onChange={e => setEditCaminhaoId(e.target.value)}
+                  className={InputClass + (editFreelancer ? ' opacity-60 cursor-not-allowed' : '')}
+                >
+                  <option value="">{editFreelancer ? 'Freelancer — sem caminhão fixo' : 'Nenhum'}</option>
+                  {!editFreelancer && caminhoes.map(c => (
                     <option key={c.id} value={c.id}>{c.placa} {c.modelo && `· ${c.modelo}`}</option>
                   ))}
                 </select>
-                {editCaminhaoId && (
+                {editFreelancer ? (
+                  <p className="text-xs text-purple-600 mt-1">🧾 Freelancer: poderá usar qualquer caminhão nas operações.</p>
+                ) : editCaminhaoId && (
                   <p className="text-xs text-gray-400 mt-1">
                     🚛 {caminhoes.find(c => c.id === editCaminhaoId)?.placa}
-                    {editDeFerias && editSubstitutoId && (
-                      <span className="text-blue-500"> · Temporariamente com {motoristas.find(m => m.id === editSubstitutoId)?.nome}</span>
+                    {editDeAfastamento && editSubstitutoId && (
+                      <span className="text-orange-500"> · Temporariamente com {motoristas.find(m => m.id === editSubstitutoId)?.nome}</span>
                     )}
                   </p>
                 )}
               </div>
 
-              {/* Caminhão temporário (somente leitura — atribuído quando outro motorista entrou de férias) */}
               {sel.caminhao_temp_id && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                   <p className="text-xs font-semibold text-blue-700 mb-1">🔄 Caminhão temporário</p>
@@ -472,29 +647,40 @@ export default function MotoristaPage() {
                 </div>
               )}
 
-              <div className="border-t border-gray-100 pt-4 space-y-3">
-                <Toggle value={editDeFerias} onChange={() => {
-                  setEditDeFerias(!editDeFerias)
-                  if (!editDeFerias && !editFeriasInicio)
-                    setEditFeriasInicio(new Date().toISOString().split('T')[0])
-                }} label="De férias" />
+              {/* ✅ NOVA SEÇÃO — Afastamento (mesmo padrão de Férias) */}
+              <div className="border-t border-gray-100 pt-4">
+                <Toggle value={editDeAfastamento} onChange={() => {
+                  setEditDeAfastamento(!editDeAfastamento)
+                  if (!editDeAfastamento) {
+                    if (!editAfastamentoInicio) setEditAfastamentoInicio(new Date().toISOString().split('T')[0])
+                  } else {
+                    setEditSubstitutoId('')
+                  }
+                }} label="Afastado" />
 
-                {editDeFerias && (
-                  <>
+                {editDeAfastamento && (
+                  <div className="space-y-3 mt-3">
+                    <div>
+                      <label className={LabelClass}>Motivo</label>
+                      <select value={editAfastamentoMotivo} onChange={e => setEditAfastamentoMotivo(e.target.value)} className={InputClass}>
+                        <option value="">Selecione...</option>
+                        {MOTIVOS_AFASTAMENTO.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className={LabelClass}>Início das férias</label>
-                        <input type="date" value={editFeriasInicio} onChange={e => setEditFeriasInicio(e.target.value)} className={InputClass} />
+                        <label className={LabelClass}>Início do afastamento</label>
+                        <input type="date" value={editAfastamentoInicio} onChange={e => setEditAfastamentoInicio(e.target.value)} className={InputClass} />
                       </div>
                       <div>
-                        <label className={LabelClass}>Fim das férias</label>
-                        <input type="date" value={editFeriasFim} onChange={e => setEditFeriasFim(e.target.value)} className={InputClass} />
+                        <label className={LabelClass}>Fim do afastamento</label>
+                        <input type="date" value={editAfastamentoFim} onChange={e => setEditAfastamentoFim(e.target.value)} className={InputClass} />
                       </div>
                     </div>
-                    {editFeriasInicio && editFeriasFim && (
-                      <div className="bg-blue-50 rounded-xl p-3">
-                        <p className="text-sm text-blue-700 font-medium">
-                          🏖️ {diasFerias(editFeriasInicio, editFeriasFim)} dia(s) de férias
+                    {editAfastamentoInicio && editAfastamentoFim && (
+                      <div className="bg-orange-50 rounded-xl p-3">
+                        <p className="text-sm text-orange-700 font-medium">
+                          🏥 {diasEntreDatas(editAfastamentoInicio, editAfastamentoFim)} dia(s) de afastamento
                         </p>
                       </div>
                     )}
@@ -508,17 +694,22 @@ export default function MotoristaPage() {
                       </select>
                     </div>
                     {editSubstitutoId && editCaminhaoId && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                        <p className="text-xs text-blue-700">
-                          🔄 O caminhão <strong>{caminhoes.find(c => c.id === editCaminhaoId)?.placa}</strong> será vinculado temporariamente a <strong>{motoristas.find(m => m.id === editSubstitutoId)?.nome}</strong> — o caminhão original dele será mantido
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                        <p className="text-xs text-orange-700">
+                          🔄 O caminhão <strong>{caminhoes.find(c => c.id === editCaminhaoId)?.placa}</strong> será vinculado temporariamente a <strong>{motoristas.find(m => m.id === editSubstitutoId)?.nome}</strong> — essa troca fica registrada no histórico do caminhão.
                         </p>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
 
               <div className="border-t border-gray-100 pt-4 space-y-3">
+                <Toggle value={editFreelancer} onChange={() => {
+                  const novoValor = !editFreelancer
+                  setEditFreelancer(novoValor)
+                  if (novoValor) setEditCaminhaoId('')
+                }} label="Freelancer" />
                 <Toggle value={editAdiantamento} onChange={() => setEditAdiantamento(!editAdiantamento)} label="Adiantamento" />
                 <Toggle value={editAtivo} onChange={() => {
                   setEditAtivo(!editAtivo)
@@ -535,8 +726,8 @@ export default function MotoristaPage() {
 
               <div className="flex gap-2 pt-2">
                 <button onClick={salvar} disabled={loading}
-                  className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition">
-                  <Save size={15}/> Salvar alterações
+                  className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl py-2.5 text-sm font-medium transition disabled:opacity-60">
+                  <Save size={15}/> {loading ? 'Salvando...' : 'Salvar alterações'}
                 </button>
                 <button onClick={() => setConfirmExcluir(true)}
                   className="flex items-center gap-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl px-4 py-2.5 text-sm transition">
@@ -579,6 +770,19 @@ export default function MotoristaPage() {
             </div>
           )}
 
+          <div className="flex gap-2 mb-4">
+            {(['ativos', 'inativos', 'todos'] as const).map(f => (
+              <button key={f} onClick={() => setFiltroStatus(f)}
+                className={`px-4 py-2 rounded-xl text-xs font-medium transition ${
+                  filtroStatus === f
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'
+                }`}>
+                {f === 'ativos' ? 'Ativos' : f === 'inativos' ? 'Inativos' : 'Todos'}
+              </button>
+            ))}
+          </div>
+
           <div className="relative mb-4">
             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={busca} onChange={e => setBusca(e.target.value)}
@@ -617,6 +821,8 @@ export default function MotoristaPage() {
                       {caminhao && ` · 🚛 ${caminhao.placa}`}
                       {caminhaoTemp && ` · 🚛 ${caminhaoTemp.placa} (temp)`}
                       {m.de_ferias && ` · 🏖️ Férias`}
+                      {m.de_afastamento && ` · 🏥 Afastado`}
+                      {m.freelancer && ` · 🧾 Freelancer`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -633,4 +839,3 @@ export default function MotoristaPage() {
     </div>
   )
 }
-

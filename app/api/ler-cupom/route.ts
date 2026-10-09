@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
 ATENÇÃO:
 - "litros_combustivel" é a quantidade de litros abastecidos (procure por "QTD", "LITROS", "L x", "469 L" etc)
 - "valor_litro_combustivel" é o preço unitário por litro (procure por "VL UNIT", "R$/L", "x 6,45" etc)
+- "tipo_combustivel" deve ser um destes valores: DIESEL, GASOLINA, ETANOL, GNV ou OUTRO
 - "cidade" e "estado" são do POSTO FORNECEDOR (primeiro CNPJ/endereço do cupom), NÃO do cliente comprador
 - Ignore completamente o endereço do cliente/comprador que aparece depois
 - "km" é a quilometragem do veículo se aparecer no cupom
@@ -41,6 +42,7 @@ JSON esperado:
   "estado": "UF do posto com 2 letras maiúsculas",
   "litros_combustivel": 0,
   "valor_litro_combustivel": 0,
+  "tipo_combustivel": "DIESEL",
   "litros_arla": 0,
   "valor_litro_arla": 0,
   "valor_total": 0,

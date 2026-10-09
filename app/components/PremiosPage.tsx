@@ -1,0 +1,249 @@
+'use client'
+import { supabaseRestFetch } from '../services/rest'
+import { useState, useEffect } from 'react'
+import { Trophy, CheckCircle, XCircle, Fuel, FileText, AlertTriangle, ShieldAlert } from 'lucide-react'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
+
+const META_FAT   = 127000
+const META_MEDIA = 2.70
+
+interface MotoristaRanking {
+  nome: string; faturamento: number; media_km_l: number
+  tem_multa: boolean; tem_avaria: boolean; aprovado: boolean
+}
+
+export default function PremiosPage() {
+  const hoje = new Date()
+  const [mes, setMes]       = useState(String(hoje.getMonth() + 1).padStart(2, '0'))
+  const [ano, setAno]       = useState(String(hoje.getFullYear()))
+  const [ranking, setRanking]   = useState<MotoristaRanking[]>([])
+  const [loading, setLoading]   = useState(false)
+
+  useEffect(() => { calcular() }, [mes, ano])
+
+  async function hdr() {
+    return { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+  }
+
+  async function calcular() {
+    setLoading(true)
+    try {
+      const inicioMes = `${ano}-${mes}-01`
+      const fimMes    = new Date(parseInt(ano), parseInt(mes), 0).toISOString().split('T')[0]
+      const h         = await hdr()
+
+      // Busca dados em paralelo
+      const [resM, resC, resMu, resAv, resFech] = await Promise.all([
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc`, { headers: h }),
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/contratos?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/multas?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/avarias?data=gte.${inicioMes}&data=lte.${fimMes}`, { headers: h }),
+        // ✅ Fechamentos do mês para calcular km e litros reais
+        supabaseRestFetch(`${SUPABASE_URL}/rest/v1/fechamento_viagens?data_inicio=gte.${inicioMes}&data_inicio=lte.${fimMes}&select=id,motorista_id,km_inicial,km_final`, { headers: h }),
+      ])
+
+      const [motoristas, contratos, multas, avarias, fechamentos] = await Promise.all([
+        resM.json(), resC.json(), resMu.json(), resAv.json(), resFech.json()
+      ])
+
+      // ✅ Calcula média km/L por motorista_id via fechamentos
+      const mediaKmLPorId: Record<string, number> = {}
+
+      if (Array.isArray(fechamentos) && fechamentos.length > 0) {
+        const fechIds = fechamentos.map((f: any) => f.id)
+
+        // Abastecimentos vinculados aos fechamentos
+        const resFechAbast = await supabaseRestFetch(
+          `${SUPABASE_URL}/rest/v1/fechamento_abastecimentos?fechamento_id=in.(${fechIds.join(',')})&select=fechamento_id,abastecimento_id`,
+          { headers: h }
+        )
+        const fechAbastList = await resFechAbast.json()
+
+        if (Array.isArray(fechAbastList) && fechAbastList.length > 0) {
+          const abastIds = [...new Set(fechAbastList.map((fa: any) => fa.abastecimento_id))]
+
+          const resAbastDet = await supabaseRestFetch(
+            `${SUPABASE_URL}/rest/v1/abastecimentos?id=in.(${abastIds.join(',')})&select=id,litros_combustivel`,
+            { headers: h }
+          )
+          const abastDetalhes = await resAbastDet.json()
+
+          // id → litros
+          const litrosPorAbast: Record<string, number> = {}
+          if (Array.isArray(abastDetalhes)) {
+            abastDetalhes.forEach((a: any) => { litrosPorAbast[a.id] = a.litros_combustivel || 0 })
+          }
+
+          // fechamento_id → total litros
+          const litrosPorFech: Record<string, number> = {}
+          fechAbastList.forEach((fa: any) => {
+            litrosPorFech[fa.fechamento_id] = (litrosPorFech[fa.fechamento_id] || 0) + (litrosPorAbast[fa.abastecimento_id] || 0)
+          })
+
+          // Agrupa fechamentos por motorista_id
+          const fechPorMotorista: Record<string, any[]> = {}
+          fechamentos.forEach((f: any) => {
+            if (!fechPorMotorista[f.motorista_id]) fechPorMotorista[f.motorista_id] = []
+            fechPorMotorista[f.motorista_id].push(f)
+          })
+
+          // Calcula média por motorista
+          Object.entries(fechPorMotorista).forEach(([motId, fechs]) => {
+            const totalKm = fechs.reduce((s: number, f: any) => s + Math.max(0, (f.km_final || 0) - (f.km_inicial || 0)), 0)
+            const totalLitros = fechs.reduce((s: number, f: any) => s + (litrosPorFech[f.id] || 0), 0)
+            if (totalKm > 0 && totalLitros > 0) {
+              mediaKmLPorId[motId] = totalKm / totalLitros
+            }
+          })
+        }
+      }
+
+      // Monta ranking
+      const result: MotoristaRanking[] = motoristas.map((m: any) => {
+        const nome        = m.nome
+        const faturamento = contratos.filter((c: any) => c.motorista === nome).reduce((s: number, c: any) => s + (c.fat_bruto || 0), 0)
+        const media_km_l  = mediaKmLPorId[m.id] || 0  // ✅ via fechamentos
+        const tem_multa   = multas.some((mu: any) => mu.motorista === nome)
+        const tem_avaria  = avarias.some((av: any) => av.motorista === nome)
+        const aprovado    = faturamento >= META_FAT && media_km_l >= META_MEDIA && !tem_multa && !tem_avaria
+        return { nome, faturamento, media_km_l, tem_multa, tem_avaria, aprovado }
+      })
+
+      result.sort((a, b) => {
+        if (a.aprovado && !b.aprovado) return -1
+        if (!a.aprovado && b.aprovado) return 1
+        return b.faturamento - a.faturamento
+      })
+
+      setRanking(result.filter(r => r.faturamento > 0 || r.media_km_l > 0 || r.tem_multa || r.tem_avaria))
+    } catch {}
+    setLoading(false)
+  }
+
+  const meses = [
+    { v: '01', l: 'Janeiro' }, { v: '02', l: 'Fevereiro' }, { v: '03', l: 'Março' },
+    { v: '04', l: 'Abril'   }, { v: '05', l: 'Maio'      }, { v: '06', l: 'Junho'  },
+    { v: '07', l: 'Julho'   }, { v: '08', l: 'Agosto'    }, { v: '09', l: 'Setembro'},
+    { v: '10', l: 'Outubro' }, { v: '11', l: 'Novembro'  }, { v: '12', l: 'Dezembro'},
+  ]
+  const anos      = ['2024','2025','2026','2027']
+  const fmt       = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
+  const aprovados = ranking.filter(r => r.aprovado)
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Trophy size={28} className="text-yellow-500"/>
+          <h1 className="text-2xl font-bold text-gray-900">Prêmios</h1>
+        </div>
+      </div>
+
+      <>
+          <div className="flex gap-3 mb-6 flex-wrap">
+            <select value={mes} onChange={e => setMes(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
+              {meses.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+            </select>
+            <select value={ano} onChange={e => setAno(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-white">
+              {anos.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <button onClick={calcular} disabled={loading}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition disabled:opacity-50">
+              {loading ? 'Calculando...' : 'Atualizar'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            {[
+              { icon: <FileText size={20} className="mx-auto text-blue-500 mb-1"/>, label: 'Faturamento mín.', value: 'R$ 127.000' },
+              { icon: <Fuel size={20} className="mx-auto text-green-500 mb-1"/>, label: 'Média mín.', value: '2,70 km/l' },
+              { icon: <AlertTriangle size={20} className="mx-auto text-yellow-500 mb-1"/>, label: 'Multas', value: 'Nenhuma' },
+              { icon: <ShieldAlert size={20} className="mx-auto text-red-500 mb-1"/>, label: 'Avarias', value: 'Nenhuma' },
+            ].map(c => (
+              <div key={c.label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
+                {c.icon}
+                <p className="text-xs text-gray-500">{c.label}</p>
+                <p className="text-sm font-bold text-gray-800">{c.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {aprovados.length > 0 && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-yellow-400 to-yellow-500 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <Trophy size={20} className="text-white"/>
+                <p className="text-white font-bold">{aprovados.length} motorista(s) elegível(is) ao prêmio!</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {aprovados.map(m => (
+                  <span key={m.nome} className="bg-white/30 text-white text-xs font-semibold px-3 py-1 rounded-full">
+                    🏆 {m.nome}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
+              <p className="text-sm text-gray-400">Calculando ranking...</p>
+            </div>
+          ) : ranking.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
+              <Trophy size={32} className="mx-auto text-gray-200 mb-2"/>
+              <p className="text-sm text-gray-400">Nenhum dado encontrado para este período</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 grid grid-cols-6 gap-2">
+                <p className="text-xs font-semibold text-gray-400 uppercase col-span-2">Motorista</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase text-center">Faturamento</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase text-center">Média km/l</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase text-center">Multa/Avaria</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase text-center">Status</p>
+              </div>
+              {ranking.map((m, i) => (
+                <div key={m.nome}
+                  className={`grid grid-cols-6 gap-2 items-center px-5 py-4 border-b border-gray-50 last:border-0
+                    ${m.aprovado ? 'bg-yellow-50' : ''}`}>
+                  <div className="col-span-2 flex items-center gap-3">
+                    <span className="text-lg font-bold text-gray-400">#{i+1}</span>
+                    <p className="text-sm font-bold text-gray-900">{m.nome}</p>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <p className="text-xs font-semibold text-gray-700">
+                      {m.faturamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                    {m.faturamento >= META_FAT ? <CheckCircle size={16} className="text-green-500 mt-1"/> : <XCircle size={16} className="text-red-400 mt-1"/>}
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <p className="text-xs font-semibold text-gray-700">
+                      {m.media_km_l > 0 ? `${m.media_km_l.toFixed(2)} km/l` : '— km/l'}
+                    </p>
+                    {m.media_km_l >= META_MEDIA ? <CheckCircle size={16} className="text-green-500 mt-1"/> : <XCircle size={16} className="text-red-400 mt-1"/>}
+                  </div>
+                  <div className="flex flex-col items-center">
+                    {!m.tem_multa && !m.tem_avaria
+                      ? <CheckCircle size={16} className="text-green-500"/>
+                      : <div className="flex gap-1">
+                          {m.tem_multa  && <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">Multa</span>}
+                          {m.tem_avaria && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">Avaria</span>}
+                        </div>}
+                  </div>
+                  <div className="flex justify-center">
+                    {m.aprovado
+                      ? <span className="bg-yellow-400 text-white text-xs font-bold px-3 py-1 rounded-full">🏆 Elegível</span>
+                      : <span className="bg-gray-100 text-gray-500 text-xs px-3 py-1 rounded-full">Não elegível</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+    </div>
+  )
+}

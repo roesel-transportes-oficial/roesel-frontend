@@ -1,10 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { contratosAPI, motoristasAPI, caminhoesAPI } from '../services/api'
-import { AlertTriangle, FileText, DollarSign, Users, Truck, Clock, TrendingUp } from 'lucide-react'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY!
+import { supabase } from '../services/supabase'
+import { normalizarPlaca } from '../services/placas'
+import { AlertTriangle, FileText, DollarSign, Users, Truck, TrendingUp } from 'lucide-react'
 
 function diasParaVencer(data: string) {
   if (!data) return null
@@ -19,7 +17,22 @@ function vencStatus(data: string) {
   if (dias < 0) return 'vencido'
   if (dias <= 15) return 'critico'
   if (dias <= 30) return 'alerta'
-  return 'ok'
+  return null
+}
+
+function hojeIso() {
+  const hoje = new Date()
+  const ano = hoje.getFullYear()
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0')
+  const dia = String(hoje.getDate()).padStart(2, '0')
+  return `${ano}-${mes}-${dia}`
+}
+
+function estaDeFeriasHoje(m: any, hoje: string) {
+  if (!m.de_ferias || !m.ferias_inicio) return false
+  const inicio = m.ferias_inicio
+  const fim = m.ferias_fim || '9999-12-31'
+  return inicio <= hoje && hoje <= fim
 }
 
 export default function DashboardPage() {
@@ -35,34 +48,39 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function carregar() {
-      const [c, m, cam] = await Promise.all([
-        contratosAPI.listar({ mes, ano }),
-        motoristasAPI.listar(),
-        caminhoesAPI.listar(),
+      const mesStr = String(mes).padStart(2, '0')
+      const ultimoDia = new Date(ano, mes, 0).getDate()
+
+      const [{ data: c }, { data: m }, { data: cam }] = await Promise.all([
+        supabase.from('contratos').select('*')
+          .gte('data', `${ano}-${mesStr}-01`)
+          .lte('data', `${ano}-${mesStr}-${ultimoDia}`)
+          .order('data', { ascending: false }),
+        supabase.from('motoristas').select('*').order('nome'),
+        supabase.from('caminhoes').select('*').order('placa'),
       ])
-      setContratos(c)
-      setMotoristas(m)
-      setCaminhoes(cam)
+
+      setContratos(c || [])
+      setMotoristas(m || [])
+      setCaminhoes((cam || []).map((c: any) => ({ ...c, placa: normalizarPlaca(c.placa) })))
       setLoading(false)
     }
     carregar()
   }, [])
 
-  // Contratos do mês
   const totalContratos = contratos.length
   const totalFat = contratos.reduce((s: number, c: any) => s + (c.fat_bruto || 0), 0)
   const contratosAbertos = contratos.filter((c: any) => c.status === 'ABERTO').length
   const contratosPagos = contratos.filter((c: any) => c.status === 'PAGO').length
 
-  // Motoristas de férias
-  const deFerias = motoristas.filter((m: any) => m.de_ferias)
-
-  // Caminhões parados
+  const dataHoje = hojeIso()
+  const deFerias = motoristas.filter((m: any) => estaDeFeriasHoje(m, dataHoje))
   const parados = caminhoes.filter((c: any) => c.status !== 'rodando')
 
-  // Alertas de vencimento
-  const alertasVenc: { nome: string; campo: string; dias: number; status: string }[] = []
-  motoristas.filter((m: any) => m.ativo).forEach((m: any) => {
+  const alertasVenc: { nome: string; campo: string; data: string; dias: number; status: string; tipo: 'motorista' | 'caminhao' }[] = []
+
+  // ── Documentos do motorista ──
+  motoristas.forEach((m: any) => {
     const campos = [
       { label: 'CNH', data: m.vencimento_cnh },
       { label: 'Permisso', data: m.vencimento_permisso },
@@ -71,12 +89,35 @@ export default function DashboardPage() {
     ]
     campos.forEach(c => {
       const s = vencStatus(c.data)
-      if (s && s !== 'ok') {
+      if (s) {
         alertasVenc.push({
           nome: m.nome,
           campo: c.label,
+          data: c.data,
           dias: diasParaVencer(c.data) || 0,
           status: s,
+          tipo: 'motorista',
+        })
+      }
+    })
+  })
+
+  // ✅ NOVO: Documentos do caminhão (Cronotacógrafo, Permisso)
+  caminhoes.forEach((c: any) => {
+    const campos = [
+      { label: 'Cronotacógrafo', data: c.vencimento_cronotacografo },
+      { label: 'Permisso (caminhão)', data: c.vencimento_permisso },
+    ]
+    campos.forEach(campo => {
+      const s = vencStatus(campo.data)
+      if (s) {
+        alertasVenc.push({
+          nome: c.placa,
+          campo: campo.label,
+          data: campo.data,
+          dias: diasParaVencer(campo.data) || 0,
+          status: s,
+          tipo: 'caminhao',
         })
       }
     })
@@ -97,7 +138,6 @@ export default function DashboardPage() {
         <p className="text-sm text-gray-400 mt-1 capitalize">{nomeMes} de {ano}</p>
       </div>
 
-      {/* Cards principais */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <div className="flex items-center gap-3 mb-2">
@@ -148,44 +188,52 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        {/* Alertas de vencimento */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <AlertTriangle size={16} className="text-amber-500" />
-            <h2 className="font-semibold text-gray-800 text-sm">Alertas de vencimento</h2>
+            <h2 className="font-semibold text-gray-800 text-sm">Vencimentos de caminhões e motoristas</h2>
+            <span className="ml-auto text-xs font-semibold text-gray-400">{alertasVenc.length}</span>
           </div>
           {alertasVenc.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">Nenhum vencimento próximo</p>
+            <p className="text-sm text-gray-400 text-center py-4">Nenhum vencimento cadastrado</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
               {alertasVenc.map((a, i) => (
                 <div key={i} className={`flex items-center justify-between p-3 rounded-xl text-sm ${
                   a.status === 'vencido' ? 'bg-red-50' :
-                  a.status === 'critico' ? 'bg-orange-50' : 'bg-yellow-50'
+                  a.status === 'critico' ? 'bg-orange-50' :
+                  a.status === 'alerta' ? 'bg-yellow-50' : 'bg-green-50'
                 }`}>
                   <div>
-                    <p className={`font-medium text-xs ${
+                    <p className={`font-medium text-xs flex items-center gap-1 ${
                       a.status === 'vencido' ? 'text-red-700' :
-                      a.status === 'critico' ? 'text-orange-700' : 'text-yellow-700'
-                    }`}>{a.nome}</p>
+                      a.status === 'critico' ? 'text-orange-700' :
+                      a.status === 'alerta' ? 'text-yellow-700' : 'text-green-700'
+                    }`}>
+                      {a.tipo === 'caminhao' ? '🚛 ' : '👤 '}{a.nome}
+                    </p>
                     <p className={`text-xs ${
                       a.status === 'vencido' ? 'text-red-500' :
-                      a.status === 'critico' ? 'text-orange-500' : 'text-yellow-600'
+                      a.status === 'critico' ? 'text-orange-500' :
+                      a.status === 'alerta' ? 'text-yellow-600' : 'text-green-600'
                     }`}>{a.campo}</p>
                   </div>
-                  <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${
-                    a.status === 'vencido' ? 'bg-red-100 text-red-700' :
-                    a.status === 'critico' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'
-                  }`}>
-                    {a.status === 'vencido' ? `${Math.abs(a.dias)}d atrás` : `${a.dias}d`}
-                  </span>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className={`text-xs font-semibold px-2 py-1 rounded-lg ${
+                      a.status === 'vencido' ? 'bg-red-100 text-red-700' :
+                      a.status === 'critico' ? 'bg-orange-100 text-orange-700' :
+                      a.status === 'alerta' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'
+                    }`}>
+                      {a.status === 'vencido' ? `${Math.abs(a.dias)}d atrás` : `${a.dias}d`}
+                    </span>
+                    <span className="text-[10px] text-gray-500">{new Date(a.data + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Motoristas de férias */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-base">🏖️</span>
@@ -211,7 +259,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Caminhões parados */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <Truck size={16} className="text-orange-500" />
@@ -240,7 +287,6 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Últimos contratos */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={16} className="text-gray-500" />

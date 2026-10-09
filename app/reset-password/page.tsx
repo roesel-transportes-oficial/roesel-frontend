@@ -35,6 +35,20 @@ export default function ResetPassword() {
       return
     }
 
+    const { data: usuarioAuth } = await supabase.auth.getUser()
+    if (usuarioAuth.user?.email) {
+      const { error: perfilError } = await supabase
+        .from('usuarios')
+        .update({ senha_trocada_em: new Date().toISOString(), primeiro_acesso: false })
+        .eq('email', usuarioAuth.user.email)
+
+      if (perfilError) {
+        setErro('Senha alterada, mas não foi possível registrar a validade. Tente novamente.')
+        setLoading(false)
+        return
+      }
+    }
+
     setConcluido(true)
     setLoading(false)
   }

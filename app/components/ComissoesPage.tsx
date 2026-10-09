@@ -1,4 +1,5 @@
 'use client'
+import { supabaseRestFetch } from '../services/rest'
 import { useState, useEffect } from 'react'
 import { useAuth } from '../services/auth'
 import { Search, DollarSign, ChevronRight, ArrowLeft, Check } from 'lucide-react'
@@ -16,14 +17,14 @@ interface Comissao {
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
 async function sbGet(tabela: string, params: string) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${tabela}?${params}`, {
+  const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/${tabela}?${params}`, {
     headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
   })
   return res.json()
 }
 
 async function sbPatch(tabela: string, params: string, data: any) {
-  await fetch(`${SUPABASE_URL}/rest/v1/${tabela}?${params}`, {
+  await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/${tabela}?${params}`, {
     method: 'PATCH',
     headers: {
       apikey: SUPABASE_KEY,
