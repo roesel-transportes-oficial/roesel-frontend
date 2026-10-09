@@ -63,33 +63,18 @@ export default function Home() {
     <>
       <AvisoAtualizacao />
       <div className="flex min-h-screen">
-      <Sidebar aba={aba} setAba={navegarPara} />
-      <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
-<<<<<<< Updated upstream
-        {Array.from(abasVisitadas).map((abaVisitada) => (
-          <div
-            key={abaVisitada}
-            style={{ display: aba === abaVisitada ? 'block' : 'none' }}
-            aria-hidden={aba !== abaVisitada}
-          >
-            {renderizarAba(abaVisitada, navegarPara)}
-          </div>
-        ))}
-=======
-        {aba === 'dashboard'     && <DashboardPage />}
-        {aba === 'novo'          && <NovoContratoPage setAba={setAba} />}
-        {aba === 'contratos'     && <ContratosPage />}
-        {aba === 'motorista'     && <MotoristaPage />}
-        {aba === 'caminhao'      && <CaminhaoPage />}
-        {aba === 'abastecimento' && <AbastecimentoPage />}
-        {aba === 'fornecedor'    && <FornecedorPage />}
-        {aba === 'comissoes'     && <ComissoesPage />}
-        {aba === 'premios'       && <Placeholder title="Prêmios" icon="🏆" />}
-        {aba === 'usuarios'      && <Placeholder title="Usuários" icon="👥" />}
-        {aba === 'contas_pagar'   && <Placeholder title="Contas a Pagar"   icon="📉" />}
-        {aba === 'contas_receber' && <Placeholder title="Contas a Receber" icon="📈" />}
->>>>>>> Stashed changes
-      </main>
+        <Sidebar aba={aba} setAba={navegarPara} />
+        <main className="flex-1 ml-56 overflow-auto min-h-screen bg-gray-50">
+          {Array.from(abasVisitadas).map((abaVisitada) => (
+            <div
+              key={abaVisitada}
+              style={{ display: aba === abaVisitada ? 'block' : 'none' }}
+              aria-hidden={aba !== abaVisitada}
+            >
+              {renderizarAba(abaVisitada, navegarPara)}
+            </div>
+          ))}
+        </main>
       </div>
     </>
   )
