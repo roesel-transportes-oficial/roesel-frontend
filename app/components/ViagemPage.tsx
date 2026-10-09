@@ -137,8 +137,9 @@ export default function ViagemPage() {
       const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/viagens?order=created_at.desc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
+      if (!res.ok) throw new Error(`Erro ao carregar viagens: ${res.status}`)
       const data = await res.json()
-      setViagens(Array.isArray(data) ? data.map(v => ({ ...v, caminhao_placa: normalizarPlaca(v.caminhao_placa) })) : [])
+      setViagens(Array.isArray(data) ? data.map(v => ({ ...v, caminhao_placa: normalizarPlaca(v?.caminhao_placa) })) : [])
     } catch {}
   }
 
@@ -147,7 +148,9 @@ export default function ViagemPage() {
       const res = await supabaseRestFetch(        `${SUPABASE_URL}/rest/v1/motoristas?ativo=eq.true&order=nome.asc&select=id,nome,adiantamento,ferias,freelancer`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
-      setMotoristas(await res.json())
+      if (!res.ok) throw new Error(`Erro ao carregar motoristas: ${res.status}`)
+      const data = await res.json()
+      setMotoristas(Array.isArray(data) ? data : [])
     } catch {}
   }
 
@@ -156,6 +159,7 @@ export default function ViagemPage() {
       const res = await supabaseRestFetch(`${SUPABASE_URL}/rest/v1/caminhoes?order=placa.asc`, {
         headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
       })
+      if (!res.ok) throw new Error(`Erro ao carregar caminhões: ${res.status}`)
       const data = await res.json()
       setCaminhoes(Array.isArray(data) ? data.map(c => ({ ...c, placa: normalizarPlaca(c.placa) })) : [])
     } catch {}
