@@ -1,7 +1,7 @@
 'use client'
+
 import { useState } from 'react'
 import { useAuth } from '../services/auth'
-<<<<<<< Updated upstream
 import {
   LayoutDashboard, FileText, FilePlus, User, DollarSign,
   Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown,
@@ -10,50 +10,30 @@ import {
   FileSignature, Files
 } from 'lucide-react'
 
-const isFinanceiro  = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
-const isAbastecimento = (aba: string) => ['abastecimento', 'analise_abastecimento', 'fornecedor'].includes(aba)
-const isMotorista   = (aba: string) => ['motorista', 'multas', 'avarias', 'ferias'].includes(aba)
-const isViagem      = (aba: string) => ['viagens', 'fechamento', 'relatorio_mensal'].includes(aba)
-
-const menus = [
-  { id: 'dashboard', label: 'Visão Geral',   icon: LayoutDashboard, adminOnly: false },
-  { id: 'novo',      label: 'Novo Contrato', icon: FilePlus,        adminOnly: false },
-  { id: 'contratos', label: 'Contratos',     icon: FileText,        adminOnly: false },
-  { id: 'caminhao',  label: 'Gestão de Frota', icon: Car,           adminOnly: false },
-  { id: 'clientes',  label: 'Clientes',      icon: UserCircle,      adminOnly: false },
-  { id: 'cte',       label: 'CT-e',          icon: FileSignature,   adminOnly: false },
-  { id: 'notas',     label: 'Notas Fiscais', icon: Files,           adminOnly: false },
-  { id: 'premios',   label: 'Prêmios',       icon: Trophy,          adminOnly: false },
-  { id: 'jornada',   label: 'Gestão de Jornada', icon: Clock3,       adminOnly: true  },
-  { id: 'usuarios',  label: 'Usuários',      icon: Users,           adminOnly: true  },
-=======
-import { LayoutDashboard, FileText, FilePlus, User, DollarSign, Trophy, LogOut, Car, Fuel, Users, Building2, ChevronDown, ChevronRight, Wallet, TrendingUp, TrendingDown } from 'lucide-react'
-
-const menus = [
-  { id: 'dashboard',    label: 'Visão Geral',   icon: LayoutDashboard, adminOnly: false },
-  { id: 'novo',         label: 'Novo Contrato', icon: FilePlus,        adminOnly: false },
-  { id: 'contratos',    label: 'Contratos',     icon: FileText,        adminOnly: false },
-  { id: 'motorista',    label: 'Motorista',     icon: User,            adminOnly: false },
-  { id: 'caminhao',     label: 'Caminhão',      icon: Car,             adminOnly: false },
-  { id: 'premios',      label: 'Prêmios',       icon: Trophy,          adminOnly: false },
-  { id: 'usuarios',     label: 'Usuários',      icon: Users,           adminOnly: true  },
->>>>>>> Stashed changes
-]
-
 const isFinanceiro = (aba: string) => ['comissoes', 'contas_pagar', 'contas_receber'].includes(aba)
-const isAbastecimento = (aba: string) => ['abastecimento', 'fornecedor'].includes(aba)
+const isAbastecimento = (aba: string) => ['abastecimento', 'analise_abastecimento', 'fornecedor'].includes(aba)
+const isMotorista = (aba: string) => ['motorista', 'multas', 'avarias', 'ferias'].includes(aba)
+const isViagem = (aba: string) => ['viagens', 'fechamento', 'relatorio_mensal'].includes(aba)
+
+const menus = [
+  { id: 'dashboard', label: 'Visão Geral', icon: LayoutDashboard, adminOnly: false },
+  { id: 'novo', label: 'Novo Contrato', icon: FilePlus, adminOnly: false },
+  { id: 'contratos', label: 'Contratos', icon: FileText, adminOnly: false },
+  { id: 'caminhao', label: 'Gestão de Frota', icon: Car, adminOnly: false },
+  { id: 'clientes', label: 'Clientes', icon: UserCircle, adminOnly: false },
+  { id: 'cte', label: 'CT-e', icon: FileSignature, adminOnly: false },
+  { id: 'notas', label: 'Notas Fiscais', icon: Files, adminOnly: false },
+  { id: 'premios', label: 'Prêmios', icon: Trophy, adminOnly: false },
+  { id: 'jornada', label: 'Gestão de Jornada', icon: Clock3, adminOnly: true },
+  { id: 'usuarios', label: 'Usuários', icon: Users, adminOnly: true },
+]
 
 export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: string) => void }) {
   const { user, perm, logout } = useAuth()
-<<<<<<< Updated upstream
-  const [abastOpen,  setAbastOpen]  = useState(isAbastecimento(aba))
-  const [finOpen,    setFinOpen]    = useState(isFinanceiro(aba))
-  const [motorOpen,  setMotorOpen]  = useState(isMotorista(aba))
-  const [viagemOpen, setViagemOpen] = useState(isViagem(aba))
-=======
   const [abastOpen, setAbastOpen] = useState(isAbastecimento(aba))
   const [finOpen, setFinOpen] = useState(isFinanceiro(aba))
->>>>>>> Stashed changes
+  const [motorOpen, setMotorOpen] = useState(isMotorista(aba))
+  const [viagemOpen, setViagemOpen] = useState(isViagem(aba))
 
   return (
     <aside className="fixed top-0 left-0 h-screen w-56 bg-gray-900 flex flex-col">
@@ -67,15 +47,17 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
         <p className="text-xs text-gray-500 px-2 py-2">NAVEGAÇÃO</p>
 
         {menus.filter(m => !m.adminOnly || perm === 'total').map(m => (
-          <button key={m.id} onClick={() => setAba(m.id)}
+          <button
+            key={m.id}
+            onClick={() => setAba(m.id)}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition
-              ${aba === m.id ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}>
+              ${aba === m.id ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+          >
             <m.icon size={18} />
             {m.label}
           </button>
         ))}
 
-        {/* ── Viagens com submenu ── */}
         <div>
           <button
             onClick={() => {
@@ -83,7 +65,8 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
               if (!viagemOpen) setAba('viagens')
             }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition
-              ${isViagem(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}>
+              ${isViagem(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+          >
             <MapPin size={18} />
             <span className="flex-1 text-left">Viagens</span>
             {viagemOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -109,7 +92,6 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
           )}
         </div>
 
-        {/* ── Motorista com submenu ── */}
         <div>
           <button
             onClick={() => {
@@ -117,7 +99,8 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
               if (!motorOpen) setAba('motorista')
             }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition
-              ${isMotorista(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}>
+              ${isMotorista(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+          >
             <User size={18} />
             <span className="flex-1 text-left">Motorista</span>
             {motorOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -148,7 +131,6 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
           )}
         </div>
 
-        {/* ── Abastecimentos com submenu ── */}
         <div>
           <button
             onClick={() => {
@@ -156,7 +138,8 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
               if (!abastOpen) setAba('abastecimento')
             }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition
-              ${isAbastecimento(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}>
+              ${isAbastecimento(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+          >
             <Fuel size={18} />
             <span className="flex-1 text-left">Abastecimentos</span>
             {abastOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -168,14 +151,11 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
                   ${aba === 'abastecimento' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
                 <Fuel size={14} /> Registros
               </button>
-<<<<<<< Updated upstream
               <button onClick={() => setAba('analise_abastecimento')}
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
                   ${aba === 'analise_abastecimento' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
                 <BarChart3 size={14} /> Análise
               </button>
-=======
->>>>>>> Stashed changes
               <button onClick={() => setAba('fornecedor')}
                 className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-xs transition
                   ${aba === 'fornecedor' ? 'text-white font-semibold' : 'text-gray-400 hover:text-gray-200'}`}>
@@ -185,11 +165,6 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
           )}
         </div>
 
-<<<<<<< Updated upstream
-        {/* ── Financeiro com submenu ── */}
-=======
-        {/* Financeiro com submenu */}
->>>>>>> Stashed changes
         <div>
           <button
             onClick={() => {
@@ -197,7 +172,8 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
               if (!finOpen) setAba('comissoes')
             }}
             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition
-              ${isFinanceiro(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}>
+              ${isFinanceiro(aba) ? 'bg-red-600 text-white' : 'text-gray-300 hover:bg-gray-800'}`}
+          >
             <Wallet size={18} />
             <span className="flex-1 text-left">Financeiro</span>
             {finOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -222,7 +198,6 @@ export default function Sidebar({ aba, setAba }: { aba: string; setAba: (a: stri
             </div>
           )}
         </div>
-
       </nav>
 
       <div className="p-3 border-t border-gray-700">
