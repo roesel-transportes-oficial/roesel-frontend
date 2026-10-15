@@ -189,7 +189,37 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
     return usados
   }
 
+  async function buscarCaminhaoAtual(mot: Motorista): Promise<Caminhao | null> {
+    if (mot.caminhao_id) {
+      const { data: porId } = await supabase
+        .from('caminhoes')
+        .select('id, placa')
+        .eq('id', mot.caminhao_id)
+        .maybeSingle()
+      if (porId) return { ...porId, placa: normalizarPlaca(porId.placa) }
+    }
+
+    const { data: porMotorista } = await supabase
+      .from('caminhoes')
+      .select('id, placa')
+      .eq('motorista_atual', mot.nome)
+      .order('placa')
+      .limit(1)
+    const cam = porMotorista?.[0]
+    return cam ? { ...cam, placa: normalizarPlaca(cam.placa) } : null
+  }
+
   async function buscarCaminhaoDoMotorista(mot: Motorista, dataReferencia?: string): Promise<Caminhao | null> {
+    const hoje = new Date().toISOString().split('T')[0]
+    const usaVinculoAtual = !dataReferencia || dataReferencia >= hoje
+
+    // Para o fechamento atual, o cadastro do motorista é a fonte principal.
+    // O status do caminhão (inclusive "parado") não invalida o vínculo.
+    if (usaVinculoAtual) {
+      const camAtual = await buscarCaminhaoAtual(mot)
+      if (camAtual) return camAtual
+    }
+
     if (dataReferencia) {
       const { data: historicosData, error: historicoError } = await supabase
         .from('historico_motorista_caminhao')
@@ -228,21 +258,8 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
       }
     }
 
-    const orFilter = mot.caminhao_id
-      ? `id.eq.${mot.caminhao_id},motorista_atual.eq.${mot.nome}`
-      : `motorista_atual.eq.${mot.nome}`
-
-    const { data: cam, error } = await supabase
-      .from('caminhoes')
-      .select('id, placa')
-      .or(orFilter)
-      .maybeSingle()
-
-    if (error) {
-      console.error('Erro ao buscar caminhão do motorista:', error)
-      return null
-    }
-    return cam ? { ...cam, placa: normalizarPlaca(cam.placa) } : null
+    // Fallback para registros antigos sem caminhao_id no motorista.
+    return buscarCaminhaoAtual(mot)
   }
 
   // ─── Effects ─────────────────────────────────────────────────────────────

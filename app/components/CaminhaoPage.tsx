@@ -13,7 +13,7 @@ interface Caminhao {
   vencimento_cronotacografo?: string; vencimento_permisso?: string
 }
 interface Carreta { id: string; placa: string; modelo: string; ano: string; status: string; obs: string }
-interface Motorista { id: string; nome: string; ativo: boolean }
+interface Motorista { id: string; nome: string; ativo: boolean; caminhao_id?: string | null }
 interface Frota { id: string; nome: string }
 interface Manutencao {
   id: string; caminhao_id: string; caminhao_placa: string; tipo: string
@@ -26,7 +26,7 @@ interface Manutencao {
 interface Licenca { id: string; caminhao_id: string; estado: string; vencimento: string }
 interface HistoricoMotorista {
   id: string; caminhao_id: string; caminhao_placa: string
-  motorista_nome: string; data_inicio: string; data_fim: string | null
+  motorista_nome: string; data_inicio: string; data_fim: string | null; created_at?: string | null
 }
 
 const ESTADOS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
@@ -48,6 +48,21 @@ function fmtData(d: string) {
   if (!d) return '—'
   const [y, m, dia] = d.split('-')
   return `${dia}/${m}/${y}`
+}
+
+function subtrairUmDia(data: string) {
+  if (!data) return ''
+  const d = new Date(`${data}T00:00:00`)
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().split('T')[0]
+}
+
+function nomeHistorico(valor: string | null | undefined) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
 }
 
 function diasParaVencer(data: string) {
@@ -145,7 +160,7 @@ export default function CaminhaoPage() {
   }
 
   async function fetchMotoristas() {
-    const { data } = await supabase.from('motoristas').select('id, nome, ativo').order('nome')
+    const { data } = await supabase.from('motoristas').select('id, nome, ativo, caminhao_id').order('nome')
     if (data) setMotoristas(data)
   }
 
@@ -176,7 +191,7 @@ export default function CaminhaoPage() {
   async function fetchHistoricoMotoristas(caminhaoId: string) {
     const { data } = await supabase
       .from('historico_motorista_caminhao')
-      .select('id, caminhao_id, caminhao_placa, motorista_nome, data_inicio, data_fim')
+      .select('id, caminhao_id, caminhao_placa, motorista_nome, data_inicio, data_fim, created_at')
       .eq('caminhao_id', caminhaoId)
       .order('data_inicio', { ascending: false })
     setHistoricoMotoristas((data || []).map(h => ({ ...h, caminhao_placa: normalizarPlaca(h.caminhao_placa) })))
@@ -193,6 +208,32 @@ export default function CaminhaoPage() {
       c.frota?.toLowerCase().includes(b)
     )
   }, [caminhoes, busca])
+
+  const historicoMotoristasExibicao = useMemo(() => {
+    const ordenados = [...historicoMotoristas].sort((a, b) => {
+      const porInicio = (b.data_inicio || '').localeCompare(a.data_inicio || '')
+      if (porInicio !== 0) return porInicio
+      return (b.created_at || '').localeCompare(a.created_at || '')
+    })
+    const atual = ordenados.find(h => !h.data_fim && motoristas.some(m =>
+      m.caminhao_id === sel?.id && nomeHistorico(m.nome) === nomeHistorico(h.motorista_nome)
+    ))
+
+    return ordenados.map((h, indice) => {
+      const ehAtual = Boolean(atual && h.id === atual.id)
+      const proximoInicio = ordenados
+        .slice(indice + 1)
+        .map(item => item.data_inicio)
+        .filter(data => data && data < h.data_inicio)
+        .sort((a, b) => b.localeCompare(a))[0]
+
+      return {
+        ...h,
+        data_fim_exibicao: h.data_fim || (ehAtual ? null : proximoInicio ? subtrairUmDia(proximoInicio) : null),
+        atual_exibicao: ehAtual,
+      }
+    })
+  }, [historicoMotoristas, motoristas, sel?.id])
 
   function selecionar(c: Caminhao) {
     setSel(c)
@@ -230,14 +271,12 @@ export default function CaminhaoPage() {
     const hoje = new Date().toISOString().split('T')[0]
     const ontem = new Date(Date.now() - 86400000).toISOString().split('T')[0]
 
-    // Fecha o período do motorista anterior, se existir um em aberto
-    if (motoristaAntigo) {
-      await supabase.from('historico_motorista_caminhao')
-        .update({ data_fim: ontem })
-        .eq('caminhao_id', caminhaoId)
-        .eq('motorista_nome', motoristaAntigo)
-        .is('data_fim', null)
-    }
+    // Fecha qualquer período em aberto daquele caminhão. Assim, somente o
+    // novo vínculo poderá permanecer como atual.
+    await supabase.from('historico_motorista_caminhao')
+      .update({ data_fim: ontem })
+      .eq('caminhao_id', caminhaoId)
+      .is('data_fim', null)
 
     // Abre um período novo pro motorista novo, se houver um
     if (motoristaNovo) {
@@ -249,6 +288,26 @@ export default function CaminhaoPage() {
         data_fim: null,
       })
     }
+  }
+
+  async function sincronizarPlacaNasReferencias(caminhaoId: string, placa: string) {
+    const resultados = await Promise.all([
+      supabase.from('historico_motorista_caminhao')
+        .update({ caminhao_placa: placa })
+        .eq('caminhao_id', caminhaoId),
+      supabase.from('abastecimentos')
+        .update({ caminhao_placa: placa })
+        .eq('caminhao_id', caminhaoId),
+      supabase.from('viagens')
+        .update({ caminhao_placa: placa })
+        .eq('caminhao_id', caminhaoId),
+      supabase.from('manutencoes')
+        .update({ caminhao_placa: placa })
+        .eq('caminhao_id', caminhaoId),
+    ])
+
+    const falha = resultados.find(r => r.error)
+    if (falha?.error) throw new Error(`A placa do caminhão foi salva, mas não foi possível sincronizar todas as referências: ${falha.error.message}`)
   }
 
   async function salvar() {
@@ -281,9 +340,11 @@ export default function CaminhaoPage() {
         return
       }
 
+      await sincronizarPlacaNasReferencias(sel.id, placaNormalizada)
       await registrarTrocaMotoristaNoHistorico(sel.id, placaNormalizada, editMotorista, motoristaAntigo)
       await fetch_()
-      setSel(null); setSelIdAberto(''); showMsg('✅ Atualizado!')
+      await fetchHistoricoMotoristas(sel.id)
+      setSel(null); setSelIdAberto(''); showMsg('✅ Atualizado em todas as abas e históricos!')
     } catch (e: any) {
       showMsg('❌ Não foi possível salvar: ' + (e?.message || 'erro desconhecido'))
     } finally {
@@ -731,19 +792,19 @@ export default function CaminhaoPage() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {historicoMotoristas.map(h => (
+                        {historicoMotoristasExibicao.map(h => (
                           <div key={h.id} className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                             <div>
-                              <p className="text-sm font-black text-gray-900">{h.motorista_nome || 'Sem motorista'}</p>
+                              <p className="font-black text-gray-900 uppercase">{h.motorista_nome}</p>
                               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Caminhão {h.caminhao_placa || editPlaca}</p>
                             </div>
                             <div className="flex items-center gap-2 text-xs">
                               <span className="font-bold text-gray-600">{fmtData(h.data_inicio)}</span>
                               <span className="text-gray-300">→</span>
-                              <span className={`font-bold ${h.data_fim ? 'text-gray-600' : 'text-green-600'}`}>
-                                {fmtData(h.data_fim || '')}
+                              <span className={`font-bold ${h.atual_exibicao ? 'text-green-600' : 'text-gray-600'}`}>
+                                {fmtData(h.data_fim_exibicao || '')}
                               </span>
-                              {!h.data_fim && <span className="ml-1 text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-lg font-black uppercase">Atual</span>}
+                              {h.atual_exibicao && <span className="ml-1 text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-lg font-black uppercase">Atual</span>}
                             </div>
                           </div>
                         ))}
