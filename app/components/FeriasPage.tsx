@@ -30,6 +30,21 @@ interface HistoricoFerias {
   created_at: string
 }
 
+interface PrevisaoFerias {
+  id: string
+  motorista_id: string
+  motorista_nome: string
+  admissao: string | null
+  vencimento_ferias: string | null
+  periodo_aquisitivo_inicio: string
+  periodo_aquisitivo_fim: string
+  faltas_periodo: number
+  dias_gozados: number
+  dias_direito: number
+  dias_a_gozar: number
+  conceder_ate: string | null
+}
+
 interface Caminhao { id: string; placa: string; motorista_atual: string | null }
 
 function hojeLocal() {
@@ -52,10 +67,11 @@ function diasFerias(inicio: string | null | undefined, fim: string | null | unde
 export default function FeriasPage() {
   const { perm } = useAuth()
   const podeEditar = perm === 'total'
-  const [abaAtiva, setAbaAtiva] = useState<'ferias' | 'historico'>('ferias')
+  const [abaAtiva, setAbaAtiva] = useState<'ferias' | 'previsao' | 'historico'>('ferias')
   const [motoristas, setMotoristas] = useState<Motorista[]>([])
   const [caminhoes, setCaminhoes] = useState<Caminhao[]>([])
   const [historicos, setHistoricos] = useState<HistoricoFerias[]>([])
+  const [previsoes, setPrevisoes] = useState<PrevisaoFerias[]>([])
   const [busca, setBusca] = useState('')
   const [buscaHist, setBuscaHist] = useState('')
   const [loading, setLoading] = useState(true)
@@ -76,10 +92,11 @@ export default function FeriasPage() {
   async function fetchTudo() {
     setLoading(true)
     try {
-      const [motoristasRes, caminhoesRes, historicosRes] = await Promise.all([
+      const [motoristasRes, caminhoesRes, historicosRes, previsoesRes] = await Promise.all([
         supabase.from('motoristas').select('id,nome,ativo,freelancer,de_ferias,ferias_inicio,ferias_fim,substituto_id,caminhao_id,caminhao_temp_id').order('nome'),
         supabase.from('caminhoes').select('id,placa,motorista_atual').order('placa'),
         supabase.from('historico_ferias').select('*').order('created_at', { ascending: false }),
+        supabase.from('previsoes_ferias').select('*').order('conceder_ate').order('motorista_nome'),
       ])
       if (motoristasRes.error) throw motoristasRes.error
       if (caminhoesRes.error) throw caminhoesRes.error
@@ -95,6 +112,14 @@ export default function FeriasPage() {
         ((historicosRes.data || []) as HistoricoFerias[])
           .filter(h => motoristasClt.has(h.motorista_id))
       )
+      if (!previsoesRes.error) {
+        setPrevisoes(
+          ((previsoesRes.data || []) as PrevisaoFerias[])
+            .filter(p => motoristasClt.has(p.motorista_id))
+        )
+      } else {
+        setPrevisoes([])
+      }
     } catch (error: any) {
       mostrarMsg('❌ Erro ao carregar férias: ' + (error?.message || 'verifique a conexão'))
     } finally {
@@ -327,6 +352,10 @@ export default function FeriasPage() {
             className={`px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition ${abaAtiva === 'historico' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
             Histórico
           </button>
+          <button onClick={() => setAbaAtiva('previsao')}
+            className={`px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition ${abaAtiva === 'previsao' ? 'bg-red-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-600'}`}>
+            Previsão
+          </button>
         </div>
       </div>
 
@@ -394,6 +423,35 @@ export default function FeriasPage() {
               ))}
             </div>
           </section>
+        </>
+      ) : abaAtiva === 'previsao' ? (
+        <>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <h2 className="text-lg font-black text-gray-900">Previsão de vencimento de férias</h2>
+            <p className="text-sm text-gray-500 mt-1">Dados importados do relatório até 31/12/2026. Exibe somente motoristas CLT cadastrados.</p>
+          </div>
+          {previsoes.length === 0 ? (
+            <div className="bg-yellow-50 border border-yellow-100 rounded-2xl p-8 text-center text-sm text-yellow-700">Nenhuma previsão importada. Execute o SQL de importação enviado.</div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-[10px] uppercase tracking-wider text-gray-500">
+                  <tr><th className="text-left px-4 py-3">Motorista</th><th className="text-left px-4 py-3">Período aquisitivo</th><th className="text-left px-4 py-3">Vencimento</th><th className="text-right px-4 py-3">Dias a gozar</th><th className="text-left px-4 py-3">Conceder até</th></tr>
+                </thead>
+                <tbody>
+                  {previsoes.map(p => (
+                    <tr key={p.id} className="border-t border-gray-100">
+                      <td className="px-4 py-3 font-bold text-gray-900">{p.motorista_nome}</td>
+                      <td className="px-4 py-3 text-gray-600">{fmtData(p.periodo_aquisitivo_inicio)} a {fmtData(p.periodo_aquisitivo_fim)}</td>
+                      <td className="px-4 py-3 text-gray-600">{fmtData(p.vencimento_ferias)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-blue-700">{p.dias_a_gozar}</td>
+                      <td className="px-4 py-3 font-bold text-red-700">{fmtData(p.conceder_ate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       ) : (
         <>
