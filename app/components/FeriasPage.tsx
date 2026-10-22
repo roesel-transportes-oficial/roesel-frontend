@@ -9,6 +9,7 @@ interface Motorista {
   id: string
   nome: string
   ativo: boolean
+  freelancer: boolean
   de_ferias: boolean
   ferias_inicio: string | null
   ferias_fim: string | null
@@ -76,7 +77,7 @@ export default function FeriasPage() {
     setLoading(true)
     try {
       const [motoristasRes, caminhoesRes, historicosRes] = await Promise.all([
-        supabase.from('motoristas').select('id,nome,ativo,de_ferias,ferias_inicio,ferias_fim,substituto_id,caminhao_id,caminhao_temp_id').order('nome'),
+        supabase.from('motoristas').select('id,nome,ativo,freelancer,de_ferias,ferias_inicio,ferias_fim,substituto_id,caminhao_id,caminhao_temp_id').order('nome'),
         supabase.from('caminhoes').select('id,placa,motorista_atual').order('placa'),
         supabase.from('historico_ferias').select('*').order('created_at', { ascending: false }),
       ])
@@ -85,7 +86,15 @@ export default function FeriasPage() {
       if (historicosRes.error) throw historicosRes.error
       setMotoristas((motoristasRes.data || []) as Motorista[])
       setCaminhoes((caminhoesRes.data || []) as Caminhao[])
-      setHistoricos((historicosRes.data || []) as HistoricoFerias[])
+      const motoristasClt = new Set(
+        ((motoristasRes.data || []) as Motorista[])
+          .filter(m => m.freelancer !== true)
+          .map(m => m.id)
+      )
+      setHistoricos(
+        ((historicosRes.data || []) as HistoricoFerias[])
+          .filter(h => motoristasClt.has(h.motorista_id))
+      )
     } catch (error: any) {
       mostrarMsg('❌ Erro ao carregar férias: ' + (error?.message || 'verifique a conexão'))
     } finally {
@@ -98,8 +107,9 @@ export default function FeriasPage() {
 
   const filtrados = useMemo(() => {
     const texto = busca.trim().toLowerCase()
-    if (!texto) return motoristas.filter(m => m.ativo !== false)
-    return motoristas.filter(m => m.ativo !== false && m.nome.toLowerCase().includes(texto))
+    const apenasClt = motoristas.filter(m => m.ativo !== false && m.freelancer !== true)
+    if (!texto) return apenasClt
+    return apenasClt.filter(m => m.nome.toLowerCase().includes(texto))
   }, [motoristas, busca])
 
   const emFerias = filtrados.filter(m => m.de_ferias)
