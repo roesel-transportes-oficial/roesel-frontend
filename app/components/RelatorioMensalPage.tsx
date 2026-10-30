@@ -144,41 +144,41 @@ export default function RelatorioMensalPage() {
       let consultaContratos = supabase.from('contratos').select('id, contrato, data, motorista, placa, placa_carreta, frota, origem, destino, fat_bruto, chapa, qtd_veiculos').gte('data', inicio).lte('data', fim).order('data')
       if (nomeFiltro) consultaContratos = consultaContratos.eq('motorista', nomeFiltro)
 
-      const [{ data: contratosMes, error: erroContratos }, { data: fechamentos, error: erroFechamentos }, { data: caminhoes, error: erroCaminhoes }] = await Promise.all([
+      const [{ data: contratosMes, error: erroContratos }, { data: caminhoes, error: erroCaminhoes }] = await Promise.all([
         consultaContratos,
-        supabase.from('fechamento_viagens').select('id, motorista_id, caminhao_id, data_inicio, data_fim, km_inicial, km_final, total_frete, comissao_motorista').lte('data_inicio', fim).gte('data_fim', inicio),
         supabase.from('caminhoes').select('id, placa, frota').order('placa'),
       ])
       if (erroContratos) throw erroContratos
-      if (erroFechamentos) throw erroFechamentos
       if (erroCaminhoes) throw erroCaminhoes
 
       const contratos = ((contratosMes || []) as Contrato[]).sort((a, b) => (a.data || '').localeCompare(b.data || ''))
       const idsContratos = contratos.map(item => item.id)
-      const fechamentosBase = (fechamentos || []) as Fechamento[]
-      const fechamentosFiltrados = motoristaId ? fechamentosBase.filter(item => item.motorista_id === motoristaId) : fechamentosBase
-      const idsFechamentos = fechamentosFiltrados.map(item => item.id)
       const caminhaoPorId = new Map(((caminhoes || []) as Caminhao[]).map(item => [item.id, item]))
 
-      const [{ data: relContratosMes, error: erroRelContratos }, { data: relFechAbastecimentos, error: erroRelAbast }] = await Promise.all([
-        idsContratos.length ? supabase.from('fechamento_contratos').select('fechamento_id, contrato_id').in('contrato_id', idsContratos) : Promise.resolve({ data: [], error: null } as any),
+      // Só entram os fechamentos aos quais os contratos do mês estão vinculados e, deles, só os
+      // abastecimentos vinculados a esses fechamentos (nada de buscar por período).
+      const { data: relContratosMes, error: erroRelContratos } = idsContratos.length
+        ? await supabase.from('fechamento_contratos').select('fechamento_id, contrato_id').in('contrato_id', idsContratos)
+        : { data: [], error: null } as any
+      if (erroRelContratos) throw erroRelContratos
+
+      const idsFechamentos = [...new Set((relContratosMes || []).map((item: any) => item.fechamento_id).filter(Boolean))] as string[]
+      const [{ data: fechamentos, error: erroFechamentos }, { data: relFechAbastecimentos, error: erroRelAbast }] = await Promise.all([
+        idsFechamentos.length ? supabase.from('fechamento_viagens').select('id, motorista_id, caminhao_id, data_inicio, data_fim, km_inicial, km_final, total_frete, comissao_motorista').in('id', idsFechamentos) : Promise.resolve({ data: [], error: null } as any),
         idsFechamentos.length ? supabase.from('fechamento_abastecimentos').select('fechamento_id, abastecimento_id').in('fechamento_id', idsFechamentos) : Promise.resolve({ data: [], error: null } as any),
       ])
-      if (erroRelContratos) throw erroRelContratos
+      if (erroFechamentos) throw erroFechamentos
       if (erroRelAbast) throw erroRelAbast
 
-      // Km da viagem: vem do fechamento ao qual o contrato pertence, lançado só no primeiro contrato do fechamento.
-      const idsFechamentosDosContratos = [...new Set((relContratosMes || []).map((item: any) => item.fechamento_id).filter(Boolean))] as string[]
-      const idsFechamentosFaltando = idsFechamentosDosContratos.filter(id => !fechamentosBase.some(item => item.id === id))
+      const fechamentosFiltrados = (fechamentos || []) as Fechamento[]
       const idsAbastecimentos = [...new Set((relFechAbastecimentos || []).map((item: any) => item.abastecimento_id).filter(Boolean))]
-      const [{ data: fechamentosExtras, error: erroFechExtras }, { data: abastecimentosFechamento, error: erroAbastecimentos }] = await Promise.all([
-        idsFechamentosFaltando.length ? supabase.from('fechamento_viagens').select('id, motorista_id, caminhao_id, data_inicio, data_fim, km_inicial, km_final, total_frete, comissao_motorista').in('id', idsFechamentosFaltando) : Promise.resolve({ data: [], error: null } as any),
-        idsAbastecimentos.length ? supabase.from('abastecimentos').select('id, data, posto, cidade, estado, motorista, caminhao_placa, litros_combustivel, total, km, nota_fiscal_id, obs').in('id', idsAbastecimentos).order('data') : Promise.resolve({ data: [], error: null } as any),
-      ])
-      if (erroFechExtras) throw erroFechExtras
+      const { data: abastecimentosFechamento, error: erroAbastecimentos } = idsAbastecimentos.length
+        ? await supabase.from('abastecimentos').select('id, data, posto, cidade, estado, motorista, caminhao_placa, litros_combustivel, total, km, nota_fiscal_id, obs').in('id', idsAbastecimentos).order('data')
+        : { data: [], error: null } as any
       if (erroAbastecimentos) throw erroAbastecimentos
 
-      const fechamentoPorId = new Map([...fechamentosBase, ...((fechamentosExtras || []) as Fechamento[])].map(item => [item.id, item]))
+      // Km da viagem: vem do fechamento ao qual o contrato pertence, lançado só no primeiro contrato do fechamento.
+      const fechamentoPorId = new Map(fechamentosFiltrados.map(item => [item.id, item]))
       const fechamentoDoContrato = new Map<string, string>()
       ;(relContratosMes || []).forEach((rel: any) => { if (!fechamentoDoContrato.has(rel.contrato_id)) fechamentoDoContrato.set(rel.contrato_id, rel.fechamento_id) })
       const fechamentosComKmLancado = new Set<string>()
