@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Image from 'next/image'
 import { Download, FileText, Loader2, Printer, RefreshCw } from 'lucide-react'
 import { supabase } from '../services/supabase'
 import { normalizarPlaca } from '../services/placas'
@@ -296,10 +297,13 @@ export default function RelatorioMensalPage() {
       {!relatorio && !carregando && <div className="relatorio-controles mx-auto max-w-6xl rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-500"><FileText size={34} className="mx-auto mb-3 text-gray-300"/>Escolha o mês, o ano e, se desejar, o motorista. Depois clique em <b>Gerar relatório</b>.</div>}
 
       {relatorio && <div className="relatorio-folha mx-auto max-w-6xl rounded-sm border border-gray-300 bg-white p-7 text-[10px] text-gray-800 shadow-sm">
-        <div className="border-b-2 border-gray-800 pb-3 text-center">
-          <h2 className="text-base font-black">{EMPRESA}</h2>
-          <p>{ENDERECO}</p>
-          <p>{CONTATO}</p>
+        <div className="relative flex min-h-[60px] items-center justify-center border-b-2 border-gray-800 pb-3">
+          <Image src="/logo.jpg" alt="Roesel Transportes" width={90} height={60} className="absolute left-0 top-0 object-contain" priority />
+          <div className="text-center">
+            <h2 className="text-base font-black">{EMPRESA}</h2>
+            <p>{ENDERECO}</p>
+            <p>{CONTATO}</p>
+          </div>
         </div>
 
         <div className="mt-4 border-b border-gray-500 pb-3">
