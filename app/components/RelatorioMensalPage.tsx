@@ -9,7 +9,7 @@ import { normalizarPlaca } from '../services/placas'
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const EMPRESA = 'CARLOS ROESEL TRANSPORTES LTDA'
 const ENDERECO = 'R. RAIMUNDO MARÇAL DE MELO, 71 LOJA 01 - PAULO CAMILO'
-const CONTATO = 'CEP: 32667-565, BETIM - MG · Fone/E-mail: croeseltransportes@gmail.com'
+const CONTATO = 'CEP: 32667-565, BETIM - MG · Fone/E-mail: financeiro@roeseltransportes.com.br'
 
 interface Motorista { id: string; nome: string }
 interface Caminhao { id: string; placa: string; frota?: string | null }
