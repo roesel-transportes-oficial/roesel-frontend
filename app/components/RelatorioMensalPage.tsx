@@ -26,21 +26,16 @@ interface Fechamento {
 interface Contrato {
   id: string
   contrato: string
+  data?: string | null
+  motorista?: string | null
+  placa?: string | null
+  placa_carreta?: string | null
+  frota?: string | null
+  chapa?: number | null
   origem?: string | null
   destino?: string | null
   fat_bruto?: number | null
   qtd_veiculos?: number | null
-}
-interface Viagem {
-  id: string
-  created_at: string
-  motorista?: string | null
-  caminhao_id?: string | null
-  caminhao_placa?: string | null
-  origem?: string | null
-  destino?: string | null
-  valor_contrato?: number | null
-  valor_chapa?: number | null
 }
 interface Abastecimento {
   id: string
@@ -139,111 +134,111 @@ export default function RelatorioMensalPage() {
 
     const inicio = dataLocalISO(ano, mes, 1)
     const fim = dataLocalISO(ano, mes, new Date(ano, mes, 0).getDate())
-    const inicioDataHora = `${inicio}T00:00:00`
-    const fimDataHora = `${dataLocalISO(mes === 12 ? ano + 1 : ano, mes === 12 ? 1 : mes + 1, 1)}T00:00:00`
+    const nomeFiltro = motoristaSelecionado?.nome || ''
 
     try {
-      const [{ data: fechamentos, error: erroFechamentos }, { data: viagens, error: erroViagens }, { data: caminhoes, error: erroCaminhoes }] = await Promise.all([
+      // As viagens do mês vêm dos CONTRATOS com data dentro do mês (mesma regra do relatório
+      // de referência). A tabela "viagens" não é usada aqui porque cada contrato já gera uma
+      // viagem automaticamente, o que duplicava todas as linhas e o frete.
+      let consultaContratos = supabase.from('contratos').select('id, contrato, data, motorista, placa, placa_carreta, frota, origem, destino, fat_bruto, chapa, qtd_veiculos').gte('data', inicio).lte('data', fim).order('data')
+      if (nomeFiltro) consultaContratos = consultaContratos.eq('motorista', nomeFiltro)
+
+      const [{ data: contratosMes, error: erroContratos }, { data: fechamentos, error: erroFechamentos }, { data: caminhoes, error: erroCaminhoes }] = await Promise.all([
+        consultaContratos,
         supabase.from('fechamento_viagens').select('id, motorista_id, caminhao_id, data_inicio, data_fim, km_inicial, km_final, total_frete, comissao_motorista').lte('data_inicio', fim).gte('data_fim', inicio),
-        supabase.from('viagens').select('id, created_at, motorista, caminhao_id, caminhao_placa, origem, destino, valor_contrato, valor_chapa').gte('created_at', inicioDataHora).lt('created_at', fimDataHora),
         supabase.from('caminhoes').select('id, placa, frota').order('placa'),
       ])
+      if (erroContratos) throw erroContratos
       if (erroFechamentos) throw erroFechamentos
-      if (erroViagens) throw erroViagens
       if (erroCaminhoes) throw erroCaminhoes
 
+      const contratos = ((contratosMes || []) as Contrato[]).sort((a, b) => (a.data || '').localeCompare(b.data || ''))
+      const idsContratos = contratos.map(item => item.id)
       const fechamentosBase = (fechamentos || []) as Fechamento[]
-      const nomesMotoristas = new Map(motoristas.map(item => [item.id, item.nome]))
       const fechamentosFiltrados = motoristaId ? fechamentosBase.filter(item => item.motorista_id === motoristaId) : fechamentosBase
-      const nomeFiltro = motoristaSelecionado?.nome || ''
-      const viagensFiltradas = ((viagens || []) as Viagem[]).filter(item => !nomeFiltro || item.motorista === nomeFiltro)
       const idsFechamentos = fechamentosFiltrados.map(item => item.id)
-      const idsCaminhoes = [...new Set([...fechamentosFiltrados.map(item => item.caminhao_id), ...viagensFiltradas.map(item => item.caminhao_id).filter(Boolean) as string[]])]
       const caminhaoPorId = new Map(((caminhoes || []) as Caminhao[]).map(item => [item.id, item]))
 
-      const [{ data: relFechContratos, error: erroRelContratos }, { data: relFechAbastecimentos, error: erroRelAbast }] = idsFechamentos.length > 0
-        ? await Promise.all([
-            supabase.from('fechamento_contratos').select('fechamento_id, contrato_id').in('fechamento_id', idsFechamentos),
-            supabase.from('fechamento_abastecimentos').select('fechamento_id, abastecimento_id').in('fechamento_id', idsFechamentos),
-          ])
-        : [{ data: [], error: null }, { data: [], error: null }]
+      const [{ data: relContratosMes, error: erroRelContratos }, { data: relFechAbastecimentos, error: erroRelAbast }] = await Promise.all([
+        idsContratos.length ? supabase.from('fechamento_contratos').select('fechamento_id, contrato_id').in('contrato_id', idsContratos) : Promise.resolve({ data: [], error: null } as any),
+        idsFechamentos.length ? supabase.from('fechamento_abastecimentos').select('fechamento_id, abastecimento_id').in('fechamento_id', idsFechamentos) : Promise.resolve({ data: [], error: null } as any),
+      ])
       if (erroRelContratos) throw erroRelContratos
       if (erroRelAbast) throw erroRelAbast
 
-      const idsContratos = [...new Set((relFechContratos || []).map((item: any) => item.contrato_id).filter(Boolean))]
+      // Km da viagem: vem do fechamento ao qual o contrato pertence, lançado só no primeiro contrato do fechamento.
+      const idsFechamentosDosContratos = [...new Set((relContratosMes || []).map((item: any) => item.fechamento_id).filter(Boolean))] as string[]
+      const idsFechamentosFaltando = idsFechamentosDosContratos.filter(id => !fechamentosBase.some(item => item.id === id))
       const idsAbastecimentos = [...new Set((relFechAbastecimentos || []).map((item: any) => item.abastecimento_id).filter(Boolean))]
-      const [{ data: contratos, error: erroContratos }, { data: abastecimentosFechamento, error: erroAbastecimentos }] = await Promise.all([
-        idsContratos.length ? supabase.from('contratos').select('id, contrato, origem, destino, fat_bruto, qtd_veiculos').in('id', idsContratos) : Promise.resolve({ data: [], error: null } as any),
+      const [{ data: fechamentosExtras, error: erroFechExtras }, { data: abastecimentosFechamento, error: erroAbastecimentos }] = await Promise.all([
+        idsFechamentosFaltando.length ? supabase.from('fechamento_viagens').select('id, motorista_id, caminhao_id, data_inicio, data_fim, km_inicial, km_final, total_frete, comissao_motorista').in('id', idsFechamentosFaltando) : Promise.resolve({ data: [], error: null } as any),
         idsAbastecimentos.length ? supabase.from('abastecimentos').select('id, data, posto, cidade, estado, motorista, caminhao_placa, litros_combustivel, total, km, nota_fiscal_id, obs').in('id', idsAbastecimentos).order('data') : Promise.resolve({ data: [], error: null } as any),
       ])
-      if (erroContratos) throw erroContratos
+      if (erroFechExtras) throw erroFechExtras
       if (erroAbastecimentos) throw erroAbastecimentos
 
-      const contratoPorId = new Map(((contratos || []) as Contrato[]).map(item => [item.id, item]))
-      const contratosPorFechamento = new Map<string, Contrato[]>()
-      ;(relFechContratos || []).forEach((rel: any) => {
-        const contrato = contratoPorId.get(rel.contrato_id)
-        if (!contrato) return
-        contratosPorFechamento.set(rel.fechamento_id, [...(contratosPorFechamento.get(rel.fechamento_id) || []), contrato])
-      })
+      const fechamentoPorId = new Map([...fechamentosBase, ...((fechamentosExtras || []) as Fechamento[])].map(item => [item.id, item]))
+      const fechamentoDoContrato = new Map<string, string>()
+      ;(relContratosMes || []).forEach((rel: any) => { if (!fechamentoDoContrato.has(rel.contrato_id)) fechamentoDoContrato.set(rel.contrato_id, rel.fechamento_id) })
+      const fechamentosComKmLancado = new Set<string>()
 
-      const viagensRelatorio: ViagemRelatorio[] = []
-      const documentos = new Set<string>()
-      fechamentosFiltrados.forEach(fechamento => {
-        const contratosDoFechamento = contratosPorFechamento.get(fechamento.id) || []
-        const km = valorSeguro(fechamento.km_final) - valorSeguro(fechamento.km_inicial)
-        if (!contratosDoFechamento.length) {
-          viagensRelatorio.push({ data: fechamento.data_fim, docs: '—', origem: '—', destino: '—', produto: '—', peso: '—', km, frete: valorSeguro(fechamento.total_frete) })
-          return
+      const documentos: string[] = []
+      const viagensRelatorio: ViagemRelatorio[] = contratos.map(contrato => {
+        if (contrato.contrato && !documentos.includes(contrato.contrato)) documentos.push(contrato.contrato)
+        const fechamento = fechamentoPorId.get(fechamentoDoContrato.get(contrato.id) || '')
+        let km: number | null = null
+        if (fechamento && !fechamentosComKmLancado.has(fechamento.id)) {
+          const kmFechamento = valorSeguro(fechamento.km_final) - valorSeguro(fechamento.km_inicial)
+          km = kmFechamento > 0 ? kmFechamento : null
+          fechamentosComKmLancado.add(fechamento.id)
         }
-        contratosDoFechamento.forEach((contrato, indice) => {
-          const documento = contrato.contrato || '—'
-          if (contrato.contrato) documentos.add(contrato.contrato)
-          viagensRelatorio.push({
-            data: fechamento.data_fim,
-            docs: documento,
-            origem: contrato.origem || '—',
-            destino: contrato.destino || '—',
-            produto: contrato.qtd_veiculos ? `${contrato.qtd_veiculos} VEÍCULOS` : '—',
-            peso: '—',
-            km: indice === 0 ? km : null,
-            frete: valorSeguro(contrato.fat_bruto),
-          })
-        })
+        return {
+          data: contrato.data || '',
+          docs: contrato.contrato || '—',
+          origem: contrato.origem || '—',
+          destino: contrato.destino || '—',
+          produto: contrato.qtd_veiculos != null ? `${contrato.qtd_veiculos} VEÍCULOS` : '—',
+          peso: '—',
+          km,
+          frete: valorSeguro(contrato.fat_bruto),
+        }
       })
 
-      // Viagens ainda não fechadas também aparecem no relatório, sem duplicar as que já estão representadas por um fechamento.
-      const idsViagensRelacionadas = new Set<string>()
-      const contratosUsados = new Set(documentos)
-      viagensFiltradas.forEach(viagem => {
-        if (!viagem.id || idsViagensRelacionadas.has(viagem.id)) return
-        const valor = valorSeguro(viagem.valor_contrato)
-        if (!valor && !viagem.origem && !viagem.destino) return
-        viagensRelatorio.push({ data: viagem.created_at.slice(0, 10), docs: '—', origem: viagem.origem || '—', destino: viagem.destino || '—', produto: '—', peso: '—', km: null, frete: valor })
-        idsViagensRelacionadas.add(viagem.id)
-      })
-
-      viagensRelatorio.sort((a, b) => a.data.localeCompare(b.data))
       const abastecimentos = ((abastecimentosFechamento || []) as Abastecimento[]).sort((a, b) => a.data.localeCompare(b.data))
       const frete = viagensRelatorio.reduce((soma, item) => soma + item.frete, 0)
-      const comissao = fechamentosFiltrados.reduce((soma, item) => soma + (item.comissao_motorista != null ? valorSeguro(item.comissao_motorista) : valorSeguro(item.total_frete) * 0.10), 0) || frete * 0.10
-      const despesasChapa: DespesaRelatorio[] = viagensFiltradas.filter(item => valorSeguro(item.valor_chapa) > 0).map(item => ({ data: item.created_at.slice(0, 10), despesa: 'CHAPA', fornecedor: nomeFiltro || item.motorista || '—', documento: '—', valor: valorSeguro(item.valor_chapa) }))
+      // Comissão do motorista = 10% do frete dos contratos do mês (mesma regra da tabela de comissões).
+      const comissao = Math.round(frete * 0.10 * 100) / 100
+      const despesasChapa: DespesaRelatorio[] = contratos.filter(item => valorSeguro(item.chapa) > 0).map(item => ({ data: item.data || '', despesa: 'CHAPA', fornecedor: nomeFiltro || item.motorista || '—', documento: item.contrato || '—', valor: valorSeguro(item.chapa) }))
       const despesas: DespesaRelatorio[] = [...despesasChapa, { data: fim, despesa: 'COMISSÕES DOS MOTORISTAS', fornecedor: nomeFiltro || 'Motoristas', documento: '—', valor: comissao }]
       const totalDespesas = despesas.reduce((soma, item) => soma + item.valor, 0)
       const totalAbastecimentos = abastecimentos.reduce((soma, item) => soma + valorSeguro(item.total), 0)
       const totalLitros = abastecimentos.reduce((soma, item) => soma + valorSeguro(item.litros_combustivel), 0)
-      const kmsAbastecimentos = abastecimentos.filter(item => valorSeguro(item.km) > 0).length > 1
-        ? Math.max(...abastecimentos.map(item => valorSeguro(item.km))) - Math.min(...abastecimentos.map(item => valorSeguro(item.km)))
-        : fechamentosFiltrados.reduce((soma, item) => soma + Math.max(0, valorSeguro(item.km_final) - valorSeguro(item.km_inicial)), 0)
-      const nomes = motoristaId ? [nomeFiltro] : [...new Set(fechamentosFiltrados.map(item => nomesMotoristas.get(item.motorista_id)).filter(Boolean) as string[])]
-      const placas = [...new Set([...fechamentosFiltrados.map(item => caminhaoPorId.get(item.caminhao_id)?.placa), ...viagensFiltradas.map(item => item.caminhao_placa)].filter(Boolean).map(item => normalizarPlaca(String(item))))]
-      const frotas = [...new Set(fechamentosFiltrados.map(item => caminhaoPorId.get(item.caminhao_id)?.frota).filter(Boolean).map(String))]
+
+      // Km entre abastecimentos: km do último abastecimento menos o km do abastecimento ANTERIOR ao
+      // primeiro do período (o tanque cheio que "pagou" o primeiro trecho), como no relatório de referência.
+      const abastecimentosComKm = abastecimentos.filter(item => valorSeguro(item.km) > 0)
+      let kmsAbastecimentos = 0
+      if (abastecimentosComKm.length) {
+        const primeiro = abastecimentosComKm[0]
+        const kmUltimo = Math.max(...abastecimentosComKm.map(item => valorSeguro(item.km)))
+        let kmBase = Math.min(...abastecimentosComKm.map(item => valorSeguro(item.km)))
+        if (primeiro.caminhao_placa) {
+          const { data: anterior } = await supabase.from('abastecimentos').select('km').eq('caminhao_placa', primeiro.caminhao_placa).lt('data', primeiro.data).gt('km', 0).order('data', { ascending: false }).limit(1).maybeSingle()
+          if (anterior?.km && valorSeguro(anterior.km) < kmBase) kmBase = valorSeguro(anterior.km)
+        }
+        kmsAbastecimentos = kmUltimo - kmBase
+      }
+      if (kmsAbastecimentos <= 0) kmsAbastecimentos = fechamentosFiltrados.reduce((soma, item) => soma + Math.max(0, valorSeguro(item.km_final) - valorSeguro(item.km_inicial)), 0)
+
+      const nomes = motoristaId ? [nomeFiltro] : [...new Set(contratos.map(item => item.motorista).filter(Boolean) as string[])]
+      const placas = [...new Set(contratos.flatMap(item => [item.placa, item.placa_carreta]).filter(Boolean).map(item => normalizarPlaca(String(item))))]
+      const frotas = [...new Set([...contratos.map(item => item.frota), ...fechamentosFiltrados.map(item => caminhaoPorId.get(item.caminhao_id)?.frota)].filter(Boolean).map(String))]
 
       setRelatorio({
         motorista: nomes.length === 1 ? nomes[0] : 'Todos os motoristas',
         placas,
         frotas,
-        documentos: [...documentos, ...[...contratosUsados].filter(Boolean)].filter((item, index, lista) => lista.indexOf(item) === index),
+        documentos,
         viagens: viagensRelatorio,
         despesas,
         abastecimentos,
