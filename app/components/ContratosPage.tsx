@@ -107,12 +107,31 @@ export default function ContratosPage() {
     const meuId = ++fetchIdRef.current
     setLoadingLista(true)
     try {
-      let query = supabase
-        .from('contratos')
-        .select('id, contrato, data, cliente, cliente_nome_completo, cnpj, motorista, cpf_motorista, placa, placa_carreta, frota, origem, destino, fat_bruto, qtd_veiculos, chapa, status, obs, adiantamento_pago, dt_pagamento')
-        .order('data', { ascending: true })
-
-      const { data, error } = await query
+      // ✅ CORRIGIDO: o Supabase devolve no máximo 1.000 linhas por
+      // consulta. Como a lista vinha ordenada da data mais antiga para a
+      // mais nova, quando a tabela passou de 1.000 contratos os mais
+      // recentes eram cortados e não apareciam nem na busca (ex: contrato
+      // 31976418 de 30/10/2026). Agora busca em páginas de 1.000 até
+      // trazer todos. O 'id' entra como desempate na ordenação para que
+      // nenhuma linha se repita ou suma entre uma página e outra.
+      const tamanhoPagina = 1000
+      let inicio = 0
+      let data: Contrato[] = []
+      let error: any = null
+      while (true) {
+        const res = await supabase
+          .from('contratos')
+          .select('id, contrato, data, cliente, cliente_nome_completo, cnpj, motorista, cpf_motorista, placa, placa_carreta, frota, origem, destino, fat_bruto, qtd_veiculos, chapa, status, obs, adiantamento_pago, dt_pagamento')
+          .order('data', { ascending: true })
+          .order('id', { ascending: true })
+          .range(inicio, inicio + tamanhoPagina - 1)
+        if (res.error) { error = res.error; break }
+        const pagina = (res.data || []) as Contrato[]
+        data = data.concat(pagina)
+        if (pagina.length < tamanhoPagina) break
+        inicio += tamanhoPagina
+        if (meuId !== fetchIdRef.current) return
+      }
 
       // Se já rodou outra chamada mais nova enquanto esta esperava a
       // resposta, esta aqui está obsoleta — não mexe em mais nada.

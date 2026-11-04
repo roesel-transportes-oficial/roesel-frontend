@@ -150,12 +150,29 @@ export default function FechamentoViagemPage({ setAba }: { setAba?: (a: string) 
   }
 
   async function fetchContratos() {
-    const [{ data: todos }, { data: jaUsados }] = await Promise.all([
-      supabase.from('contratos')
+    // ✅ CORRIGIDO: o Supabase devolve no máximo 1.000 linhas por consulta.
+    // Com mais de 1.000 contratos, os mais recentes (ordem crescente de data)
+    // ficavam de fora. Busca as duas tabelas em páginas até trazer tudo.
+    async function buscarTudo(montar: () => any): Promise<any[] | null> {
+      const tamanhoPagina = 1000
+      let inicio = 0
+      let linhas: any[] = []
+      while (true) {
+        const { data, error } = await montar().range(inicio, inicio + tamanhoPagina - 1)
+        if (error) { console.error('Erro ao buscar contratos:', error); return null }
+        const pagina = data || []
+        linhas = linhas.concat(pagina)
+        if (pagina.length < tamanhoPagina) return linhas
+        inicio += tamanhoPagina
+      }
+    }
+    const [todos, jaUsados] = await Promise.all([
+      buscarTudo(() => supabase.from('contratos')
         .select('id, contrato, fat_bruto, cliente, origem, destino')
         // Carrega todos os contratos para que a busca não esconda os antigos.
-        .order('data', { ascending: true }),
-      supabase.from('fechamento_contratos').select('contrato_id')
+        .order('data', { ascending: true })
+        .order('id', { ascending: true })),
+      buscarTudo(() => supabase.from('fechamento_contratos').select('contrato_id').order('contrato_id', { ascending: true }))
     ])
     if (!todos) return
     const idsUsados = new Set(jaUsados?.map(u => u.contrato_id) || [])
