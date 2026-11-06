@@ -868,7 +868,6 @@ export default function AbastecimentoPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Abastecimentos</h1>
-          <p className="text-xs text-gray-500 mt-1">Relação operacional e análise de preços, consumo e qualidade dos lançamentos</p>
         </div>
         <div className="flex gap-2">
           {/* ── Botão Profrotas ── */}

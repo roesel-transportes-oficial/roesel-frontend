@@ -44,7 +44,6 @@ export default function DashboardPage() {
   const hoje = new Date()
   const mes = hoje.getMonth() + 1
   const ano = hoje.getFullYear()
-  const nomeMes = hoje.toLocaleString('pt-BR', { month: 'long' })
 
   useEffect(() => {
     async function carregar() {
@@ -135,7 +134,6 @@ export default function DashboardPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Visão Geral</h1>
-        <p className="text-sm text-gray-400 mt-1 capitalize">{nomeMes} de {ano}</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

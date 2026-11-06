@@ -66,7 +66,6 @@ export default function HistoricoMotoristaCaminhaoPage() {
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <History size={24} className="text-red-600"/> Histórico de Motorista × Caminhão
           </h1>
-          <p className="text-sm text-gray-500">Quem estava com qual caminhão em cada período</p>
         </div>
       </div>
 

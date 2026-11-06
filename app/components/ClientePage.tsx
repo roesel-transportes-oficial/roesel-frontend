@@ -509,8 +509,7 @@ export default function ClientePage() {
             {/* Header */}
             <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <h1 className="text-4xl font-black text-slate-900 tracking-tight mb-2">Clientes</h1>
-                <p className="text-slate-600 font-medium">Gerencie todos os clientes da sua operação</p>
+                <h1 className="text-4xl font-black text-slate-900 tracking-tight">Clientes</h1>
               </div>
               {perm !== 'view' && (
                 <button onClick={() => setMostraCad(true)}

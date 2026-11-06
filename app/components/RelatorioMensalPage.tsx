@@ -278,7 +278,6 @@ export default function RelatorioMensalPage() {
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div>
             <h1 className="text-2xl font-black text-gray-900">Relatório Mensal de Viagens</h1>
-            <p className="text-sm text-gray-500 mt-1">Modelo mensal com viagens, despesas, abastecimentos e resultado final.</p>
           </div>
           <div className="relatorio-acoes flex gap-2">
             <button onClick={gerarRelatorio} disabled={carregando} className="flex items-center gap-2 rounded-xl bg-red-700 px-4 py-2 text-sm font-bold text-white hover:bg-red-800 disabled:opacity-50"><RefreshCw size={16}/> Gerar relatório</button>

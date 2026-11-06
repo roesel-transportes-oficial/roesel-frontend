@@ -197,7 +197,6 @@ export default function AnaliseAbastecimentosPage() {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-black text-gray-900">Análise de Abastecimentos</h1>
-          <p className="text-sm text-gray-500 mt-1">Preços, consumo, alertas e oportunidades de economia da frota</p>
         </div>
         <div className="flex gap-2">
           <button onClick={carregar} className="flex items-center gap-2 border border-gray-200 bg-white text-gray-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-50"><RefreshCw size={16}/> Atualizar</button>

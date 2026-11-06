@@ -551,7 +551,6 @@ export default function CaminhaoPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-4xl font-black text-gray-900 tracking-tighter uppercase">Gestão de Frota</h1>
-          <p className="text-sm text-gray-400 font-bold uppercase tracking-widest mt-1">Controle de veículos, carretas e manutenção</p>
         </div>
         <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100">
           {(['caminhoes', 'carretas', 'manutencao'] as const).map(ab => (

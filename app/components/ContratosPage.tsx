@@ -698,8 +698,7 @@ export default function ContratosPage() {
           <div className="max-w-full">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
               <div>
-                <h1 className="text-4xl font-black text-gray-900 tracking-tighter mb-2">Contratos</h1>
-                <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Gerencie todos os contratos de fretes</p>
+                <h1 className="text-4xl font-black text-gray-900 tracking-tighter">Contratos</h1>
               </div>
               <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto flex-wrap">
                 <input

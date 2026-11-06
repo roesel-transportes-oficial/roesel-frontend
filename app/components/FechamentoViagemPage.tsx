@@ -671,7 +671,6 @@ useEffect(() => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Fechamento de Viagem</h1>
-          <p className="text-sm text-gray-500">Gestão de viagens, contratos e abastecimentos</p>
         </div>
         <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
           <button onClick={() => setAbaAtiva('novo')}

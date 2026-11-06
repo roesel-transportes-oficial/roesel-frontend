@@ -261,7 +261,6 @@ export default function NotasDiversasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Notas Fiscais</h1>
-          <p className="text-sm text-gray-500">NFS-e, Devolução e Remessa</p>
         </div>
         <button onClick={abrirNovo}
           className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition">

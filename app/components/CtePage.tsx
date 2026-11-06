@@ -263,7 +263,6 @@ export default function CtePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">CT-e</h1>
-          <p className="text-sm text-gray-500">Conhecimento de Transporte Eletrônico — Normal e Redespacho</p>
         </div>
         <button onClick={abrirNovo}
           className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition">

@@ -340,7 +340,6 @@ export default function FeriasPage() {
           <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600"><Palmtree size={25}/></div>
           <div>
             <h1 className="text-3xl font-black text-gray-900 tracking-tight">Férias</h1>
-            <p className="text-sm text-gray-500">Controle de períodos, substitutos e histórico dos motoristas</p>
           </div>
         </div>
         <div className="flex bg-white p-1 rounded-xl shadow-sm border border-gray-200">
