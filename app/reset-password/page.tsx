@@ -13,11 +13,71 @@ export default function ResetPassword() {
   const [concluido, setConcluido] = useState(false)
 
   useEffect(() => {
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setPronto(true)
-      }
+    // O cliente Supabase do sistema usa detectSessionInUrl: false, então ele
+    // NÃO lê sozinho o token que vem no link do email. Lemos aqui manualmente.
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setPronto(true)
     })
+
+    const LINK_RUIM = 'Link inválido ou expirado. Volte ao login e peça um novo email de redefinição.'
+
+    async function lerLink() {
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      const query = new URLSearchParams(window.location.search)
+      const limparUrl = () => window.history.replaceState(null, '', window.location.pathname)
+
+      // 1) Supabase devolveu erro no link (ex.: link expirado ou já usado)
+      if (hash.get('error') || hash.get('error_description') || query.get('error') || query.get('error_description')) {
+        console.error('Erro no link de redefinição:', hash.get('error_description') || query.get('error_description'))
+        limparUrl()
+        setErro(LINK_RUIM)
+        return
+      }
+
+      const accessToken = hash.get('access_token')
+      const refreshToken = hash.get('refresh_token')
+      const code = query.get('code')
+      const tokenHash = query.get('token_hash') || hash.get('token_hash')
+
+      // 2) Fluxo implícito (o padrão deste sistema): #access_token=...&refresh_token=...
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        limparUrl()
+        if (error) { console.error(error); setErro(LINK_RUIM); return }
+        setPronto(true)
+        return
+      }
+
+      // 3) Fluxo PKCE: ?code=...
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        limparUrl()
+        if (error) { console.error(error); setErro(LINK_RUIM); return }
+        setPronto(true)
+        return
+      }
+
+      // 4) Template de email personalizado: ?token_hash=...&type=recovery
+      if (tokenHash) {
+        const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' })
+        limparUrl()
+        if (error) { console.error(error); setErro(LINK_RUIM); return }
+        setPronto(true)
+        return
+      }
+
+      // 5) Sem token na URL: aceita se já houver sessão (ex.: página recarregada)
+      const { data } = await supabase.auth.getSession()
+      if (data.session) setPronto(true)
+      else setErro('Link de redefinição não encontrado. Abra o link direto do email ou peça um novo.')
+    }
+
+    lerLink().catch((e) => {
+      console.error('Falha ao ler link de redefinição:', e)
+      setErro(LINK_RUIM)
+    })
+
+    return () => sub.subscription.unsubscribe()
   }, [])
 
   async function handleReset(e: React.FormEvent) {
@@ -79,7 +139,11 @@ export default function ResetPassword() {
             {erro && <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm">{erro}</div>}
             {msg && <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-xl text-sm">{msg}</div>}
 
-            {!pronto ? (
+            {!pronto && erro ? (
+              <a href="/" className="block w-full bg-red-600 hover:bg-red-700 text-white rounded-xl py-3 text-sm font-medium transition text-center">
+                Voltar para o login
+              </a>
+            ) : !pronto ? (
               <p className="text-center text-sm text-gray-400">Verificando link de redefinição...</p>
             ) : (
               <form onSubmit={handleReset} className="space-y-4">
