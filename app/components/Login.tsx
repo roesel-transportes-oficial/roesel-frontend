@@ -103,7 +103,18 @@ export default function Login() {
       })
 
       if (error) {
-        setErro('Erro ao enviar email. Tente novamente.')
+        // Mostra o motivo real em vez de uma mensagem genérica
+        console.error('resetPasswordForEmail falhou:', error.status, error.message)
+        const m = (error.message || '').toLowerCase()
+        let motivo = 'Erro ao enviar email. Tente novamente.'
+        if (error.status === 429 || m.includes('rate limit') || m.includes('security purposes')) {
+          motivo = 'Muitos pedidos de redefinição em pouco tempo. Aguarde alguns minutos e tente de novo.'
+        } else if (m.includes('not authorized')) {
+          motivo = 'O servidor de email do sistema não está autorizado a enviar para este endereço. Avise o administrador (configurar SMTP no Supabase).'
+        } else if (m.includes('sending') || m.includes('smtp')) {
+          motivo = 'O servidor de email do sistema recusou o envio. Avise o administrador (verificar SMTP no Supabase).'
+        }
+        setErro(motivo + (error.message ? ` [${error.message}]` : ''))
         setLoading(false)
         return
       }
