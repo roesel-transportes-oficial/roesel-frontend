@@ -22,6 +22,8 @@ const menus = [
   { id: 'caminhao', label: 'Gestão de Frota', icon: Car, adminOnly: false },
   { id: 'clientes', label: 'Clientes', icon: UserCircle, adminOnly: false },
   { id: 'cte', label: 'CT-e', icon: FileSignature, adminOnly: false },
+  { id: 'mdfe', label: 'MDF-e', icon: MapPin, adminOnly: false },
+  { id: 'gnre', label: 'GNRE', icon: Wallet, adminOnly: false },
   { id: 'notas', label: 'Notas Fiscais', icon: Files, adminOnly: false },
   { id: 'premios', label: 'Prêmios', icon: Trophy, adminOnly: false },
   { id: 'jornada', label: 'Gestão de Jornada', icon: Clock3, adminOnly: true },

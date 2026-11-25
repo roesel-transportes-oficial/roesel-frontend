@@ -20,6 +20,8 @@ import FechamentoViagemPage from './components/FechamentoViagemPage'
 import JornadaPage from './components/JornadaPage'
 import ContasPagarPage from './components/ContasPagarPage'
 import CtePage from './components/CtePage'
+import MdfePage from './components/MdfePage'
+import GnrePage from './components/GnrePage'
 import NotasDiversasPage from './components/NotasDiversasPage'
 import { useState } from 'react'
 import { useAuth } from './services/auth'
@@ -140,6 +142,12 @@ function renderizarAba(
 
     case 'cte':
       return <CtePage />
+
+    case 'mdfe':
+      return <MdfePage />
+
+    case 'gnre':
+      return <GnrePage />
 
     case 'notas':
       return <NotasDiversasPage />
