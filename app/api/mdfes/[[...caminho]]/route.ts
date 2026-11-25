@@ -17,7 +17,7 @@ async function repassar(req: NextRequest, ctx: Ctx, metodo: string) {
   if (!authorization) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
   const { caminho = [] } = await ctx.params
-  const resto = caminho.map(encodeURIComponent).join('/')S
+  const resto = caminho.map(encodeURIComponent).join('/')
   const query = new URL(req.url).searchParams.toString()
   const url = `${BACKEND_URL}/mdfes/${resto}${query ? '?' + query : ''}`
 
