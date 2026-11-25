@@ -4,7 +4,7 @@ import { supabase } from '../services/supabase'
 import { useDraftPersistente, limparDraft } from '../services/useDraftPersistente'
 import {
   FileText, Plus, Save, X, AlertCircle, Loader2,
-  CheckCircle2, XCircle, Ban, Truck, User, Search, Download, RefreshCw, Pencil, Send
+  CheckCircle2, XCircle, Ban, Truck, User, Download, RefreshCw, Pencil, Send, Upload, Trash2
 } from 'lucide-react'
 
 // ✅ Emissão direta na SEFAZ (sem provedor pago). O backend monta, assina
@@ -19,7 +19,7 @@ interface Participante { cnpj: string; ie: string; nome: string; fone?: string; 
 
 interface Cte {
   id: string
-  tipo: 'normal' | 'redespacho'
+  tipo: 'normal' | 'subcontratacao' | 'redespacho'
   status: 'rascunho' | 'processando' | 'autorizado' | 'rejeitado' | 'cancelado'
   remetente_nome: string; remetente_cnpj: string
   destinatario_nome: string; destinatario_cnpj: string
@@ -46,22 +46,51 @@ const PARTE_VAZIA = {
 }
 type Parte = typeof PARTE_VAZIA
 
+type Tomador = '0' | '1' | '2' | '3' | '4'
+interface ProdutoNfe { ncm: string; descricao: string }
+
+// Natureza da operação + final do CFOP (5 = mesmo estado, 6 = outro estado).
+// Confirme com o contador qual se aplica a cada cliente.
+const NATUREZAS = [
+  { final: '353', t: 'PRESTACAO DE SERVICO DE TRANSPORTE A ESTABELECIMENTO COMERCIAL' },
+  { final: '352', t: 'PRESTACAO DE SERVICO DE TRANSPORTE A ESTABELECIMENTO INDUSTRIAL' },
+  { final: '356', t: 'PRESTACAO DE SERVICO DE TRANSPORTE A ESTABELECIMENTO DE PRODUTOR RURAL' },
+  { final: '357', t: 'PRESTACAO DE SERVICO DE TRANSPORTE A NAO CONTRIBUINTE' },
+  { final: '351', t: 'PRESTACAO DE SERVICO DE TRANSPORTE PARA EXECUCAO DE SERVICO DA MESMA NATUREZA' },
+  { final: '932', t: 'PRESTACAO DE SERVICO DE TRANSPORTE INICIADA EM UF DIVERSA' },
+]
+
 const FORM_INICIAL = {
-  tipo: '' as '' | 'normal' | 'redespacho',
-  cfop: '',
-  natureza_operacao: 'PRESTACAO DE SERVICO DE TRANSPORTE',
-  tomador: '0' as '0' | '3',
+  tipo: '' as '' | 'normal' | 'subcontratacao' | 'redespacho',
+  cfop: '5353',
+  natureza_operacao: NATUREZAS[0].t,
+  tomador: '0' as Tomador,
   remetente: { ...PARTE_VAZIA },
   destinatario: { ...PARTE_VAZIA },
+  tem_expedidor: false,
+  expedidor: { ...PARTE_VAZIA },
+  tem_recebedor: false,
+  recebedor: { ...PARTE_VAZIA },
+  outro_tomador: { ...PARTE_VAZIA },
+  produtos: [] as ProdutoNfe[],
+  nfes_importadas: [] as string[],
   valor_prestacao: '',
   icms_cst: '00',
   icms_aliquota: '',
+  // Reforma Tributária (IBS/CBS) — valores de 2026, iguais aos do Bsoft
+  ibs_cst: '000',
+  ibs_cclass: '000001',
+  ibs_base: '',          // vazio = usa o valor do frete
+  p_ibs_mun: '0',
+  p_ibs_uf: '0.10',
+  p_cbs: '0.90',
   carga_valor: '',
   carga_produto: '',
   carga_peso: '',
   chaves_nfe: '',
   placa: '', motorista: '',
-  cte_anterior_chave: '', redespachante_nome: '', redespachante_cnpj: '',
+  // CT-e da transportadora que contratou (subcontratação) ou do trecho anterior (redespacho)
+  cte_anterior_chave: '', redespachante_nome: '', redespachante_cnpj: '', ant_ie: '', ant_uf: 'MG',
   obs: '',
 }
 type Form = typeof FORM_INICIAL
@@ -222,6 +251,83 @@ function BlocoParte({ titulo, parte, clientes, onChange }: {
   )
 }
 
+// ✅ Lê o XML da NF-e (o arquivo que o cliente manda) e devolve os dados
+// que o CT-e precisa. Evita digitar CNPJ, endereço, valores e NCM à mão.
+interface NfeLida {
+  chave: string; emitente: Parte; destinatario: Parte
+  valor: number; peso: number; produtos: { ncm: string; descricao: string; valor: number }[]
+  modFrete: string
+}
+function lerNfe(xml: string): NfeLida {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('Arquivo não é um XML válido.')
+  const um = (pai: Element | Document | null, tag: string) =>
+    (pai?.getElementsByTagName(tag)[0]?.textContent || '').trim()
+  const inf = doc.getElementsByTagName('infNFe')[0]
+  if (!inf) throw new Error('Esse XML não é de uma NF-e.')
+  const chave = um(doc, 'chNFe') || (inf.getAttribute('Id') || '').replace(/^NFe/, '')
+  const parte = (tagParte: string, tagEnd: string): Parte => {
+    const el = inf.getElementsByTagName(tagParte)[0] || null
+    const end = el?.getElementsByTagName(tagEnd)[0] || null
+    return {
+      nome: um(el, 'xNome'), cnpj: um(el, 'CNPJ') || um(el, 'CPF'), ie: um(el, 'IE'), fone: um(end, 'fone'),
+      logradouro: um(end, 'xLgr'), numero: um(end, 'nro'), complemento: um(end, 'xCpl'), bairro: um(end, 'xBairro'),
+      uf: um(end, 'UF') || 'MG', municipio: semAcento(um(end, 'xMun')), cod_municipio: um(end, 'cMun'), cep: um(end, 'CEP'),
+    }
+  }
+  const produtos = Array.from(inf.getElementsByTagName('det')).map(det => {
+    const prod = det.getElementsByTagName('prod')[0] || null
+    return { ncm: um(prod, 'NCM'), descricao: um(prod, 'xProd'), valor: num(um(prod, 'vProd')) }
+  })
+  const tot = inf.getElementsByTagName('ICMSTot')[0] || null
+  const peso = Array.from(inf.getElementsByTagName('vol')).reduce((s, v) => s + num(um(v, 'pesoB') || um(v, 'pesoL')), 0)
+  return {
+    chave: soDigitos(chave), emitente: parte('emit', 'enderEmit'), destinatario: parte('dest', 'enderDest'),
+    valor: num(um(tot, 'vNF')), peso, produtos, modFrete: um(inf.getElementsByTagName('transp')[0] || null, 'modFrete'),
+  }
+}
+
+// ✅ Lê o XML do CT-e que a transportadora contratante emitiu e manda para
+// vocês. Traz a chave, os dados dela, remetente, destinatário, NF-e e carga.
+interface CteLido {
+  chave: string; emitente: { nome: string; cnpj: string; ie: string; uf: string }
+  emitenteParte: Parte | null
+  remetente: Parte | null; destinatario: Parte | null; expedidor: Parte | null; recebedor: Parte | null
+  chavesNfe: string[]; valorCarga: number; produto: string; peso: number
+}
+function lerCteAnterior(xml: string): CteLido {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  if (doc.getElementsByTagName('parsererror').length) throw new Error('Arquivo não é um XML válido.')
+  const um = (pai: Element | Document | null, tag: string) =>
+    (pai?.getElementsByTagName(tag)[0]?.textContent || '').trim()
+  const inf = doc.getElementsByTagName('infCte')[0]
+  if (!inf) throw new Error('Esse XML não é de um CT-e.')
+  const chave = um(doc, 'chCTe') || (inf.getAttribute('Id') || '').replace(/^CTe/, '')
+  const parte = (tagParte: string, tagEnd: string): Parte | null => {
+    const el = inf.getElementsByTagName(tagParte)[0] || null
+    if (!el) return null
+    const end = el.getElementsByTagName(tagEnd)[0] || null
+    return {
+      nome: um(el, 'xNome'), cnpj: um(el, 'CNPJ') || um(el, 'CPF'), ie: um(el, 'IE'), fone: um(el, 'fone'),
+      logradouro: um(end, 'xLgr'), numero: um(end, 'nro'), complemento: um(end, 'xCpl'), bairro: um(end, 'xBairro'),
+      uf: um(end, 'UF') || 'MG', municipio: semAcento(um(end, 'xMun')), cod_municipio: um(end, 'cMun'), cep: um(end, 'CEP'),
+    }
+  }
+  const emit = inf.getElementsByTagName('emit')[0] || null
+  const carga = inf.getElementsByTagName('infCarga')[0] || null
+  const peso = Array.from(carga?.getElementsByTagName('infQ') || [])
+    .filter(q => um(q, 'cUnid') === '01').reduce((s, q) => s + num(um(q, 'qCarga')), 0)
+  return {
+    chave: soDigitos(chave),
+    emitente: { nome: um(emit, 'xNome'), cnpj: um(emit, 'CNPJ'), ie: um(emit, 'IE'), uf: um(emit?.getElementsByTagName('enderEmit')[0] || null, 'UF') },
+    emitenteParte: parte('emit', 'enderEmit'),
+    remetente: parte('rem', 'enderReme'), destinatario: parte('dest', 'enderDest'),
+    expedidor: parte('exped', 'enderExped'), recebedor: parte('receb', 'enderReceb'),
+    chavesNfe: Array.from(inf.getElementsByTagName('infNFe')).map(n => soDigitos(um(n, 'chave'))).filter(Boolean),
+    valorCarga: num(um(carga, 'vCarga')), produto: um(carga, 'proPred'), peso,
+  }
+}
+
 function parteParaApi(p: Parte): Participante {
   return {
     nome: p.nome.trim(), cnpj: soDigitos(p.cnpj), ie: p.ie.trim(), fone: soDigitos(p.fone || ''),
@@ -331,18 +437,30 @@ export default function CtePage() {
       tipo: c.tipo,
       cfop: d.cfop || '',
       natureza_operacao: d.natureza_operacao || c.natureza_operacao || FORM_INICIAL.natureza_operacao,
-      tomador: String(d.tomador ?? 0) === '3' ? '3' : '0',
+      tomador: (['0','1','2','3','4'].includes(String(d.tomador)) ? String(d.tomador) : '0') as Tomador,
       remetente: apiParaParte(d.remetente),
       destinatario: apiParaParte(d.destinatario),
+      tem_expedidor: !!d.expedidor, expedidor: apiParaParte(d.expedidor),
+      tem_recebedor: !!d.recebedor, recebedor: apiParaParte(d.recebedor),
+      outro_tomador: apiParaParte(d.outro_tomador),
+      produtos: (d.carga?.produtos || []).map((p: any) => ({ ncm: p.ncm || '', descricao: p.descricao || '' })),
+      nfes_importadas: d.chaves_nfe || [],
       valor_prestacao: String(d.valor_prestacao ?? c.valor_prestacao ?? ''),
       icms_cst: d.icms?.cst || '00',
       icms_aliquota: d.icms?.aliquota != null ? String(d.icms.aliquota) : '',
+      ibs_cst: d.ibscbs?.cst || '000',
+      ibs_cclass: d.ibscbs?.cclass_trib || '000001',
+      ibs_base: d.ibscbs?.base != null ? String(d.ibscbs.base) : '',
+      p_ibs_mun: d.ibscbs?.p_ibs_mun != null ? String(d.ibscbs.p_ibs_mun) : '0',
+      p_ibs_uf: d.ibscbs?.p_ibs_uf != null ? String(d.ibscbs.p_ibs_uf) : '0.10',
+      p_cbs: d.ibscbs?.p_cbs != null ? String(d.ibscbs.p_cbs) : '0.90',
       carga_valor: d.carga?.valor != null ? String(d.carga.valor) : '',
       carga_produto: d.carga?.produto_predominante || '',
       carga_peso: d.carga?.quantidades?.[0]?.quantidade != null ? String(d.carga.quantidades[0].quantidade) : '',
       chaves_nfe: (d.chaves_nfe || []).join('\n'),
       placa: c.placa || '', motorista: c.motorista || '',
-      cte_anterior_chave: c.cte_anterior_chave || '',
+      cte_anterior_chave: (d.doc_anterior?.chaves_cte || []).join('\n') || c.cte_anterior_chave || '',
+      ant_ie: d.doc_anterior?.ie || '', ant_uf: d.doc_anterior?.uf || 'MG',
       redespachante_nome: c.redespachante_nome || '', redespachante_cnpj: c.redespachante_cnpj || '',
       obs: d.observacoes || c.obs || '',
     })
@@ -364,20 +482,112 @@ export default function CtePage() {
     setForm(prev => ({ ...prev, [name]: value }))
   }
 
-  // Sugestões automáticas (o usuário pode trocar)
-  const interestadual = form.remetente.uf !== form.destinatario.uf
+  // Onde a prestação começa e termina: expedidor/recebedor, se houver
+  const inicioParte = form.tem_expedidor ? form.expedidor : form.remetente
+  const fimParte    = form.tem_recebedor ? form.recebedor : form.destinatario
+  const interestadual = inicioParte.uf !== fimParte.uf
+
+  // CFOP sai da natureza escolhida + mesmo estado (5) ou outro estado (6)
+  function cfopSugerido(natureza: string, inter: boolean) {
+    const n = NATUREZAS.find(x => x.t === natureza)
+    if (!n) return null
+    if (n.final === '932') return '6932'
+    return (inter ? '6' : '5') + n.final
+  }
   useEffect(() => {
-    if (!mostraNovo || editandoId) return
-    setForm(prev => {
-      const sugestaoCfop = prev.remetente.uf === prev.destinatario.uf ? '5353' : '6353'
-      const cfopAuto = !prev.cfop || prev.cfop === '5353' || prev.cfop === '6353'
-      return cfopAuto && prev.cfop !== sugestaoCfop ? { ...prev, cfop: sugestaoCfop } : prev
-    })
-  }, [form.remetente.uf, form.destinatario.uf, mostraNovo])
+    if (!mostraNovo) return
+    const sug = cfopSugerido(form.natureza_operacao, interestadual)
+    if (sug && sug !== form.cfop) setForm(prev => ({ ...prev, cfop: sug }))
+  }, [form.natureza_operacao, interestadual, mostraNovo])
+
+  // ✅ Importa o XML do CT-e da transportadora contratante
+  async function importarCteAnterior(arquivos: FileList | null) {
+    const arq = arquivos?.[0]
+    if (!arq) return
+    setErro('')
+    try {
+      const c = lerCteAnterior(await arq.text())
+      setForm(prev => ({
+        ...prev,
+        redespachante_nome: c.emitente.nome, redespachante_cnpj: c.emitente.cnpj,
+        ant_ie: c.emitente.ie, ant_uf: c.emitente.uf || prev.ant_uf,
+        cte_anterior_chave: c.chave,
+        remetente: c.remetente || prev.remetente,
+        destinatario: c.destinatario || prev.destinatario,
+        tem_expedidor: !!c.expedidor || prev.tem_expedidor, expedidor: c.expedidor || prev.expedidor,
+        tem_recebedor: !!c.recebedor || prev.tem_recebedor, recebedor: c.recebedor || prev.recebedor,
+        chaves_nfe: c.chavesNfe.length ? c.chavesNfe.join('\n') : prev.chaves_nfe,
+        carga_valor: c.valorCarga ? String(c.valorCarga) : prev.carga_valor,
+        carga_produto: c.produto || prev.carga_produto,
+        carga_peso: c.peso ? String(c.peso) : prev.carga_peso,
+        // quem paga é a contratante: preenche o "outro tomador" com os dados dela
+        tomador: '4',
+        outro_tomador: c.emitenteParte || prev.outro_tomador,
+      }))
+      showMsg('✅ CT-e da contratante importado. Confira os dados e informe o NCM.')
+    } catch (e: any) {
+      setErro('Erro ao importar CT-e: ' + (e?.message || ''))
+    }
+  }
+
+  // ✅ Importa um ou mais XMLs de NF-e e preenche a tela
+  const [importando, setImportando] = useState(false)
+  async function importarNfes(arquivos: FileList | null) {
+    if (!arquivos || arquivos.length === 0) return
+    setImportando(true); setErro('')
+    try {
+      const lidas: NfeLida[] = []
+      for (const arq of Array.from(arquivos)) {
+        try { lidas.push(lerNfe(await arq.text())) }
+        catch (e: any) { throw new Error(`${arq.name}: ${e?.message || 'não consegui ler'}`) }
+      }
+      const primeira = lidas[0]
+      setForm(prev => {
+        const chaves = Array.from(new Set([
+          ...prev.chaves_nfe.split(/\s+/).map(soDigitos).filter(Boolean),
+          ...lidas.map(n => n.chave),
+        ]))
+        const todosProdutos = lidas.flatMap(n => n.produtos)
+        const ncms = new Map<string, ProdutoNfe>()
+        prev.produtos.forEach(p => ncms.set(p.ncm, p))
+        todosProdutos.forEach(p => { if (p.ncm && !ncms.has(p.ncm)) ncms.set(p.ncm, { ncm: p.ncm, descricao: p.descricao }) })
+        const maior = [...todosProdutos].sort((a, b) => b.valor - a.valor)[0]
+        const valorCarga = lidas.reduce((s, n) => s + n.valor, 0)
+        const peso = lidas.reduce((s, n) => s + n.peso, 0)
+        // modFrete 0 = frete por conta do emitente (remetente), 1 = do destinatário
+        const tomador: Tomador = primeira.modFrete === '1' ? '3' : primeira.modFrete === '0' ? '0' : prev.tomador
+        const jaTinha = prev.nfes_importadas.length > 0
+        return {
+          ...prev,
+          tipo: prev.tipo || 'normal',
+          remetente: jaTinha ? prev.remetente : primeira.emitente,
+          destinatario: jaTinha ? prev.destinatario : primeira.destinatario,
+          tomador: jaTinha ? prev.tomador : tomador,
+          carga_valor: String(Math.round(((jaTinha ? num(prev.carga_valor) : 0) + valorCarga) * 100) / 100),
+          carga_peso: peso > 0 ? String((jaTinha ? num(prev.carga_peso) : 0) + peso) : prev.carga_peso,
+          carga_produto: prev.carga_produto || (maior?.descricao || '').slice(0, 60),
+          produtos: Array.from(ncms.values()),
+          chaves_nfe: chaves.join('\n'),
+          nfes_importadas: Array.from(new Set([...prev.nfes_importadas, ...lidas.map(n => n.chave)])),
+        }
+      })
+      showMsg(`✅ ${lidas.length} NF-e importada(s). Confira os dados.`)
+    } catch (e: any) {
+      setErro('Erro ao importar NF-e: ' + (e?.message || ''))
+    } finally {
+      setImportando(false)
+    }
+  }
 
   const valorPrest = num(form.valor_prestacao)
   const tributado  = ['00', '20', '90'].includes(form.icms_cst)
   const valorIcms  = tributado ? Math.round(valorPrest * num(form.icms_aliquota)) / 100 : 0
+  // Mesmo cálculo do backend: base × alíquota, arredondado em 2 casas
+  const baseIbs    = form.ibs_base.trim() ? num(form.ibs_base) : valorPrest
+  const calc       = (p: string) => Math.round(baseIbs * num(p)) / 100
+  const vIbsMun    = calc(form.p_ibs_mun)
+  const vIbsUf     = calc(form.p_ibs_uf)
+  const vCbs       = calc(form.p_cbs)
 
   function validar(): string | null {
     if (!form.tipo) return 'Selecione o tipo de CT-e (Normal ou Redespacho).'
@@ -387,28 +597,62 @@ export default function CtePage() {
       if (!p.logradouro.trim() || !p.bairro.trim()) return `${nome}: preencha rua e bairro.`
       if (!p.cod_municipio) return `${nome}: escolha a cidade na lista.`
     }
+    const extras: [string, boolean, Parte][] = [
+      ['Expedidor', form.tem_expedidor, form.expedidor],
+      ['Recebedor', form.tem_recebedor, form.recebedor],
+      ['Outro tomador', form.tomador === '4', form.outro_tomador],
+    ]
+    for (const [nome, ativo, p] of extras) {
+      if (!ativo) continue
+      if (!p.nome.trim()) return `${nome}: preencha o nome.`
+      if (soDigitos(p.cnpj).length !== 14 && soDigitos(p.cnpj).length !== 11) return `${nome}: CNPJ (14) ou CPF (11) inválido.`
+      if (!p.logradouro.trim() || !p.bairro.trim()) return `${nome}: preencha rua e bairro.`
+      if (!p.cod_municipio) return `${nome}: escolha a cidade na lista.`
+    }
+    if (form.tomador === '1' && !form.tem_expedidor) return 'O pagador é o expedidor: marque "Tem expedidor" e preencha.'
+    if (form.tomador === '2' && !form.tem_recebedor) return 'O pagador é o recebedor: marque "Tem recebedor" e preencha.'
+    if (form.tipo !== 'normal') {
+      const ch = form.cte_anterior_chave.split(/\s+/).map(soDigitos).filter(Boolean)
+      if (ch.length === 0 || ch.some(c => c.length !== 44)) return 'Informe a chave (44 dígitos) do CT-e da transportadora anterior.'
+      if (soDigitos(form.redespachante_cnpj).length !== 14) return 'CNPJ da transportadora anterior inválido.'
+      if (!form.redespachante_nome.trim()) return 'Informe o nome da transportadora anterior.'
+    }
+    if (!form.natureza_operacao.trim()) return 'Informe a natureza da operação.'
     if (!/^\d{4}$/.test(form.cfop)) return 'CFOP precisa ter 4 dígitos.'
     if (valorPrest <= 0) return 'Informe o valor da prestação.'
     if (tributado && num(form.icms_aliquota) <= 0) return 'Informe a alíquota de ICMS.'
     if (num(form.carga_valor) <= 0) return 'Informe o valor da carga.'
     if (!form.carga_produto.trim()) return 'Informe o produto predominante.'
     if (num(form.carga_peso) <= 0) return 'Informe o peso da carga (kg).'
+    if (!/^\d{3}$/.test(form.ibs_cst)) return 'CST do IBS/CBS precisa ter 3 dígitos.'
+    if (!/^\d{6}$/.test(form.ibs_cclass)) return 'Classificação tributária do IBS/CBS precisa ter 6 dígitos.'
+    if (form.produtos.length === 0) return 'Informe pelo menos um NCM dos produtos (ou importe o XML da NF-e).'
+    if (form.produtos.some(p => soDigitos(p.ncm).length !== 8)) return 'Cada NCM precisa ter 8 dígitos.'
     const chaves = form.chaves_nfe.split(/\s+/).map(soDigitos).filter(Boolean)
     if (chaves.some(c => c.length !== 44)) return 'Cada chave de NF-e precisa ter 44 dígitos.'
     return null
   }
 
   function montarPayload() {
-    const tomador = form.tomador === '3' ? form.destinatario : form.remetente
+    const tomador = ({ '0': form.remetente, '1': form.expedidor, '2': form.recebedor, '3': form.destinatario, '4': form.outro_tomador } as Record<Tomador, Parte>)[form.tomador]
     const chaves = form.chaves_nfe.split(/\s+/).map(soDigitos).filter(Boolean)
     const dados_fiscais = {
       cfop: form.cfop,
       natureza_operacao: form.natureza_operacao,
+      tipo_servico: form.tipo === 'subcontratacao' ? 1 : form.tipo === 'redespacho' ? 2 : 0,
+      doc_anterior: form.tipo === 'normal' ? undefined : {
+        cnpj: soDigitos(form.redespachante_cnpj), ie: form.ant_ie.trim() || undefined, uf: form.ant_uf,
+        nome: form.redespachante_nome.trim(),
+        chaves_cte: form.cte_anterior_chave.split(/\s+/).map(soDigitos).filter(Boolean),
+      },
       tomador: Number(form.tomador),
       remetente: parteParaApi(form.remetente),
       destinatario: parteParaApi(form.destinatario),
-      inicio: { cod: form.remetente.cod_municipio, nome: form.remetente.municipio, uf: form.remetente.uf },
-      fim: { cod: form.destinatario.cod_municipio, nome: form.destinatario.municipio, uf: form.destinatario.uf },
+      expedidor: form.tem_expedidor ? parteParaApi(form.expedidor) : undefined,
+      recebedor: form.tem_recebedor ? parteParaApi(form.recebedor) : undefined,
+      outro_tomador: form.tomador === '4' ? parteParaApi(form.outro_tomador) : undefined,
+      inicio: { cod: inicioParte.cod_municipio, nome: inicioParte.municipio, uf: inicioParte.uf },
+      fim: { cod: fimParte.cod_municipio, nome: fimParte.municipio, uf: fimParte.uf },
       valor_prestacao: valorPrest,
       componentes: [{ nome: 'FRETE', valor: valorPrest }],
       icms: {
@@ -417,11 +661,19 @@ export default function CtePage() {
         aliquota: tributado ? num(form.icms_aliquota) : 0,
         valor: valorIcms,
       },
-      ibscbs: {},
+      ibscbs: {
+        cst: form.ibs_cst,
+        cclass_trib: form.ibs_cclass,
+        base: baseIbs,
+        p_ibs_mun: num(form.p_ibs_mun),
+        p_ibs_uf: num(form.p_ibs_uf),
+        p_cbs: num(form.p_cbs),
+      },
       carga: {
         valor: num(form.carga_valor),
         produto_predominante: form.carga_produto.trim(),
         quantidades: [{ unidade: '01', tipo_medida: 'PESO BRUTO', quantidade: num(form.carga_peso) }],
+        produtos: form.produtos.map(p => ({ ncm: soDigitos(p.ncm), descricao: p.descricao })),
       },
       chaves_nfe: chaves,
       observacoes: form.obs || undefined,
@@ -431,8 +683,8 @@ export default function CtePage() {
       remetente_nome: form.remetente.nome, remetente_cnpj: soDigitos(form.remetente.cnpj),
       destinatario_nome: form.destinatario.nome, destinatario_cnpj: soDigitos(form.destinatario.cnpj),
       tomador_nome: tomador.nome, tomador_cnpj: soDigitos(tomador.cnpj),
-      origem: `${form.remetente.municipio}/${form.remetente.uf}`,
-      destino: `${form.destinatario.municipio}/${form.destinatario.uf}`,
+      origem: `${inicioParte.municipio}/${inicioParte.uf}`,
+      destino: `${fimParte.municipio}/${fimParte.uf}`,
       valor_prestacao: valorPrest,
       natureza_operacao: form.natureza_operacao,
       placa: form.placa, motorista: form.motorista,
@@ -440,8 +692,8 @@ export default function CtePage() {
       dados_fiscais,
     }
     if (!editandoId) payload.status = 'rascunho'
-    if (form.tipo === 'redespacho') {
-      payload.cte_anterior_chave = soDigitos(form.cte_anterior_chave)
+    if (form.tipo !== 'normal') {
+      payload.cte_anterior_chave = form.cte_anterior_chave.split(/\s+/).map(soDigitos).filter(Boolean)[0] || ''
       payload.redespachante_nome = form.redespachante_nome
       payload.redespachante_cnpj = soDigitos(form.redespachante_cnpj)
     }
@@ -485,10 +737,6 @@ export default function CtePage() {
   async function emitir() {
     const problema = validar()
     if (problema) { setErro(problema); return }
-    if (form.tipo === 'redespacho') {
-      setErro('A emissão de redespacho entra na próxima etapa. Salve como rascunho por enquanto.')
-      return
-    }
     setEmitindo(true); setErro('')
     try {
       const id = await gravar()
@@ -658,63 +906,151 @@ export default function CtePage() {
 
               <div>
                 <label className={LC}>Tipo de CT-e *</label>
-                <div className="grid grid-cols-2 gap-3 mt-1">
-                  <button type="button" onClick={() => setForm(prev => ({ ...prev, tipo: 'normal' }))}
-                    className={`p-4 rounded-xl border-2 text-left transition ${form.tipo === 'normal' ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
-                    <p className="font-black text-sm text-gray-900">Normal</p>
-                    <p className="text-xs text-gray-500 mt-1">Frete direto, remetente e destinatário reais da carga.</p>
-                  </button>
-                  <button type="button" onClick={() => setForm(prev => ({ ...prev, tipo: 'redespacho' }))}
-                    className={`p-4 rounded-xl border-2 text-left transition ${form.tipo === 'redespacho' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}>
-                    <p className="font-black text-sm text-gray-900">Redespacho</p>
-                    <p className="text-xs text-gray-500 mt-1">Carga com CT-e anterior de outra transportadora.</p>
-                  </button>
+                <div className="grid grid-cols-3 gap-3 mt-1">
+                  {([
+                    ['normal', 'Normal', 'Frete direto para o dono da carga.', 'border-red-500 bg-red-50'],
+                    ['subcontratacao', 'Subcontratação', 'Outra transportadora contratou a Roesel (ex.: SADA).', 'border-orange-500 bg-orange-50'],
+                    ['redespacho', 'Redespacho', 'A Roesel faz um trecho de um frete que outra transportadora começou.', 'border-purple-500 bg-purple-50'],
+                  ] as const).map(([valor, titulo, texto, cor]) => (
+                    <button key={valor} type="button"
+                      onClick={() => setForm(prev => ({ ...prev, tipo: valor, tomador: valor === 'normal' ? prev.tomador : '4' }))}
+                      className={`p-4 rounded-xl border-2 text-left transition ${form.tipo === valor ? cor : 'border-gray-200 bg-white hover:border-gray-300'}`}>
+                      <p className="font-black text-sm text-gray-900">{titulo}</p>
+                      <p className="text-xs text-gray-500 mt-1">{texto}</p>
+                    </button>
+                  ))}
                 </div>
               </div>
 
               {form.tipo && (
                 <>
-                  <BlocoParte titulo="Remetente (onde a carga sai)" parte={form.remetente} clientes={clientes}
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex flex-wrap items-center gap-3 justify-between">
+                    <div>
+                      <p className="text-xs font-black text-blue-800 uppercase tracking-widest">Puxar da NF-e</p>
+                      <p className="text-xs text-blue-700 mt-0.5">Escolha o XML da(s) nota(s) do cliente. Preenche remetente, destinatário, valor, peso, NCM e chaves.</p>
+                      {form.nfes_importadas.length > 0 && (
+                        <p className="text-[10px] text-blue-600 mt-1">{form.nfes_importadas.length} NF-e importada(s)</p>
+                      )}
+                    </div>
+                    <label className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase cursor-pointer">
+                      {importando ? <Loader2 size={14} className="animate-spin"/> : <Upload size={14}/>} Importar XML
+                      <input type="file" accept=".xml,text/xml" multiple className="hidden"
+                        onChange={e => { importarNfes(e.target.files); e.target.value = '' }}/>
+                    </label>
+                  </div>
+
+                  {form.tipo !== 'normal' && (
+                    <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex flex-wrap items-center gap-3 justify-between">
+                      <div>
+                        <p className="text-xs font-black text-orange-800 uppercase tracking-widest">Puxar do CT-e da contratante</p>
+                        <p className="text-xs text-orange-700 mt-0.5">Escolha o XML do CT-e que a transportadora mandou. Preenche a chave, os dados dela, remetente, destinatário, NF-e e carga.</p>
+                      </div>
+                      <label className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase cursor-pointer">
+                        <Upload size={14}/> Importar CT-e
+                        <input type="file" accept=".xml,text/xml" className="hidden"
+                          onChange={e => { importarCteAnterior(e.target.files); e.target.value = '' }}/>
+                      </label>
+                    </div>
+                  )}
+
+                  <BlocoParte titulo="Remetente (dono da carga, quem emitiu a NF-e)" parte={form.remetente} clientes={clientes}
                     onChange={p => setForm(prev => ({ ...prev, remetente: p }))}/>
-                  <BlocoParte titulo="Destinatário (onde a carga chega)" parte={form.destinatario} clientes={clientes}
+
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                    <input type="checkbox" checked={form.tem_expedidor}
+                      onChange={e => setForm(prev => ({ ...prev, tem_expedidor: e.target.checked }))}/>
+                    Tem expedidor (a carga é coletada em outro lugar, não no remetente)
+                  </label>
+                  {form.tem_expedidor && (
+                    <BlocoParte titulo="Expedidor (onde a carga é coletada)" parte={form.expedidor} clientes={clientes}
+                      onChange={p => setForm(prev => ({ ...prev, expedidor: p }))}/>
+                  )}
+
+                  <BlocoParte titulo="Destinatário (quem recebe a NF-e)" parte={form.destinatario} clientes={clientes}
                     onChange={p => setForm(prev => ({ ...prev, destinatario: p }))}/>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                    <input type="checkbox" checked={form.tem_recebedor}
+                      onChange={e => setForm(prev => ({ ...prev, tem_recebedor: e.target.checked }))}/>
+                    Tem recebedor (a carga é entregue em outro lugar, não no destinatário)
+                  </label>
+                  {form.tem_recebedor && (
+                    <BlocoParte titulo="Recebedor (onde a carga é entregue)" parte={form.recebedor} clientes={clientes}
+                      onChange={p => setForm(prev => ({ ...prev, recebedor: p }))}/>
+                  )}
+
+                  <div className="bg-gray-50 rounded-xl px-4 py-3 text-xs text-gray-600">
+                    <strong>Trajeto do CT-e:</strong> {inicioParte.municipio || '?'}/{inicioParte.uf} → {fimParte.municipio || '?'}/{fimParte.uf}
+                    {interestadual ? ' (outro estado)' : ' (mesmo estado)'}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className={LC}>Quem paga o frete *</label>
+                      <label className={LC}>Quem paga o frete (tomador) *</label>
                       <select name="tomador" value={form.tomador} onChange={handle} className={IC}>
                         <option value="0">Remetente</option>
+                        <option value="1">Expedidor</option>
+                        <option value="2">Recebedor</option>
                         <option value="3">Destinatário</option>
+                        <option value="4">Outro</option>
                       </select>
                     </div>
                     <div>
                       <label className={LC}>CFOP *</label>
                       <input name="cfop" value={form.cfop} onChange={handle} maxLength={4} className={IC}/>
-                      <p className="text-[10px] text-gray-400 mt-1">{interestadual ? 'Sugestão: 6353 (outro estado)' : 'Sugestão: 5353 (mesmo estado)'}</p>
-                    </div>
-                    <div>
-                      <label className={LC}>Natureza da Operação</label>
-                      <input name="natureza_operacao" value={form.natureza_operacao} onChange={handle} className={IC}/>
+                      <p className="text-[10px] text-gray-400 mt-1">Preenchido pela natureza e pelo trajeto. Pode alterar.</p>
                     </div>
                   </div>
+                  {form.tomador === '4' && (
+                    <BlocoParte titulo="Outro tomador (quem paga o frete)" parte={form.outro_tomador} clientes={clientes}
+                      onChange={p => setForm(prev => ({ ...prev, outro_tomador: p }))}/>
+                  )}
+                  <div>
+                    <label className={LC}>Natureza da Operação *</label>
+                    <select name="natureza_operacao" value={NATUREZAS.some(n => n.t === form.natureza_operacao) ? form.natureza_operacao : '__outra'}
+                      onChange={e => setForm(prev => ({ ...prev, natureza_operacao: e.target.value === '__outra' ? '' : e.target.value }))}
+                      className={IC}>
+                      {NATUREZAS.map(n => <option key={n.t} value={n.t}>{n.t}</option>)}
+                      <option value="__outra">Outra (digitar)</option>
+                    </select>
+                    {!NATUREZAS.some(n => n.t === form.natureza_operacao) && (
+                      <input name="natureza_operacao" value={form.natureza_operacao} onChange={handle} maxLength={60}
+                        className={IC} placeholder="Digite a natureza da operação"/>
+                    )}
+                  </div>
 
-                  {form.tipo === 'redespacho' && (
-                    <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 space-y-3">
-                      <p className="text-xs font-black text-purple-700 uppercase tracking-widest">Dados do Redespacho</p>
-                      <div>
-                        <label className={LC}>Chave de Acesso do CT-e Anterior (44 dígitos)</label>
-                        <input name="cte_anterior_chave" value={form.cte_anterior_chave} onChange={handle} maxLength={54} className={IC}/>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
+                  {form.tipo !== 'normal' && (
+                    <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 space-y-3">
+                      <p className="text-xs font-black text-orange-700 uppercase tracking-widest">
+                        {form.tipo === 'subcontratacao' ? 'Transportadora que contratou (CT-e dela)' : 'Transportadora do trecho anterior (CT-e dela)'}
+                      </p>
+                      <div className="grid grid-cols-[2fr_1fr] gap-3">
                         <div>
-                          <label className={LC}>Redespachante</label>
+                          <label className={LC}>Razão social *</label>
                           <input name="redespachante_nome" value={form.redespachante_nome} onChange={handle} className={IC}/>
                         </div>
                         <div>
-                          <label className={LC}>CNPJ Redespachante</label>
+                          <label className={LC}>CNPJ *</label>
                           <input name="redespachante_cnpj" value={form.redespachante_cnpj} onChange={handle} className={IC}/>
                         </div>
                       </div>
+                      <div className="grid grid-cols-[2fr_1fr] gap-3">
+                        <div>
+                          <label className={LC}>Inscrição Estadual</label>
+                          <input name="ant_ie" value={form.ant_ie} onChange={handle} className={IC}/>
+                        </div>
+                        <div>
+                          <label className={LC}>UF</label>
+                          <select name="ant_uf" value={form.ant_uf} onChange={handle} className={IC}>
+                            {UFS.map(u => <option key={u} value={u}>{u}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={LC}>Chave do CT-e dela (44 dígitos, uma por linha) *</label>
+                        <textarea name="cte_anterior_chave" value={form.cte_anterior_chave} onChange={handle} rows={2} className={IC + ' font-mono text-xs'}/>
+                      </div>
+                      <p className="text-[10px] text-orange-700">Dica: use o botão "Importar CT-e da contratante" lá em cima para preencher tudo isso sozinho.</p>
                     </div>
                   )}
 
@@ -745,9 +1081,54 @@ export default function CtePage() {
                         </div>
                       </div>
                     )}
-                    <p className="text-[10px] text-gray-400">
-                      IBS/CBS (Reforma Tributária) é preenchido automaticamente com as alíquotas de teste de 2026. Confirme CST, alíquota e CFOP com o contador.
-                    </p>
+                  </div>
+
+                  <div className="border border-gray-100 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-black text-gray-700 uppercase tracking-widest">Impostos CBS e IBS</p>
+                    <div className="grid grid-cols-[1fr_2fr_1fr] gap-3">
+                      <div>
+                        <label className={LC}>CST</label>
+                        <select name="ibs_cst" value={form.ibs_cst} onChange={handle} className={IC}>
+                          <option value="000">000 - Tributação integral</option>
+                          <option value="410">410 - Imunidade e não incidência</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={LC}>Classificação Tributária</label>
+                        <input name="ibs_cclass" value={form.ibs_cclass} onChange={handle} maxLength={6} className={IC} list="cclass-lista"/>
+                        <datalist id="cclass-lista">
+                          <option value="000001">000001 - Situações tributadas integralmente pelo IBS e CBS</option>
+                        </datalist>
+                        {form.ibs_cclass === '000001' && <p className="text-[10px] text-gray-400 mt-1">Situações tributadas integralmente pelo IBS e CBS.</p>}
+                      </div>
+                      <div>
+                        <label className={LC}>Base de Cálculo</label>
+                        <input name="ibs_base" type="number" step="0.01" value={form.ibs_base} onChange={handle} className={IC}
+                          placeholder={valorPrest ? valorPrest.toFixed(2) : 'Valor do frete'}/>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      {([
+                        ['IBS Municipal', 'p_ibs_mun', vIbsMun],
+                        ['IBS Estadual', 'p_ibs_uf', vIbsUf],
+                        ['CBS', 'p_cbs', vCbs],
+                      ] as const).map(([titulo, campo, valor]) => (
+                        <div key={campo} className="bg-gray-50 rounded-xl p-3">
+                          <p className="text-[11px] font-black text-gray-700">{titulo}</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] text-gray-500">Alíquota (%)</label>
+                              <input name={campo} type="number" step="0.01" value={form[campo]} onChange={handle} className={IC + ' mt-0'}/>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-gray-500">Valor Final</label>
+                              <p className="px-1 py-2.5 text-sm font-black text-gray-900">{fmtValor(valor)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-gray-400">Valores de 2026: CBS 0,90% e IBS estadual 0,10%, sobre o valor do frete. Confirme CST, classificação e CFOP com o contador.</p>
                   </div>
 
                   <div className="border border-gray-100 rounded-xl p-4 space-y-3">
@@ -765,6 +1146,27 @@ export default function CtePage() {
                         <label className={LC}>Peso (kg) *</label>
                         <input name="carga_peso" type="number" step="0.001" value={form.carga_peso} onChange={handle} className={IC}/>
                       </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <label className={LC}>Produtos (NCM) *</label>
+                        <button type="button" onClick={() => setForm(prev => ({ ...prev, produtos: [...prev.produtos, { ncm: '', descricao: '' }] }))}
+                          className="text-xs font-bold text-red-600 hover:underline">+ Adicionar NCM</button>
+                      </div>
+                      {form.produtos.length === 0 && (
+                        <p className="text-xs text-gray-400 mt-1">Importe o XML da NF-e ou adicione o NCM à mão.</p>
+                      )}
+                      {form.produtos.map((p, i) => (
+                        <div key={i} className="grid grid-cols-[140px_1fr_32px] gap-2 mt-2">
+                          <input value={p.ncm} maxLength={10} placeholder="NCM (8 dígitos)" className={IC + ' mt-0'}
+                            onChange={e => setForm(prev => ({ ...prev, produtos: prev.produtos.map((x, j) => j === i ? { ...x, ncm: e.target.value } : x) }))}/>
+                          <input value={p.descricao} placeholder="Descrição" className={IC + ' mt-0'}
+                            onChange={e => setForm(prev => ({ ...prev, produtos: prev.produtos.map((x, j) => j === i ? { ...x, descricao: e.target.value } : x) }))}/>
+                          <button type="button" onClick={() => setForm(prev => ({ ...prev, produtos: prev.produtos.filter((_, j) => j !== i) }))}
+                            className="text-gray-400 hover:text-red-600 flex items-center justify-center"><Trash2 size={16}/></button>
+                        </div>
+                      ))}
+                      <p className="text-[10px] text-gray-400 mt-1">O CT-e não tem campo de NCM: ele sai nas observações do CT-e e fica guardado para o MDF-e e a GNRE.</p>
                     </div>
                     <div>
                       <label className={LC}>Chaves das NF-e transportadas (uma por linha)</label>
@@ -818,7 +1220,7 @@ export default function CtePage() {
             <div className={`px-6 py-5 flex items-center justify-between shrink-0
               ${visualizando.status === 'autorizado' ? 'bg-green-600' : visualizando.status === 'rejeitado' ? 'bg-red-600' : visualizando.status === 'cancelado' ? 'bg-gray-600' : visualizando.status === 'processando' ? 'bg-blue-600' : 'bg-yellow-600'}`}>
               <div>
-                <h2 className="text-white font-black text-lg">CT-e {visualizando.tipo === 'redespacho' ? '(Redespacho)' : '(Normal)'}</h2>
+                <h2 className="text-white font-black text-lg">CT-e {visualizando.tipo === 'redespacho' ? '(Redespacho)' : visualizando.tipo === 'subcontratacao' ? '(Subcontratação)' : '(Normal)'}</h2>
                 <p className="text-white/80 text-xs mt-0.5">
                   {visualizando.numero_cte ? `Nº ${visualizando.numero_cte}` : 'Rascunho, ainda não emitido'}
                   {visualizando.ambiente === '2' && ' · HOMOLOGAÇÃO (sem valor fiscal)'}
