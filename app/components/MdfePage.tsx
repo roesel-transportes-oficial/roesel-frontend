@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../services/supabase'
 import {
   Plus, Save, X, AlertCircle, Loader2, CheckCircle2, Ban, Truck, User,
-  Download, RefreshCw, Pencil, Send, Trash2, Flag, Search,
+  Download, RefreshCw, Pencil, Send, Trash2, Flag, Search, FileText,
 } from 'lucide-react'
 
 // ---------------------------------------------------------------- tipos
@@ -322,13 +322,13 @@ export default function MdfePage() {
   }
 
   // ---------------------------------------------------------------- ações da lista
-  async function acao(m: Mdfe, tipo: 'emitir' | 'consultar' | 'encerrar' | 'xml' | 'excluir') {
+  async function acao(m: Mdfe, tipo: 'emitir' | 'consultar' | 'encerrar' | 'xml' | 'pdf' | 'excluir') {
     if (tipo === 'encerrar' && !confirm(`Encerrar o MDF-e ${m.numero}? Faça isso quando a carga já foi entregue.`)) return
     if (tipo === 'excluir' && !confirm('Apagar este MDF-e?')) return
     setAcaoId(m.id); setErro('')
     try {
-      if (tipo === 'xml') {
-        const r = await chamar(`/api/mdfes/${m.id}/xml`)
+      if (tipo === 'xml' || tipo === 'pdf') {
+        const r = await chamar(`/api/mdfes/${m.id}/${tipo === 'pdf' ? 'damdfe' : 'xml'}`)
         if (r?.url) window.open(r.url, '_blank')
       } else if (tipo === 'excluir') {
         await chamar(`/api/mdfes/${m.id}`, { method: 'DELETE' })
@@ -463,7 +463,10 @@ export default function MdfePage() {
                           <BotaoIcone t="Cancelar" onClick={() => { setCancelando(m); setJustificativa('') }} icon={<Ban size={14}/>}/>
                         </>}
                         {['autorizado', 'encerrado', 'cancelado'].includes(m.status) &&
-                          <BotaoIcone t="Baixar XML" onClick={() => acao(m, 'xml')} icon={<Download size={14}/>}/>}
+                          <>
+                            <BotaoIcone t="PDF (DAMDFE)" onClick={() => acao(m, 'pdf')} icon={<FileText size={14}/>} cor="text-red-600"/>
+                            <BotaoIcone t="Baixar XML" onClick={() => acao(m, 'xml')} icon={<Download size={14}/>}/>
+                          </>}
                       </div>
                     </td>
                   </tr>

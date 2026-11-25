@@ -1,33 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Um arquivo só repassa todas as chamadas do MDF-e para o backend:
-// /api/mdfes, /api/mdfes/{id}, /api/mdfes/{id}/emitir, /encerrar, /cancelar, /xml...
+// Repassa ao backend as ações do CT-e que não têm arquivo próprio:
+// carta-correcao, dacte (PDF), eventos...
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const BACKEND_URL = (process.env.ROESEL_BACKEND_URL || '').replace(/\/+$/, '')
+type Ctx = { params: Promise<{ id: string; acao: string }> }
 
-type Ctx = { params: Promise<{ caminho?: string[] }> }
-
-async function repassar(req: NextRequest, ctx: Ctx, metodo: string) {
+async function repassar(req: NextRequest, ctx: Ctx, metodo: 'GET' | 'POST') {
   if (!BACKEND_URL) {
     return NextResponse.json({ error: 'ROESEL_BACKEND_URL não configurada nas variáveis de ambiente da Vercel.' }, { status: 500 })
   }
   const authorization = req.headers.get('authorization')
   if (!authorization) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
-
-  const { caminho = [] } = await ctx.params
-  const resto = caminho.map(encodeURIComponent).join('/')
-  const query = new URL(req.url).searchParams.toString()
-  const url = `${BACKEND_URL}/mdfes/${resto}${query ? '?' + query : ''}`
-
-  const temCorpo = metodo === 'POST' || metodo === 'PUT'
-  const corpo = temCorpo ? await req.text() : undefined
+  const { id, acao } = await ctx.params
+  const corpo = metodo === 'POST' ? (await req.text()) || '{}' : undefined
   try {
-    const resposta = await fetch(url, {
+    const resposta = await fetch(`${BACKEND_URL}/ctes/${encodeURIComponent(id)}/${encodeURIComponent(acao)}`, {
       method: metodo,
-      headers: { Authorization: authorization, ...(temCorpo ? { 'Content-Type': 'application/json' } : {}) },
-      body: temCorpo ? (corpo || '{}') : undefined,
+      headers: { Authorization: authorization, ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+      body: corpo,
       cache: 'no-store',
     })
     const dados = await resposta.json().catch(() => ({ error: `Resposta inválida do backend (${resposta.status}).` }))
@@ -39,5 +32,3 @@ async function repassar(req: NextRequest, ctx: Ctx, metodo: string) {
 
 export const GET = (req: NextRequest, ctx: Ctx) => repassar(req, ctx, 'GET')
 export const POST = (req: NextRequest, ctx: Ctx) => repassar(req, ctx, 'POST')
-export const PUT = (req: NextRequest, ctx: Ctx) => repassar(req, ctx, 'PUT')
-export const DELETE = (req: NextRequest, ctx: Ctx) => repassar(req, ctx, 'DELETE')

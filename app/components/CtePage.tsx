@@ -116,6 +116,21 @@ function lembrarSeguro(f: Form) {
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
 
+// Campos mais comuns da carta de correção (grupo e campo como estão no XML do CT-e)
+const CAMPOS_CCE = [
+  { t: 'Observações', grupo: 'compl', campo: 'xObs' },
+  { t: 'Produto predominante', grupo: 'infCarga', campo: 'proPred' },
+  { t: 'Rua do remetente', grupo: 'enderReme', campo: 'xLgr' },
+  { t: 'Número do remetente', grupo: 'enderReme', campo: 'nro' },
+  { t: 'Bairro do remetente', grupo: 'enderReme', campo: 'xBairro' },
+  { t: 'Rua do destinatário', grupo: 'enderDest', campo: 'xLgr' },
+  { t: 'Número do destinatário', grupo: 'enderDest', campo: 'nro' },
+  { t: 'Bairro do destinatário', grupo: 'enderDest', campo: 'xBairro' },
+  { t: 'Nome do remetente (erro de digitação)', grupo: 'rem', campo: 'xNome' },
+  { t: 'Nome do destinatário (erro de digitação)', grupo: 'dest', campo: 'xNome' },
+  { t: 'Outro', grupo: '', campo: '' },
+]
+
 const CSTS = [
   { v: '00', t: '00 - Tributado normalmente' },
   { v: '20', t: '20 - Com redução de base' },
@@ -394,6 +409,9 @@ export default function CtePage() {
   const [msg, setMsg]                   = useState('')
   const [visualizando, setVisualizando] = useState<Cte | null>(null)
   const [cancelandoId, setCancelandoId] = useState<string | null>(null)
+  const [justificativa, setJustificativa] = useState('')
+  const [corrigindo, setCorrigindo]     = useState<Cte | null>(null)
+  const [correcoes, setCorrecoes]       = useState<{ campo: string; grupo: string; campoXml: string; valor: string }[]>([])
 
   const fetchIdRef = useRef(0)
 
@@ -820,6 +838,19 @@ export default function CtePage() {
     }
   }
 
+  const [testandoSefaz, setTestandoSefaz] = useState(false)
+  const [testeSefaz, setTesteSefaz] = useState<any>(null)
+  async function testarSefaz() {
+    setTestandoSefaz(true); setTesteSefaz(null)
+    try {
+      setTesteSefaz(await chamar('/api/ctes/fiscal/teste'))
+    } catch (e: any) {
+      setTesteSefaz({ certificado: { ok: false, erro: e?.message || 'Erro' }, sefaz: { ok: false } })
+    } finally {
+      setTestandoSefaz(false)
+    }
+  }
+
   async function consultar(c: Cte) {
     setAcaoId(c.id); setErro('')
     try {
@@ -844,15 +875,58 @@ export default function CtePage() {
 
   async function cancelar(id: string) {
     setErro('')
+    if (justificativa.trim().length < 15) { setErro('Escreva o motivo do cancelamento (mínimo 15 letras).'); return }
+    setAcaoId(id)
     try {
-      await chamar(`/api/ctes/${id}/cancelar`, { method: 'POST' })
-      showMsg('✅ CT-e cancelado.')
-      setCancelandoId(null)
-      setVisualizando(null)
+      const r = await chamar(`/api/ctes/${id}/cancelar`, { method: 'POST', body: JSON.stringify({ justificativa }) })
+      if (r?.ok) {
+        showMsg('✅ CT-e cancelado na SEFAZ.')
+        setCancelandoId(null); setJustificativa(''); setVisualizando(null)
+      } else {
+        setErro(`SEFAZ recusou o cancelamento: ${r?.cStat} - ${r?.motivo}`)
+      }
       await fetchCtes()
     } catch (e: any) {
-      setErro(e?.message || 'Cancelamento ainda não está disponível.')
-      setCancelandoId(null)
+      setErro(e?.message || 'Erro ao cancelar.')
+    } finally {
+      setAcaoId(null)
+    }
+  }
+
+  async function baixarDacte(c: Cte) {
+    setErro(''); setAcaoId(c.id)
+    try {
+      const r = await chamar(`/api/ctes/${c.id}/dacte`)
+      if (r?.url) window.open(r.url, '_blank')
+    } catch (e: any) {
+      setErro(e?.message || 'Erro ao gerar o PDF.')
+    } finally {
+      setAcaoId(null)
+    }
+  }
+
+  function abrirCorrecao(c: Cte) {
+    setCorrigindo(c); setErro('')
+    setCorrecoes([{ campo: CAMPOS_CCE[0].t, grupo: CAMPOS_CCE[0].grupo, campoXml: CAMPOS_CCE[0].campo, valor: '' }])
+  }
+
+  async function enviarCorrecao() {
+    if (!corrigindo) return
+    if (correcoes.some(x => !x.grupo.trim() || !x.campoXml.trim() || !x.valor.trim())) {
+      setErro('Preencha o valor correto de cada correção.'); return
+    }
+    setErro(''); setAcaoId(corrigindo.id)
+    try {
+      const r = await chamar(`/api/ctes/${corrigindo.id}/carta-correcao`, {
+        method: 'POST',
+        body: JSON.stringify({ correcoes: correcoes.map(x => ({ grupo: x.grupo.trim(), campo: x.campoXml.trim(), valor: x.valor.trim() })) }),
+      })
+      if (r?.ok) { showMsg(`✅ Carta de correção nº ${r.sequencia} registrada.`); setCorrigindo(null) }
+      else setErro(`SEFAZ recusou a carta de correção: ${r?.cStat} - ${r?.motivo}`)
+    } catch (e: any) {
+      setErro(e?.message || 'Erro ao enviar a carta de correção.')
+    } finally {
+      setAcaoId(null)
     }
   }
 
@@ -872,11 +946,34 @@ export default function CtePage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">CT-e</h1>
         </div>
-        <button onClick={abrirNovo}
-          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition">
-          <Plus size={16}/> Novo CT-e
-        </button>
+        <div className="flex gap-2">
+          <button onClick={testarSefaz} disabled={testandoSefaz}
+            className="flex items-center gap-2 bg-gray-700 hover:bg-gray-800 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition disabled:opacity-50">
+            {testandoSefaz ? <Loader2 size={16} className="animate-spin"/> : <CheckCircle2 size={16}/>} Testar SEFAZ
+          </button>
+          <button onClick={abrirNovo}
+            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl text-sm font-bold uppercase transition">
+            <Plus size={16}/> Novo CT-e
+          </button>
+        </div>
       </div>
+
+      {testeSefaz && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-sm space-y-1">
+          <p className={testeSefaz.certificado?.ok && !testeSefaz.certificado?.vencido ? 'text-green-700' : 'text-red-600'}>
+            <b>Certificado:</b>{' '}
+            {testeSefaz.certificado?.ok
+              ? `${testeSefaz.certificado.vencido ? 'VENCIDO' : 'OK'}, vence em ${new Date(testeSefaz.certificado.valido_ate).toLocaleDateString('pt-BR')} (${testeSefaz.certificado.dias_para_vencer} dias)`
+              : testeSefaz.certificado?.erro}
+          </p>
+          <p className={testeSefaz.sefaz?.ok && String(testeSefaz.sefaz?.cStat) === '107' ? 'text-green-700' : 'text-red-600'}>
+            <b>SEFAZ:</b>{' '}
+            {testeSefaz.sefaz?.ok
+              ? `${testeSefaz.sefaz.cStat} - ${testeSefaz.sefaz.motivo} (ambiente ${testeSefaz.sefaz.ambiente === '1' ? 'PRODUÇÃO' : 'HOMOLOGAÇÃO'})`
+              : testeSefaz.sefaz?.erro}
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -1364,15 +1461,29 @@ export default function CtePage() {
                 )}
                 {visualizando.status === 'autorizado' && (
                   <>
+                    <button onClick={() => baixarDacte(visualizando)} disabled={acaoId === visualizando.id}
+                      className="flex items-center justify-center gap-2 bg-red-600 text-white py-3 rounded-xl text-sm font-bold uppercase hover:bg-red-700 transition disabled:opacity-50">
+                      {acaoId === visualizando.id ? <Loader2 size={16} className="animate-spin"/> : <FileText size={16}/>} PDF (DACTE)
+                    </button>
                     <button onClick={() => baixarXml(visualizando)}
                       className="flex items-center justify-center gap-2 bg-gray-900 text-white py-3 rounded-xl text-sm font-bold uppercase hover:bg-black transition">
                       <Download size={16}/> Baixar XML
                     </button>
-                    <button onClick={() => setCancelandoId(visualizando.id)}
+                    <button onClick={() => abrirCorrecao(visualizando)}
+                      className="flex items-center justify-center gap-2 bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-bold uppercase hover:bg-gray-200 transition">
+                      <Pencil size={16}/> Carta de correção
+                    </button>
+                    <button onClick={() => { setCancelandoId(visualizando.id); setJustificativa(''); setErro('') }}
                       className="flex items-center justify-center gap-2 bg-gray-100 text-gray-700 py-3 rounded-xl text-sm font-bold uppercase hover:bg-gray-200 transition">
                       <Ban size={16}/> Cancelar CT-e
                     </button>
                   </>
+                )}
+                {visualizando.status === 'cancelado' && visualizando.xml_url && (
+                  <button onClick={() => baixarXml(visualizando)}
+                    className="col-span-2 flex items-center justify-center gap-2 bg-gray-900 text-white py-3 rounded-xl text-sm font-bold uppercase hover:bg-black transition">
+                    <Download size={16}/> Baixar XML
+                  </button>
                 )}
               </div>
             </div>
@@ -1387,10 +1498,71 @@ export default function CtePage() {
               <XCircle size={32}/>
             </div>
             <h3 className="text-xl font-black text-gray-900 mb-2">Cancelar CT-e?</h3>
-            <p className="text-sm text-gray-500 mb-8">Cancelamento é feito junto à SEFAZ e não pode ser desfeito.</p>
+            <p className="text-sm text-gray-500 mb-4">É feito na SEFAZ e não pode ser desfeito. Prazo: até 7 dias depois da autorização e antes de o CT-e entrar num MDF-e.</p>
+            <textarea value={justificativa} onChange={e => setJustificativa(e.target.value)} rows={3}
+              placeholder="Motivo (mínimo 15 letras)" className={IC + ' text-left mb-2'}/>
+            {erro && <p className="text-xs text-red-600 mb-2 text-left">{erro}</p>}
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => { setCancelandoId(null); setErro('') }} className="flex-1 py-3 rounded-xl font-black text-xs uppercase text-gray-400 hover:bg-gray-50">Voltar</button>
+              <button onClick={() => cancelar(cancelandoId)} disabled={acaoId === cancelandoId}
+                className="flex-1 py-3 rounded-xl font-black text-xs uppercase bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                {acaoId === cancelandoId ? 'Enviando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {corrigindo && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-xl p-6 space-y-4">
+            <h3 className="text-xl font-black text-gray-900">Carta de correção · CT-e {corrigindo.numero_cte}</h3>
+            <p className="text-xs text-gray-500">
+              Não pode corrigir valores, impostos, CNPJ/CPF de quem participa, datas nem a cidade de início e fim.
+              Para isso, cancele e emita de novo.
+            </p>
+            {correcoes.map((x, i) => {
+              const mudar = (dados: Partial<typeof x>) => setCorrecoes(l => l.map((y, j) => j === i ? { ...y, ...dados } : y))
+              const outro = x.campo === 'Outro'
+              return (
+                <div key={i} className="border border-gray-200 rounded-2xl p-3 space-y-2">
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <label className={LC}>O que corrigir</label>
+                      <select value={x.campo} className={IC}
+                        onChange={e => {
+                          const o = CAMPOS_CCE.find(c => c.t === e.target.value)!
+                          mudar({ campo: o.t, grupo: o.grupo, campoXml: o.campo })
+                        }}>
+                        {CAMPOS_CCE.map(c => <option key={c.t}>{c.t}</option>)}
+                      </select>
+                    </div>
+                    {correcoes.length > 1 && (
+                      <button type="button" onClick={() => setCorrecoes(l => l.filter((_, j) => j !== i))} className="mb-2 text-gray-400 hover:text-red-600"><Trash2 size={16}/></button>
+                    )}
+                  </div>
+                  {outro && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><label className={LC}>Grupo (tag do XML)</label><input value={x.grupo} onChange={e => mudar({ grupo: e.target.value })} className={IC} placeholder="ex.: compl"/></div>
+                      <div><label className={LC}>Campo (tag do XML)</label><input value={x.campoXml} onChange={e => mudar({ campoXml: e.target.value })} className={IC} placeholder="ex.: xObs"/></div>
+                    </div>
+                  )}
+                  <div>
+                    <label className={LC}>Como deve ficar</label>
+                    <textarea value={x.valor} onChange={e => mudar({ valor: e.target.value })} rows={2} className={IC}/>
+                  </div>
+                </div>
+              )
+            })}
+            <button type="button" onClick={() => setCorrecoes(l => [...l, { campo: CAMPOS_CCE[0].t, grupo: CAMPOS_CCE[0].grupo, campoXml: CAMPOS_CCE[0].campo, valor: '' }])}
+              className="text-xs font-bold text-red-600">+ Outra correção</button>
+            {erro && <p className="text-sm text-red-600">{erro}</p>}
             <div className="flex gap-3">
-              <button onClick={() => setCancelandoId(null)} className="flex-1 py-3 rounded-xl font-black text-xs uppercase text-gray-400 hover:bg-gray-50">Voltar</button>
-              <button onClick={() => cancelar(cancelandoId)} className="flex-1 py-3 rounded-xl font-black text-xs uppercase bg-red-600 text-white hover:bg-red-700">Confirmar</button>
+              <button onClick={() => { setCorrigindo(null); setErro('') }} className="flex-1 py-3 rounded-xl font-black text-xs uppercase text-gray-400 hover:bg-gray-50">Voltar</button>
+              <button onClick={enviarCorrecao} disabled={acaoId === corrigindo.id}
+                className="flex-1 py-3 rounded-xl font-black text-xs uppercase bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                {acaoId === corrigindo.id ? 'Enviando...' : 'Enviar à SEFAZ'}
+              </button>
             </div>
           </div>
         </div>

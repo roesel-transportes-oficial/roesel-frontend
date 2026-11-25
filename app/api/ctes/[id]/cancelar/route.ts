@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 const BACKEND_URL = (process.env.ROESEL_BACKEND_URL || '').replace(/\/+$/, '')
 
@@ -12,9 +13,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!authorization) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
   const { id } = await params
+  const corpo = (await req.text()) || '{}'
   const resposta = await fetch(`${BACKEND_URL}/ctes/${id}/cancelar`, {
     method: 'POST',
-    headers: { Authorization: authorization },
+    headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+    body: corpo,
   })
   const dados = await resposta.json().catch(() => ({ error: 'Resposta inválida do backend.' }))
   return NextResponse.json(dados, { status: resposta.status })
