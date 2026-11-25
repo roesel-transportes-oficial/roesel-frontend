@@ -91,9 +91,27 @@ const FORM_INICIAL = {
   placa: '', motorista: '',
   // CT-e da transportadora que contratou (subcontratação) ou do trecho anterior (redespacho)
   cte_anterior_chave: '', redespachante_nome: '', redespachante_cnpj: '', ant_ie: '', ant_uf: 'MG',
+  // Seguro da carga (sai nas observações do CT-e e vai para o MDF-e)
+  seg_resp: '1' as '1' | '2',   // 1 = Roesel | 2 = contratante
+  seg_resp_cnpj: '',
+  seg_nome: '', seg_cnpj: '', seg_apolice: '', seg_averbacao: '',
   obs: '',
 }
 type Form = typeof FORM_INICIAL
+
+// Seguradora e apólice quase nunca mudam: a tela lembra a última usada
+const CHAVE_SEGURO = 'cte_seguro_padrao'
+const CAMPOS_SEGURO = ['seg_resp', 'seg_resp_cnpj', 'seg_nome', 'seg_cnpj', 'seg_apolice'] as const
+function seguroPadrao(): Partial<Form> {
+  try { return JSON.parse(localStorage.getItem(CHAVE_SEGURO) || '{}') } catch { return {} }
+}
+function lembrarSeguro(f: Form) {
+  try {
+    const o: any = {}
+    for (const k of CAMPOS_SEGURO) o[k] = f[k]
+    localStorage.setItem(CHAVE_SEGURO, JSON.stringify(o))
+  } catch {}
+}
 
 const IC = "mt-1 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-gray-50"
 const LC = "text-xs font-semibold text-gray-500 uppercase tracking-wide"
@@ -435,7 +453,7 @@ export default function CtePage() {
   function showMsg(t: string) { setMsg(t); setTimeout(() => setMsg(''), 5000) }
 
   function abrirNovo() {
-    setForm(FORM_INICIAL)
+    setForm({ ...FORM_INICIAL, ...seguroPadrao() })
     setEditandoId(null)
     setErro('')
     setMostraNovo(true)
@@ -474,6 +492,10 @@ export default function CtePage() {
       cte_anterior_chave: (d.doc_anterior?.chaves_cte || []).join('\n') || c.cte_anterior_chave || '',
       ant_ie: d.doc_anterior?.ie || '', ant_uf: d.doc_anterior?.uf || 'MG',
       redespachante_nome: c.redespachante_nome || '', redespachante_cnpj: c.redespachante_cnpj || '',
+      seg_resp: d.seguro?.responsavel === 2 ? '2' : '1',
+      seg_resp_cnpj: d.seguro?.responsavel_cnpj || '',
+      seg_nome: d.seguro?.seguradora || '', seg_cnpj: d.seguro?.seguradora_cnpj || '',
+      seg_apolice: d.seguro?.apolice || '', seg_averbacao: (d.seguro?.averbacoes || []).join('\n'),
       obs: d.observacoes || c.obs || '',
     })
     setEditandoId(c.id)
@@ -642,6 +664,11 @@ export default function CtePage() {
     if (form.produtos.some(p => soDigitos(p.ncm).length !== 8)) return 'Cada NCM precisa ter 8 dígitos.'
     const chaves = form.chaves_nfe.split(/\s+/).map(soDigitos).filter(Boolean)
     if (chaves.some(c => c.length !== 44)) return 'Cada chave de NF-e precisa ter 44 dígitos.'
+    if (!form.seg_nome.trim()) return 'Seguro: informe o nome da seguradora.'
+    if (form.seg_cnpj && soDigitos(form.seg_cnpj).length !== 14) return 'Seguro: CNPJ da seguradora precisa ter 14 dígitos.'
+    if (!form.seg_apolice.trim()) return 'Seguro: informe o número da apólice.'
+    if (form.seg_resp === '2' && ![11, 14].includes(soDigitos(form.seg_resp_cnpj).length))
+      return 'Seguro: informe o CNPJ (ou CPF) do contratante responsável pelo seguro.'
     return null
   }
 
@@ -688,6 +715,14 @@ export default function CtePage() {
         produtos: form.produtos.map(p => ({ ncm: soDigitos(p.ncm), descricao: p.descricao })),
       },
       chaves_nfe: chaves,
+      seguro: form.seg_nome.trim() ? {
+        responsavel: Number(form.seg_resp),
+        responsavel_cnpj: form.seg_resp === '2' ? soDigitos(form.seg_resp_cnpj) : undefined,
+        seguradora: form.seg_nome.trim(),
+        seguradora_cnpj: soDigitos(form.seg_cnpj) || undefined,
+        apolice: form.seg_apolice.trim(),
+        averbacoes: form.seg_averbacao.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean),
+      } : undefined,
       observacoes: form.obs || undefined,
     }
     const payload: any = {
@@ -715,6 +750,7 @@ export default function CtePage() {
   // Cria (POST) ou atualiza (PUT) e devolve o id do registro
   async function gravar(): Promise<string> {
     const payload = montarPayload()
+    lembrarSeguro(form)
     if (editandoId) {
       await chamar(`/api/ctes/${editandoId}`, { method: 'PUT', body: JSON.stringify(payload) })
       return editandoId
@@ -1202,6 +1238,42 @@ export default function CtePage() {
                         {motoristas.map((m: any) => <option key={m.id} value={m.nome}>{m.nome}</option>)}
                       </select>
                     </div>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-2xl p-4 space-y-3">
+                    <p className="text-sm font-bold text-gray-700">Seguro da carga</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={LC}>Responsável pelo seguro</label>
+                        <select name="seg_resp" value={form.seg_resp} onChange={handle} className={IC}>
+                          <option value="1">Roesel (transportadora)</option>
+                          <option value="2">Contratante do frete</option>
+                        </select>
+                      </div>
+                      {form.seg_resp === '2' && (
+                        <div>
+                          <label className={LC}>CNPJ do contratante</label>
+                          <input name="seg_resp_cnpj" value={form.seg_resp_cnpj} onChange={handle} className={IC}/>
+                        </div>
+                      )}
+                      <div>
+                        <label className={LC}>Seguradora</label>
+                        <input name="seg_nome" value={form.seg_nome} onChange={handle} className={IC} placeholder="Nome da seguradora"/>
+                      </div>
+                      <div>
+                        <label className={LC}>CNPJ da seguradora</label>
+                        <input name="seg_cnpj" value={form.seg_cnpj} onChange={handle} className={IC}/>
+                      </div>
+                      <div>
+                        <label className={LC}>Nº da apólice</label>
+                        <input name="seg_apolice" value={form.seg_apolice} onChange={handle} className={IC}/>
+                      </div>
+                      <div>
+                        <label className={LC}>Nº da averbação</label>
+                        <input name="seg_averbacao" value={form.seg_averbacao} onChange={handle} className={IC} placeholder="Opcional"/>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400">A tela guarda a seguradora e a apólice para os próximos CT-es.</p>
                   </div>
 
                   <div>
