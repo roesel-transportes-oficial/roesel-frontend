@@ -1,5 +1,6 @@
 'use client'
 import { supabaseRestFetch } from '../services/rest'
+import { supabase } from '../services/supabase'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../services/auth'
 import { Search, Plus, ArrowLeft, Save, Trash2, ChevronRight, UserCircle, Upload, Loader2, AlertCircle, MapPin, Phone, FileText } from 'lucide-react'
@@ -70,50 +71,21 @@ export default function ClientePage() {
         : file.type === 'image/png' ? 'image/png'
         : 'image/jpeg'
 
-      const isPDF = file.type === 'application/pdf'
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) { showMsg('⚠️ Sessão expirada. Saia e entre novamente.'); return }
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      // A chave fica só no servidor (rota /api/ler-cliente), nunca no navegador.
+      const response = await fetch('/api/ler-cliente', {
         method: 'POST',
         headers: {
-          'x-api-key': process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY!,
-          'anthropic-version': '2023-06-01',
           'content-type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-5',
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: [
-              {
-                type: isPDF ? 'document' : 'image',
-                source: { type: 'base64', media_type: mediaType, data: base64 }
-              },
-              {
-                type: 'text',
-                text: `Extraia os dados do CONTRATANTE deste contrato de transporte e retorne APENAS um JSON válido, sem texto adicional, sem markdown:
-{
-  "nome": "nome ou razão social exata do contratante",
-  "cnpj": "CNPJ somente números",
-  "endereco": "endereço completo",
-  "cep": "CEP somente números",
-  "cidade": "cidade em maiúsculas",
-  "estado": "UF com 2 letras maiúsculas",
-  "telefone": "telefone somente números",
-  "ie": "inscrição estadual somente números"
-}`
-              }
-            ]
-          }]
-        })
+        body: JSON.stringify({ base64, mediaType }),
       })
 
-      const data = await response.json()
-      const text = data.content?.[0]?.text || ''
-      const match = text.match(/\{[\s\S]*\}/)
-      if (!match) { showMsg('⚠️ Não foi possível extrair os dados.'); return }
-
-      const d = JSON.parse(match[0])
+      const d = await response.json()
+      if (!response.ok || d._erro) { showMsg(`⚠️ ${d._erro || 'Não foi possível extrair os dados.'}`); return }
       if (d.nome) setCadNome(d.nome)
       if (d.cnpj) setCadCnpj(d.cnpj)
       if (d.endereco) setCadEndereco(d.endereco)
