@@ -356,7 +356,19 @@ export default function CtePage() {
   const [motoristas, setMotoristas]     = useState<any[]>([])
   const [caminhoes, setCaminhoes]       = useState<any[]>([])
   const [clientes, setClientes]         = useState<any[]>([])
-  const [form, setForm]                 = useDraftPersistente<Form>('cte_novo_v2', FORM_INICIAL)
+  const [formSalvo, setForm]            = useDraftPersistente<Form>('cte_novo_v3', FORM_INICIAL)
+  // Rascunho salvo por versão antiga da tela pode não ter os campos novos: completa com os padrões
+  const fs: any = formSalvo || {}
+  const form: Form = {
+    ...FORM_INICIAL, ...fs,
+    remetente: { ...PARTE_VAZIA, ...(fs.remetente || {}) },
+    destinatario: { ...PARTE_VAZIA, ...(fs.destinatario || {}) },
+    expedidor: { ...PARTE_VAZIA, ...(fs.expedidor || {}) },
+    recebedor: { ...PARTE_VAZIA, ...(fs.recebedor || {}) },
+    outro_tomador: { ...PARTE_VAZIA, ...(fs.outro_tomador || {}) },
+    produtos: Array.isArray(fs.produtos) ? fs.produtos : [],
+    nfes_importadas: Array.isArray(fs.nfes_importadas) ? fs.nfes_importadas : [],
+  }
   const [salvando, setSalvando]         = useState(false)
   const [emitindo, setEmitindo]         = useState(false)
   const [acaoId, setAcaoId]             = useState<string | null>(null)
@@ -583,7 +595,7 @@ export default function CtePage() {
   const tributado  = ['00', '20', '90'].includes(form.icms_cst)
   const valorIcms  = tributado ? Math.round(valorPrest * num(form.icms_aliquota)) / 100 : 0
   // Mesmo cálculo do backend: base × alíquota, arredondado em 2 casas
-  const baseIbs    = form.ibs_base.trim() ? num(form.ibs_base) : valorPrest
+  const baseIbs    = (form.ibs_base || '').trim() ? num(form.ibs_base) : valorPrest
   const calc       = (p: string) => Math.round(baseIbs * num(p)) / 100
   const vIbsMun    = calc(form.p_ibs_mun)
   const vIbsUf     = calc(form.p_ibs_uf)
@@ -719,7 +731,7 @@ export default function CtePage() {
     try {
       await gravar()
       showMsg('✅ Rascunho de CT-e salvo!')
-      limparDraft('cte_novo_v2')
+      limparDraft('cte_novo_v3')
       fecharNovo()
       await fetchCtes()
     } catch (e: any) {
@@ -744,7 +756,7 @@ export default function CtePage() {
       const ok = mensagemResultado(r)
       if (ok) {
         showMsg(ok)
-        limparDraft('cte_novo_v2')
+        limparDraft('cte_novo_v3')
         fecharNovo()
       } else {
         setErro(`SEFAZ rejeitou: ${r?.cStat || ''} - ${r?.motivo || 'motivo não informado'}. Corrija e clique em Emitir de novo.`)
